@@ -1,0 +1,30 @@
+/* Escenario del video: fondo, Nimbo a la derecha y los textos a la izquierda. */
+html, body { margin: 0 !important; height: 100%; overflow: hidden !important;
+  background:
+    radial-gradient(60% 50% at 78% 0%, rgba(124, 108, 255, .32), transparent 70%),
+    radial-gradient(45% 45% at 12% 85%, rgba(255, 140, 26, .16), transparent 70%),
+    linear-gradient(160deg, #1a1f33 0%, #10131f 55%, #0a0c14 100%) !important; }
+#nimbo { margin: 0 0 0 382px !important; }
+
+#promo-brand { position: fixed; left: 38px; top: 30px; display: flex; align-items: center; gap: 8px;
+  font: 700 13px "Segoe UI Variable Display", "Segoe UI", sans-serif; letter-spacing: .14em; color: #c9cde0; }
+#promo-brand::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #9d95ff; box-shadow: 0 0 12px #9d95ff; }
+
+#promo-cap { position: fixed; left: 38px; top: 132px; width: 318px; font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  opacity: 0; transform: translateY(10px); filter: blur(6px);
+  transition: opacity .35s, transform .45s cubic-bezier(.3, 1.2, .4, 1), filter .35s; }
+#promo-cap.in { opacity: 1; transform: none; filter: none; }
+#promo-cap .n { font-weight: 700; font-size: 12px; letter-spacing: .12em; color: #9d95ff; margin-bottom: 10px; }
+#promo-cap h1 { margin: 0; font-weight: 700; font-size: 31px; line-height: 1.08; letter-spacing: -.02em; color: #f4f5fa; text-wrap: balance; }
+#promo-cap p { margin: 12px 0 0; font-size: 14.5px; line-height: 1.4; color: #a3a9bd; text-wrap: pretty; }
+#promo-cap.big { top: 150px; }
+#promo-cap.big h1 { font-size: 54px; }
+#promo-cap.big p { font-size: 16px; }
+
+/* Cursor de mentira para que se entienda dónde se hace clic */
+#promo-cur { position: fixed; left: 0; top: 0; width: 15px; height: 21px; z-index: 99; pointer-events: none;
+  background: #fff; clip-path: polygon(0 0, 0 100%, 29% 76%, 50% 100%, 66% 93%, 46% 70%, 82% 70%);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .7)); opacity: 0;
+  transition: transform .6s cubic-bezier(.4, 0, .2, 1), opacity .3s; transform: translate(560px, 300px); }
+#promo-cur.on { opacity: 1; }
+#promo-cur.tap { scale: .82; }

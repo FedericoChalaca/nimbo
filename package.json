@@ -1,0 +1,75 @@
+{
+  "name": "nimbo",
+  "version": "0.2.0",
+  "description": "Un compañero flotante para Claude Code en Windows: ve qué hacen tus chats, aprueba permisos y habla con tu Claude",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "install-hooks": "node install-hooks.js",
+    "uninstall-hooks": "node install-hooks.js --uninstall",
+    "test": "node reminders.js && node whatsapp.js",
+    "promo": "electron promo/promo-main.js",
+    "dist": "electron-builder --win",
+    "promo:gif": "electron promo/gif-main.js"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "gifenc": "^1.0.3"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.0"
+  },
+  "license": "MIT",
+  "author": "Federico Martínez",
+  "keywords": [
+    "claude-code",
+    "electron",
+    "companion",
+    "windows",
+    "hooks"
+  ],
+  "build": {
+    "appId": "com.federicochalaca.nimbo",
+    "productName": "Nimbo",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!promo{,/**}",
+      "!dist{,/**}",
+      "!build{,/**}",
+      "!RESUMEN*",
+      "!CLAUDE.md",
+      "!README*",
+      "!**/*.map",
+      "!**/node_modules/onnxruntime-node{,/**}",
+      "!**/node_modules/sharp{,/**}",
+      "!**/node_modules/@img{,/**}",
+      "!**/transformers.node.*",
+      "!**/transformers.web.*",
+      "!**/dist/transformers.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "Nimbo-Setup.exe",
+      "shortcutName": "Nimbo",
+      "runAfterFinish": true
+    }
+  }
+}

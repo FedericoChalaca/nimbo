@@ -1,0 +1,1904 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Nimbo</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; media-src 'self' blob: mediastream:; connect-src 'self' blob: https://huggingface.co https://*.huggingface.co https://*.hf.co">
+<style>
+  :root { --ink: #2b2d42; --cheek: #ff9bb3; }
+  html, body { margin: 0; background: transparent; overflow: hidden; user-select: none;
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .hidden { display: none !important; }
+
+  /* Color de cada estado: brillo de la isla, aura del personaje, insignia y puntitos */
+  #nimbo { position: relative; width: 440px; height: 480px; --sc: #8a8f98; --cloud2: #dfe3f2;
+    --accent-a: #9d95ff; --accent-b: #ffffff; }
+  #nimbo.state-thinking { --sc: #9b87ff; --cloud2: #ddd6ff; }
+  #nimbo.state-working { --sc: #4da3ff; --cloud2: #d2e4ff; }
+  #nimbo.state-needs { --sc: #ffb020; --cloud2: #ffe3a6; }
+  #nimbo.state-finished { --sc: #34c77b; --cloud2: #c8f1da; }
+  #nimbo.state-error { --sc: #e5484d; --cloud2: #c3c6d2; }
+  #nimbo.state-listening { --sc: #ff6b9a; --cloud2: #ffd9e6; }
+  #nimbo.state-sleeping { --sc: #5b6170; --cloud2: #d4d7e2; }
+  #nimbo.theme-jarvis { --accent-a: #ff8c1a; --accent-b: #ffe0a0; }
+
+  /* ── La isla ──────────────────────────────────────────────────────────────
+     Cuelga del borde de arriba. Crece con rebote (resorte) y encoge rápido sin
+     rebote (.closing): misma asimetría que usan las islas de referencia. */
+  #wrap { position: absolute; top: 0; left: calc(var(--f, .5) * 100%); transform: translateX(calc(var(--f, .5) * -100%));
+    width: var(--w, 112px); height: var(--h, 52px);
+    transition: width .52s cubic-bezier(.32, 1.22, .42, 1), height .52s cubic-bezier(.32, 1.22, .42, 1),
+      transform .75s cubic-bezier(.34, 1.56, .64, 1); }
+  #wrap.closing { transition: width .34s cubic-bezier(.45, 0, .2, 1), height .34s cubic-bezier(.45, 0, .2, 1),
+      transform .75s cubic-bezier(.34, 1.56, .64, 1); }
+  .enter #wrap { transform: translate(calc(var(--f, .5) * -100%), -120%); }
+  /* Esquinas invertidas: la isla se funde con el borde de arriba como un notch */
+  .ear { position: absolute; top: 0; width: 14px; height: 14px; }
+  .ear.l { left: -14px; background: radial-gradient(circle at 0 100%, transparent 13.5px, #000 14px); }
+  .ear.r { right: -14px; background: radial-gradient(circle at 100% 100%, transparent 13.5px, #000 14px); }
+  /* clip y no hidden: con hidden, al enfocar el campo del chat el navegador desplazaba la isla
+     hacia arriba y la nube desaparecía */
+  #island { position: absolute; inset: 0; overflow: clip; background: #000; color: #eceef2; font-size: 12.5px;
+    border-radius: 0 0 22px 22px; box-shadow: 0 16px 36px rgba(0, 0, 0, .42);
+    transition: border-radius .4s; }
+  .open #island { border-radius: 0 0 28px 28px; }
+  /* Brillo del estado que sube desde abajo de la isla */
+  #island::before { content: ""; position: absolute; left: -15%; right: -15%; bottom: -50px; height: 100px;
+    background: radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--sc) 55%, transparent), transparent 70%);
+    opacity: 0; transition: opacity .6s; pointer-events: none; }
+  #nimbo:is(.state-thinking, .state-working, .state-needs, .state-finished, .state-error, .state-listening) #island::before { opacity: .45; }
+  .open #island::before { opacity: .3 !important; }
+
+  /* Fila de arriba: personaje · texto · puntitos de chats */
+  #bar { position: absolute; top: 0; left: 0; right: 0; height: 68px; display: flex; align-items: center;
+    gap: 10px; padding: 0 16px 0 116px; box-sizing: border-box; }
+  /* El texto que cambia: el viejo sube y se apaga, el nuevo entra desde abajo (máscara en los bordes) */
+  #ticker { position: relative; flex: 1; min-width: 0; height: 20px; overflow: hidden;
+    -webkit-mask-image: linear-gradient(transparent 0%, #000 22%, #000 78%, transparent 100%); }
+  #ticker span { position: absolute; left: 0; top: 0; max-width: 100%; line-height: 20px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: #e9eaee; font-size: 13.5px; }
+  #label { opacity: 0; transition: opacity .3s; }
+  .open #ticker:not(:has(#label.show))::after { content: "¿En qué te ayudo?"; color: #6b717a; line-height: 20px; }
+  #label.show { opacity: 1; }
+  .state-sleeping #label { opacity: 0; }
+  /* Brillo que recorre el texto mientras Claude piensa o trabaja */
+  #nimbo:is(.state-working, .state-thinking) #label {
+    background: linear-gradient(100deg, #7c818a 0 38%, #f2f3f5 50%, #7c818a 62% 100%) 0 0 / 260% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 2.2s linear infinite; }
+  @keyframes shine { from { background-position: 130% 0; } to { background-position: -130% 0; } }
+  #measure { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: nowrap; font-weight: 500;
+    font-size: 13.5px; font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+  #pips { display: flex; gap: 5px; flex: none; }
+  #pips:empty { display: none; }
+  .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--c, #888);
+    animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both; }
+  .pip.working, .pip.thinking { animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both, pulse 1.2s ease-in-out .45s infinite; }
+  @keyframes pulse { 50% { opacity: .35; transform: scale(.75); } }
+  @keyframes pop-in { from { transform: scale(0); } }
+
+  /* ── Personaje ── (viaja y cambia de tamaño con su propio resorte) */
+  #char { position: absolute; left: 0; top: -1px; width: 120px; height: 70px;
+    transition: left .52s cubic-bezier(.32, 1.22, .42, 1), top .52s cubic-bezier(.32, 1.22, .42, 1),
+      width .52s cubic-bezier(.32, 1.22, .42, 1), height .52s cubic-bezier(.32, 1.22, .42, 1); }
+  /* Aura del color del estado detrás del personaje (gradiente difuminado, más barato que drop-shadow) */
+  #glow { position: absolute; left: 22%; top: 2%; width: 56%; height: 96%; border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--sc) 80%, transparent) 0%, transparent 62%);
+    filter: blur(6px); opacity: .65; transition: opacity .4s, background .4s; }
+  #nimbo:is(.state-idle, .state-sleeping) #glow { opacity: .15; }
+  .theme-jarvis #glow { display: none; }
+  /* Sin texto ni puntitos: el personaje va centrado (su centro está al 46 % del ancho) */
+  .solo #char { left: calc(50% - 55px); }
+  #char svg, #orb { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  #hit { pointer-events: all; cursor: pointer; }
+  .theme-cloud #orb { display: none; }
+  .theme-jarvis #char svg > :not(#hit) { display: none; }
+  /* Insignia de estado (… ! ✓ ✕): el cambio se anima desde JS (encoge, cambia, rebota) */
+  /* En % para que acompañe a la nube cuando crece (modo soltar) */
+  #badge { position: absolute; left: 18%; top: 6%; width: 14px; height: 14px; border-radius: 50%; box-sizing: content-box;
+    background: var(--sc); border: 2px solid #000; color: #000; font: 800 9px/14px "Segoe UI", sans-serif;
+    text-align: center; transform: scale(0); transition: transform .28s cubic-bezier(.3, 1.7, .5, 1), background .3s; }
+  #nimbo:is(.state-thinking, .state-working, .state-needs, .state-finished, .state-error) #badge { transform: scale(1); }
+  .state-thinking #badge::after, .state-working #badge::after { content: "•••"; letter-spacing: -1px; font-size: 7px; }
+  .state-needs #badge::after { content: "!"; }
+  .state-finished #badge::after { content: "✓"; }
+  .state-error #badge::after { content: "✕"; }
+
+  /* Cuerpo de la nube: brillante arriba, teñido del color del estado abajo, con brillo especular */
+  #body { fill: url(#cloudShade); }
+  #cloudShade .top { stop-color: #ffffff; }
+  #cloudShade .bottom { stop-color: var(--cloud2); transition: stop-color .5s; }
+  #gloss { fill: url(#cloudGloss); pointer-events: none; }
+  #breathe { transform-origin: 120px 96px; animation: breathe 3.6s ease-in-out infinite; }
+  .state-sleeping #breathe { animation-duration: 5.5s; }
+  /* Respirar conservando el volumen: cuando sube, adelgaza */
+  @keyframes breathe { 50% { transform: scale(.985, 1.03); } }
+  #bob { transform-origin: 120px 96px; }
+  .state-working #bob { animation: bob .9s ease-in-out infinite; }
+  .state-thinking #bob { animation: bob 2.2s ease-in-out infinite; }
+  .state-needs #bob { animation: hop .6s cubic-bezier(.3, 0, .7, 1) infinite; }
+  .state-finished #bob { animation: jump .9s ease-out; }
+  .state-error #bob { animation: shake .28s linear; }
+  @keyframes bob { 50% { transform: translateY(-3px); } }
+  @keyframes hop { 50% { transform: translateY(-7px) scale(.97, 1.03); } }
+  /* Salto: aplasta, se estira en el aire, aplasta al caer y se asienta */
+  @keyframes jump { 15% { transform: scale(1.08, .9); } 40% { transform: translateY(-20px) scale(.94, 1.08); }
+    65% { transform: translateY(0) scale(1.08, .9); } 82% { transform: translateY(-4px) scale(.98, 1.02); } }
+  /* Sacudida de error: +8 % / −8 % / +5 % / 0 en 280 ms */
+  @keyframes shake { 18% { transform: translateX(10px); } 43% { transform: translateX(-10px); }
+    68% { transform: translateX(6px); } }
+  #squish { transform-origin: 120px 96px; }
+  /* Clic: aplasta (70 ms), estira (130 ms) y vuelve (170 ms), siempre en contrafase */
+  .poke #squish { animation: squish .37s linear; }
+  @keyframes squish { 0% { transform: scale(1, 1); animation-timing-function: cubic-bezier(.2, .8, .3, 1); }
+    19% { transform: scale(1.16, .78); animation-timing-function: cubic-bezier(.2, .8, .3, 1); }
+    54% { transform: scale(.95, 1.1); animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+    100% { transform: scale(1, 1); } }
+
+  /* Cara: cada variante se enciende según el estado */
+  .v { display: none; }
+  #look { transition: transform .17s ease-out; }
+  .eye { transform-box: fill-box; transform-origin: center; }
+  .line { fill: none; stroke: var(--ink); stroke-width: 2.6; stroke-linecap: round; }
+  .cheek { fill: var(--cheek); opacity: .45; transition: opacity .3s; }
+  .state-error .cheek { opacity: 0; }
+  .emote-love .cheek, .hovering .cheek { opacity: .8; }
+
+  .state-idle .eyes-open, .state-idle .m-smile,
+  .state-thinking .eyes-open, .state-thinking .m-o, .state-thinking .dots,
+  .state-working .eyes-open, .state-working .m-flat, .state-working .brows-focus,
+  .state-needs .eyes-open, .state-needs .m-o,
+  .state-finished .eyes-happy, .state-finished .m-big, .state-finished .sparkles,
+  .state-error .eyes-x, .state-error .m-sad, .state-error .rain,
+  .state-sleeping .eyes-closed, .state-sleeping .m-small, .state-sleeping .zzz { display: inline; }
+  .state-listening .eyes-open, .state-listening .m-o { display: inline; }
+  .state-listening #squish { transform: scale(calc(1 + var(--lvl, 0) * .08)); transition: transform .08s; }
+  /* Ojos un poco más grandes al pasar el mouse o cuando te necesita */
+  #eyesScale { transform-origin: 120px 64px; transition: transform .3s cubic-bezier(.3, 1.6, .5, 1); }
+  .hovering #eyesScale, .state-needs #eyesScale { transform: scale(1.12); }
+  #nimbo.poke .face .v { display: none; }
+  #nimbo.poke .eyes-happy, #nimbo.poke .m-big { display: inline; }
+
+  /* Gestos: mandan sobre la cara del estado mientras duran */
+  /* :where() para que esta regla pese lo mismo que las de abajo y ganen ellas (van después) */
+  #nimbo:where([class*="emote-"], .drag-over, .dragging) .face .v { display: none; }
+  #nimbo.emote-hello .eyes-happy, #nimbo.emote-hello .m-big,
+  #nimbo.emote-love .eyes-happy, #nimbo.emote-love .m-smile, #nimbo.emote-love .hearts,
+  #nimbo.emote-dizzy .eyes-dizzy, #nimbo.emote-dizzy .m-o,
+  #nimbo.emote-yawn .eyes-closed, #nimbo.emote-yawn .m-o,
+  #nimbo.emote-gulp .eyes-happy, #nimbo.emote-gulp .m-small,
+  #nimbo.drag-over .eyes-open, #nimbo.drag-over .m-big,
+  #nimbo.dragging .eyes-open, #nimbo.dragging .m-big { display: inline; }
+  .emote-hello #bob { animation: jump .9s ease-out; }
+  .emote-dizzy #squish { transform-origin: 120px 64px; animation: wobble .45s ease-in-out infinite; }
+  @keyframes wobble { 25% { transform: rotate(-7deg); } 75% { transform: rotate(7deg); } }
+  .eyes-dizzy .spin { transform-box: fill-box; transform-origin: center; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Bostezo: se estira hacia arriba y abre la boca */
+  .emote-yawn #squish { animation: stretch 1.4s ease-in-out; }
+  @keyframes stretch { 35%, 70% { transform: scale(.94, 1.12); } }
+  .emote-yawn .m-o { transform-box: fill-box; transform-origin: center; animation: yawn 1.4s ease-in-out; }
+  @keyframes yawn { 40%, 70% { transform: scale(2.2, 2.6); } }
+  /* Tragar: aplasta fuerte, estira y se asienta con rebote */
+  .emote-gulp #squish { animation: gulp .6s linear; }
+  @keyframes gulp { 0% { transform: scale(1, 1); animation-timing-function: cubic-bezier(.2, .8, .3, 1); }
+    20% { transform: scale(1.28, .78); animation-timing-function: cubic-bezier(.2, .8, .3, 1); }
+    55% { transform: scale(.92, 1.18); animation-timing-function: cubic-bezier(.3, 1.6, .5, 1); }
+    100% { transform: scale(1, 1); } }
+  .drag-over #squish { transform: scale(1.08); transition: transform .2s; }
+  .hearts path { fill: #ff5c8a; transform-box: fill-box; transform-origin: center; opacity: 0; }
+  .emote-love .hearts path { animation: float-up 1.5s ease-out both; }
+  .emote-love .hearts path:nth-child(2) { animation-delay: .14s; }
+  .emote-love .hearts path:nth-child(3) { animation-delay: .28s; }
+  /* Partículas: aparecen en el primer 20 %, se apagan el resto y crecen un 40 % mientras suben */
+  @keyframes float-up { 0% { opacity: 0; transform: translate(0, 6px) scale(.7) rotate(-8deg); }
+    20% { opacity: 1; } 50% { transform: translate(3px, -8px) scale(.9) rotate(8deg); }
+    100% { opacity: 0; transform: translate(-2px, -22px) scale(1) rotate(-6deg); } }
+
+  /* Extras */
+  .dots circle { fill: #fff; animation: dot 1.2s ease-in-out infinite; }
+  .dots circle:nth-child(2) { animation-delay: .22s; }
+  .dots circle:nth-child(3) { animation-delay: .44s; }
+  @keyframes dot { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
+  .dots circle { transform-box: fill-box; transform-origin: center; }
+  /* Ojo: en SVG, display:none en el grupo NO detiene las animaciones de sus hijos; por eso las
+     animaciones de una sola vez se activan con la clase del estado/gesto, no siempre. */
+  .sparkles path { fill: #ffd23f; transform-box: fill-box; transform-origin: center; transform: scale(0); }
+  .state-finished .sparkles path { animation: twinkle 1s ease-out both; }
+  .state-finished .sparkles path:nth-child(2) { animation-delay: .14s; }
+  .state-finished .sparkles path:nth-child(3) { animation-delay: .28s; }
+  .state-finished .sparkles path:nth-child(4) { animation-delay: .42s; }
+  @keyframes twinkle { 0% { transform: scale(0) rotate(0); } 40% { transform: scale(1.2) rotate(45deg); }
+    100% { transform: scale(0) rotate(90deg); } }
+  .rain line { stroke: #7aa7ff; stroke-width: 2.4; stroke-linecap: round; animation: fall .9s linear infinite; }
+  .rain line:nth-child(2) { animation-delay: .3s; }
+  .rain line:nth-child(3) { animation-delay: .6s; }
+  .rain line:nth-child(4) { animation-delay: .15s; }
+  @keyframes fall { from { transform: translateY(0); opacity: 1; } to { transform: translateY(26px); opacity: 0; } }
+  .zzz text { fill: #c9ccd6; font: 700 13px "Segoe UI", sans-serif; opacity: 0; animation: zz 3s ease-out infinite; }
+  .zzz text:nth-child(2) { animation-delay: 1s; }
+  .zzz text:nth-child(3) { animation-delay: 2s; }
+  @keyframes zz { 0% { opacity: 0; transform: translate(0, 0); } 30% { opacity: .8; }
+    100% { opacity: 0; transform: translate(14px, -16px); } }
+
+  /* ── Contenido de la isla abierta: tarjetas ──
+     Entran después de que la caja crece: desenfocadas → nítidas, con escala .97 → 1 y
+     un desfase de 35 ms entre una y otra. */
+  #content { position: absolute; top: 70px; left: 12px; right: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .box { position: relative; overflow: hidden; box-sizing: border-box; padding: 12px 14px; border-radius: 18px;
+    background: #16171a; border: 1px solid rgba(255, 255, 255, .06); color: #eceef2; font-size: 12.5px;
+    animation: focus-in .32s cubic-bezier(.3, 1.2, .4, 1) .16s both; }
+  .box:nth-child(2) { animation-delay: .195s; }
+  .box:nth-child(3) { animation-delay: .23s; }
+  .box:nth-child(4) { animation-delay: .265s; }
+  @keyframes focus-in { from { opacity: 0; transform: scale(.97); filter: blur(8px); } }
+  /* Brillo del estado al pie de cada tarjeta */
+  .box::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 70%; pointer-events: none;
+    background: linear-gradient(to top, color-mix(in srgb, var(--sc) 16%, transparent), transparent); }
+  .box > * { position: relative; z-index: 1; }
+  .what { display: flex; align-items: center; gap: 7px; color: #9aa0a8; font-size: 12px; margin-bottom: 8px; }
+  .what::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--sc); flex: none; }
+  .what b { color: #f2f3f5; font-weight: 600; }
+  .cmd { font: 12.5px "Cascadia Mono", Consolas, monospace; word-break: break-all; background: #0b0c0e;
+    border: 1px solid rgba(255, 255, 255, .07); padding: 8px 10px; border-radius: 10px; white-space: pre-wrap; max-height: 170px; overflow: auto; user-select: text;
+    scrollbar-width: thin; scrollbar-color: #4a4d55 transparent; }
+  #alwaysRules { margin-top: 8px; color: #8f959e; font-size: 11px; word-break: break-all; }
+  .btns { display: flex; gap: 8px; margin-top: 10px; }
+  button { border: 0; border-radius: 999px; padding: 7px 15px; color: #eceef2; cursor: pointer; background: #2a2c31;
+    font: 600 12px "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    transition: background .2s, transform .2s cubic-bezier(.3, 1.6, .5, 1); }
+  button:hover { background: #35373d; transform: scale(1.04); }
+  button:active { transform: scale(.95); transition-duration: .08s; }
+  button.allow { background: #f5f6f8; color: #0b0c0e; margin-left: auto; }
+  button.allow:hover { background: #ffffff; }
+  #chat { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; }
+  #thumbs { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 5px; }
+  #thumbs:empty { display: none; }
+  #thumbs img { width: 42px; height: 42px; object-fit: cover; border-radius: 8px; cursor: pointer;
+    outline: 1px solid rgba(255, 255, 255, .2); }
+  #thumbs img:hover { opacity: .5; }
+  #chat input { flex: 1; min-width: 0; height: 32px; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, .07);
+    outline: none; border-radius: 999px; padding: 0 13px; color: #eceef2; background: #0b0c0e;
+    font: 13px "Segoe UI Variable Text", "Segoe UI", sans-serif; transition: border-color .2s; }
+  #chat input:focus { border-color: color-mix(in srgb, var(--accent-a) 60%, transparent); }
+  #chat button { flex: 0 0 32px; height: 32px; padding: 0; font-family: "Segoe UI Emoji", sans-serif; font-size: 14px; }
+  #chat button[type="submit"] { background: #f5f6f8; color: #0b0c0e; }
+  #chat button.live { background: #e5484d; animation: live 1s ease-in-out infinite; }
+  @keyframes live { 50% { box-shadow: 0 0 0 4px rgba(229, 72, 77, .35); } }
+  .prop { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, .08); white-space: normal; }
+  .prop textarea { width: 100%; box-sizing: border-box; min-height: 40px; field-sizing: content; resize: none; overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .07); outline: none; border-radius: 10px; padding: 8px 10px; color: #eceef2;
+    background: #0b0c0e; font: 12.5px "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+  .prop .done { white-space: pre-wrap; }
+  .warn { color: #ffb347; }
+
+  /* Chats activos (al pasar el mouse) */
+  #sessions { padding: 10px 10px 8px; }
+  #sessions .head { color: #8f959e; font-size: 11px; margin: 0 4px 4px; }
+  .srow { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 9px; font-size: 12.5px; }
+  /* Solo al abrir el panel entran escalonadas; al refrescarse (cada evento) no se re-animan */
+  #sessions.fresh .srow { animation: focus-in .3s cubic-bezier(.3, 1.2, .4, 1) both; animation-delay: calc(.2s + var(--d, 0s)); }
+  .srow:hover { background: rgba(255, 255, 255, .04); }
+  .srow b { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; flex: none; }
+  .srow .step { flex: 1; min-width: 0; color: #9aa0a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .srow .ago { color: #6b717a; font-size: 11px; flex: none; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #888; }
+  .dot.working { background: #4da3ff; animation: pulse 1.2s ease-in-out infinite; }
+  .dot.thinking { background: #9b87ff; animation: pulse 1.6s ease-in-out infinite; }
+  .dot.needs { background: #ffb020; }
+  .dot.finished { background: #34c77b; }
+  .dot.error { background: #e5484d; }
+  .dot.github { background: #a371f7; }
+  .ahead .open { margin-left: auto; padding: 5px 12px; font-size: 11.5px; }
+  .srow.link { cursor: pointer; }
+
+  /* Archivos adjuntos */
+  .chip { display: inline-flex; align-items: center; gap: 4px; max-width: 150px; height: 26px; padding: 0 9px;
+    border-radius: 999px; background: #2a2c31; font-size: 11px; cursor: pointer; }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip:hover { opacity: .6; }
+
+  /* Respuesta con barra de desplazamiento propia (la nativa no se puede animar) */
+  #answerBox { padding-right: 20px; }
+  #answer { max-height: 230px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; user-select: text; scrollbar-width: none; }
+  #answer::-webkit-scrollbar { display: none; }
+  #answer.wait { color: #9aa0a8; font-style: italic; }
+  #rail { position: absolute; right: 7px; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; z-index: 2;
+    background: rgba(255, 255, 255, .07); opacity: 0; transition: opacity .3s, width .2s; }
+  #rail.on { opacity: 1; }
+  #answerBox:hover #rail { width: 5px; }
+  #thumb { position: absolute; left: 0; right: 0; border-radius: 3px;
+    background: linear-gradient(180deg, var(--accent-a), var(--accent-b), var(--accent-a)) 0 0 / 100% 200%;
+    box-shadow: 0 0 8px var(--accent-a); animation: shimmer 1.6s linear infinite;
+    transition: top .12s ease-out, height .2s ease-out; }
+  @keyframes shimmer { to { background-position: 0 200%; } }
+
+  /* Modo mini: solo el personaje en la esquina */
+  #nimbo.mini { width: 100px; height: 60px; }
+  .mini #wrap { left: 0; transform: none; width: 100px !important; height: 60px !important; transition: none; }
+  .mini #island { background: transparent; box-shadow: none; border-radius: 0; }
+  .mini .ear, .mini #island::before, .mini #bar, .mini #content { display: none; }
+  .mini #char { left: 0; top: 2px; width: 100px; height: 58px; }
+
+  /* "Siempre" va pegado a "Permitir", los dos a la derecha */
+  #always { margin-left: auto; }
+  #always:not(.hidden) + .allow { margin-left: 0; }
+
+  /* Recordatorio */
+  .rtext { font-size: 15px; font-weight: 600; color: #f2f3f5; line-height: 1.35; }
+  .rdue { color: #9aa0a8; font-size: 12px; margin-top: 3px; }
+  .dot.pending { background: #ffd23f; }
+
+  /* Progreso mientras Claude responde: avanza rápido, se frena cerca del final y
+     termina en verde cuando llega la respuesta */
+  #progress { position: absolute; left: 116px; right: 16px; bottom: 5px; height: 3px; border-radius: 3px;
+    background: rgba(255, 255, 255, .07); opacity: 0; transition: opacity .35s; pointer-events: none; }
+  #progress.on { opacity: 1; }
+  #progress i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--p, 0%); border-radius: 3px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent-a) 25%, transparent), var(--accent-a));
+    box-shadow: 0 0 8px var(--accent-a); transition: width .2s linear, background .3s; }
+  #progress i::after { content: ""; position: absolute; right: -3px; top: -2px; width: 7px; height: 7px; border-radius: 50%;
+    background: #fff; box-shadow: 0 0 10px 2px var(--accent-a); }
+  #progress.done i { background: #34c77b; box-shadow: 0 0 10px #34c77b; }
+  #progress.done i::after { box-shadow: 0 0 12px 3px #34c77b; }
+
+  /* Arrastrando archivos encima: aro que respira alrededor de la isla */
+  .drag-over #island { animation: ring 1s ease-in-out infinite; }
+  @keyframes ring { 50% { box-shadow: 0 16px 36px rgba(0, 0, 0, .42), inset 0 0 0 1.5px color-mix(in srgb, var(--accent-a) 80%, transparent); } }
+  .drag-over #char { transition: left .25s cubic-bezier(.3, 1.4, .5, 1); }
+  /* Masticar después de tragar: 3 mordiscos de 140 ms */
+  .chew #squish { animation: chew .14s ease-in-out 3; }
+  @keyframes chew { 50% { transform: scale(1.03, .93); } }
+  /* El archivo que vuela hacia la boca */
+  .flyer { position: fixed; left: 0; top: 0; z-index: 10; display: flex; align-items: center; gap: 5px; max-width: 150px;
+    padding: 6px 9px; border-radius: 10px; background: #f5f6f8; color: #0b0c0e; font: 600 11px "Segoe UI", sans-serif;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .45); pointer-events: none; white-space: nowrap; transform-origin: 50% 50%; }
+  .flyer img { width: 28px; height: 28px; object-fit: cover; border-radius: 5px; }
+  .flyer span { overflow: hidden; text-overflow: ellipsis; }
+
+  /* Vista en vivo: pasos del chat activo y lo que está tocando (diff / terminal) */
+  #live { padding: 12px 14px 12px; }
+  .lhead { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+  .lhead b { font-weight: 600; color: #f2f3f5; }
+  .lhead .sub { color: #8f959e; }
+  .lhead .count { margin-left: auto; color: #6b717a; font-size: 11px; }
+  .steps { display: flex; flex-direction: column; gap: 3px; }
+  .lstep { display: flex; gap: 8px; align-items: center; color: #8f959e; font-size: 12px; min-width: 0; }
+  .lstep span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lstep.run { color: #f2f3f5; }
+  .lstep i { width: 12px; flex: none; text-align: center; font-style: normal; font-size: 11px; }
+  .lstep.ok i::before { content: "✓"; color: #34c77b; }
+  .lstep.fail i::before { content: "✕"; color: #e5484d; }
+  .lstep.run i::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    border: 1.5px solid #4da3ff; border-right-color: transparent; animation: spin .8s linear infinite; }
+  .code { margin-top: 9px; background: #0b0c0e; border: 1px solid rgba(255, 255, 255, .07); border-radius: 10px;
+    overflow: hidden; font: 11.5px/1.6 "Cascadia Mono", Consolas, monospace; }
+  .code .tab { display: flex; gap: 6px; align-items: center; padding: 4px 10px; background: #121316; color: #c9ccd3;
+    font: 600 11px "Segoe UI", sans-serif; border-bottom: 1px solid rgba(255, 255, 255, .05); }
+  .code .tab em { margin-left: auto; color: #6b717a; font-style: normal; font-weight: 400; }
+  .ln { padding: 0 10px; white-space: pre; overflow: hidden; text-overflow: ellipsis; color: #b8bcc5; }
+  .ln.del { background: rgba(229, 72, 77, .13); color: #e98a8d; text-decoration: line-through; text-decoration-color: rgba(233, 138, 141, .55); }
+  /* Las líneas nuevas aparecen como si se tecleara, una tras otra */
+  .ln.add { background: rgba(52, 199, 123, .12); color: #8fe0b2;
+    animation: type .5s steps(26) both; animation-delay: calc(.25s + var(--i, 0) * .12s); }
+  .ln.cmd { color: #f2f3f5; }
+  .ln.out { color: #8f959e; }
+  @keyframes type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+  /* Modo "suéltalo aquí": la isla entera es la zona; el personaje crece, sigue al cursor y
+     abre la boca "masticando en el aire". Todo lo demás se esconde. */
+  .dropping #content, .dropping #bar { display: none; }
+  .dropping #char { top: 14px; width: 190px; height: 110.8px;
+    transition: left .3s cubic-bezier(.3, 1.4, .5, 1), top .45s cubic-bezier(.32, 1.22, .42, 1),
+      width .45s cubic-bezier(.32, 1.22, .42, 1), height .45s cubic-bezier(.32, 1.22, .42, 1); }
+  .dropping .m-big { transform-box: fill-box; transform-origin: center top; animation: chomp .8s ease-in-out infinite; }
+  @keyframes chomp { 50% { transform: scale(1.4, 1.7); } }
+  #dropzone { position: absolute; inset: 8px; border-radius: 22px; pointer-events: none; opacity: 0;
+    border: 1.5px dashed color-mix(in srgb, var(--accent-a) 65%, transparent); transition: opacity .3s; }
+  #dropzone::after { content: "Suéltalo sobre mí"; position: absolute; left: 0; right: 0; bottom: 9px;
+    text-align: center; color: #9aa0a8; font-size: 12px; }
+  .dropping #dropzone { opacity: 1; }
+
+  /* Píldoras por app, cada una con su mini nube de color */
+  #apps { display: flex; flex-wrap: wrap; gap: 7px; padding: 9px 10px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 7px; border-radius: 999px;
+    background: color-mix(in srgb, var(--c) 13%, #1d1e22); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+    color: color-mix(in srgb, var(--c) 70%, #fff); font: 600 12px "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+  .pill:hover { background: color-mix(in srgb, var(--c) 22%, #1d1e22); }
+  .pill.on { background: color-mix(in srgb, var(--c) 30%, #1d1e22); }
+  .pill b { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--c) 30%, transparent); font-size: 11px; }
+  .mini { width: 22px; height: 15px; color: var(--c); flex: none; animation: mini-bob 2.6s ease-in-out infinite; }
+  .pill:nth-child(2) .mini { animation-delay: -.9s; }
+  .pill:nth-child(3) .mini { animation-delay: -1.7s; }
+  @keyframes mini-bob { 50% { transform: translateY(-1.5px) scale(1.04, .97); } }
+
+  /* Vista de cada app: el color de marca reemplaza al del estado (brillo al pie incluido) */
+  #appview { --sc: var(--c); padding: 12px 14px 10px; }
+  .ahead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .ahead .mini { width: 26px; height: 18px; }
+  .ahead b { color: #f2f3f5; font-weight: 600; }
+  .ahead .sub { color: #8f959e; }
+  .ahead button { margin-left: auto; padding: 4px 10px; font-size: 11px; }
+  .arow { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 9px; font-size: 12.5px; }
+  .arow.link { cursor: pointer; }
+  .arow.link:hover { background: rgba(255, 255, 255, .05); }
+  .arow .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #eceef2; }
+  .chip2 { flex: none; padding: 1px 7px; border-radius: 6px; font-size: 10.5px; font-weight: 600;
+    background: rgba(255, 255, 255, .07); color: #b8bcc5; }
+  .chip2.blue { background: rgba(87, 157, 255, .16); color: #8fbcff; }
+  .chip2.purple { background: rgba(155, 135, 255, .16); color: #c2b5ff; }
+  .chip2.red { background: rgba(229, 72, 77, .16); color: #ff9a9d; }
+  .chip2.amber { background: rgba(255, 176, 32, .16); color: #ffcc70; }
+  .arow .done { margin-left: 2px; padding: 2px 8px; font-size: 11px; }
+  .afoot { margin-top: 6px; color: #6b717a; font-size: 11px; }
+  /* Conexiones y ajustes */
+  #setup { padding: 12px 14px 12px; }
+  .crow { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-top: 1px solid rgba(255, 255, 255, .06); }
+  .cdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #5b6170; }
+  .cdot.on { background: #34c77b; box-shadow: 0 0 8px rgba(52, 199, 123, .8); }
+  .cdot.off { background: #ffb020; }
+  .cinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .cinfo b { font-weight: 600; color: #f2f3f5; }
+  .cinfo span { color: #9aa0a8; font-size: 11.5px; line-height: 1.3; }
+  .cinfo code { font: 11px "Cascadia Mono", Consolas, monospace; color: #cfd3dc; background: #0b0c0e; padding: 0 4px; border-radius: 4px; user-select: text; }
+  .crow button { flex: none; padding: 5px 11px; font-size: 11.5px; }
+  .crow input { flex: none; width: 118px; box-sizing: border-box; padding: 5px 10px; border-radius: 999px; background: #0b0c0e; color: #eceef2;
+    border: 1px solid rgba(255, 255, 255, .1); outline: none; font: 12px "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+  .crow input:focus { border-color: color-mix(in srgb, var(--accent-a) 60%, transparent); }
+  .chip2.green { background: rgba(37, 211, 102, .16); color: #7ee2a8; }
+  .arow .name b { font-weight: 600; margin-right: 6px; }
+  .arow .name i { font-style: normal; color: #a4a9b2; }
+  .arow.urgent { background: rgba(229, 72, 77, .1); }
+  /* Mensaje urgente de WhatsApp: todo se pone rojo y la isla late hasta que pasa la alarma */
+  #nimbo.wa-urgent { --sc: #ff4d4f; }
+  .wa-urgent #island { animation: alarm .7s ease-in-out infinite; }
+  .wa-urgent #island::before { opacity: .8 !important; }
+  .wa-urgent #char { animation: alarm-shake .35s ease-in-out infinite; }
+  @keyframes alarm { 50% { box-shadow: 0 16px 36px rgba(0, 0, 0, .42), 0 0 26px rgba(255, 77, 79, .55), inset 0 0 0 2px #ff4d4f; } }
+  @keyframes alarm-shake { 25% { transform: translateX(-2px) rotate(-3deg); } 75% { transform: translateX(2px) rotate(3deg); } }
+
+  /* Arrastrando a Nimbo: se levanta, pone cara de emoción y se inclina según la velocidad */
+  #wrap { cursor: grab; }
+  #content, #content * { cursor: auto; }
+  #content button, #content .link, #content .pill { cursor: pointer; }
+  .dragging #wrap { cursor: grabbing; transition: none; }
+  .dragging #island { box-shadow: 0 22px 44px rgba(0, 0, 0, .55), 0 0 0 1.5px color-mix(in srgb, var(--accent-a) 55%, transparent); }
+  .dragging #char { transition: none; transform: rotate(var(--lean, 0deg)); transform-origin: 50% 0; }
+  .dragging #content { opacity: .35; }
+  /* Estela que queda detrás al moverse */
+  #island::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; right: 0; pointer-events: none; opacity: 0;
+    background: linear-gradient(var(--trail-dir, 90deg), transparent 55%, color-mix(in srgb, var(--accent-a) 35%, transparent));
+    transition: opacity .25s; }
+  .dragging #island::after { opacity: var(--trail, 0); }
+
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01s !important; transition-duration: .01s !important; } }
+</style>
+</head>
+<body>
+<!-- Mini nube con ojitos: se pinta del color de cada app (currentColor) -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="mini" viewBox="0 0 40 28">
+    <circle cx="13" cy="16" r="8" fill="currentColor"/><circle cx="21" cy="11" r="10" fill="currentColor"/>
+    <circle cx="29" cy="16" r="7" fill="currentColor"/><rect x="7" y="14" width="27" height="10" rx="5" fill="currentColor"/>
+    <circle cx="17" cy="16.5" r="1.7" fill="#14151a"/><circle cx="25" cy="16.5" r="1.7" fill="#14151a"/>
+  </symbol>
+</svg>
+<div id="nimbo" class="enter state-idle theme-cloud">
+  <div id="wrap" class="solid">
+    <div class="ear l"></div><div class="ear r"></div>
+    <div id="island">
+      <div id="dropzone"></div>
+      <div id="char">
+        <div id="glow"></div>
+        <svg viewBox="0 0 240 140">
+          <defs>
+            <linearGradient id="cloudShade" x1="0" y1="0" x2=".25" y2="1">
+              <stop class="top" offset=".25"/><stop class="bottom" offset="1"/>
+            </linearGradient>
+            <radialGradient id="cloudGloss">
+              <stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <g id="bob"><g id="breathe"><g id="squish">
+            <g id="body">
+              <circle cx="88" cy="62" r="26"/>
+              <circle cx="120" cy="48" r="34"/>
+              <circle cx="154" cy="60" r="24"/>
+              <rect x="64" y="54" width="114" height="42" rx="21"/>
+            </g>
+            <ellipse id="gloss" cx="106" cy="34" rx="24" ry="11"/>
+            <g class="face">
+              <ellipse class="cheek" cx="96" cy="77" rx="6" ry="3.6"/>
+              <ellipse class="cheek" cx="144" cy="77" rx="6" ry="3.6"/>
+              <g class="v brows-focus"><path class="line" d="M100,54 l11,1.5"/><path class="line" d="M140,54 l-11,1.5"/></g>
+              <g id="look"><g id="eyesScale">
+                <g class="v eyes-open">
+                  <g class="eye"><ellipse cx="106" cy="64" rx="5.5" ry="7.5" fill="var(--ink)"/><circle cx="107.8" cy="61" r="1.8" fill="#fff"/></g>
+                  <g class="eye"><ellipse cx="134" cy="64" rx="5.5" ry="7.5" fill="var(--ink)"/><circle cx="135.8" cy="61" r="1.8" fill="#fff"/></g>
+                </g>
+                <g class="v eyes-happy"><path class="line" d="M100,66 q6,-8 12,0"/><path class="line" d="M128,66 q6,-8 12,0"/></g>
+                <g class="v eyes-closed"><path class="line" d="M100,64 q6,4 12,0"/><path class="line" d="M128,64 q6,4 12,0"/></g>
+                <g class="v eyes-x"><path class="line" d="M102,60 l8,8 M110,60 l-8,8"/><path class="line" d="M130,60 l8,8 M138,60 l-8,8"/></g>
+                <g class="v eyes-dizzy">
+                  <path class="line spin" d="M106,64 m0,-1 a1,1 0 1,1 -1,1 a2.5,2.5 0 1,1 2.5,2.5 a4,4 0 1,1 -4,-4"/>
+                  <path class="line spin" d="M134,64 m0,-1 a1,1 0 1,1 -1,1 a2.5,2.5 0 1,1 2.5,2.5 a4,4 0 1,1 -4,-4"/>
+                </g>
+              </g></g>
+              <path class="v line m-smile" d="M113,76 q7,7 14,0"/>
+              <path class="v line m-flat" d="M115,79 h10"/>
+              <path class="v line m-sad" d="M113,82 q7,-6 14,0"/>
+              <path class="v m-big" d="M110,75 q10,13 20,0 z" fill="var(--ink)"/>
+              <ellipse class="v m-o" cx="120" cy="79" rx="3" ry="3.6" fill="var(--ink)"/>
+              <ellipse class="v m-small" cx="120" cy="78" rx="2" ry="2.4" fill="var(--ink)"/>
+            </g>
+          </g></g></g>
+          <g class="v dots"><circle cx="180" cy="28" r="3"/><circle cx="190" cy="19" r="4"/><circle cx="203" cy="11" r="5"/></g>
+          <g class="v sparkles">
+            <path d="M52,30 l3,7 7,3 -7,3 -3,7 -3,-7 -7,-3 7,-3z"/>
+            <path d="M186,22 l2.5,6 6,2.5 -6,2.5 -2.5,6 -2.5,-6 -6,-2.5 6,-2.5z"/>
+            <path d="M58,92 l2,5 5,2 -5,2 -2,5 -2,-5 -5,-2 5,-2z"/>
+            <path d="M190,86 l2.5,6 6,2.5 -6,2.5 -2.5,6 -2.5,-6 -6,-2.5 6,-2.5z"/>
+          </g>
+          <g class="v rain"><line x1="92" y1="100" x2="90" y2="107"/><line x1="112" y1="102" x2="110" y2="109"/>
+            <line x1="132" y1="100" x2="130" y2="107"/><line x1="150" y1="102" x2="148" y2="109"/></g>
+          <g class="v zzz"><text x="182" y="82">z</text><text x="182" y="82">z</text><text x="182" y="82">z</text></g>
+          <g class="v hearts">
+            <path d="M180,36 c-6,-5 -10,-8 -10,-12 a5,5 0 0,1 10,-2 a5,5 0 0,1 10,2 c0,4 -4,7 -10,12z"/>
+            <path d="M62,40 c-4,-3.5 -7,-5.5 -7,-8.5 a3.5,3.5 0 0,1 7,-1.4 a3.5,3.5 0 0,1 7,1.4 c0,3 -3,5 -7,8.5z"/>
+            <path d="M200,58 c-3,-2.5 -5,-4 -5,-6 a2.5,2.5 0 0,1 5,-1 a2.5,2.5 0 0,1 5,1 c0,2 -2,3.5 -5,6z"/>
+          </g>
+          <rect id="hit" x="60" y="12" width="122" height="88" rx="30" fill="transparent"/>
+        </svg>
+        <canvas id="orb"></canvas>
+        <div id="badge"></div>
+      </div>
+      <div id="bar">
+        <div id="ticker"><span id="label"></span></div>
+        <div id="pips"></div>
+        <div id="progress"><i></i></div>
+      </div>
+      <div id="content">
+        <div id="setup" class="box hidden"></div>
+        <div id="remind" class="box hidden">
+          <div class="what">Recordatorio</div>
+          <div class="rtext"></div>
+          <div class="rdue"></div>
+          <div class="btns">
+            <button data-r="snooze">Posponer 10 min</button>
+            <button class="allow" data-r="done">Hecho</button>
+          </div>
+        </div>
+        <div id="apps" class="box hidden"></div>
+        <div id="live" class="box hidden"></div>
+        <div id="sessions" class="box hidden"></div>
+        <div id="appview" class="box hidden"></div>
+        <div id="card" class="box hidden">
+          <div class="what"></div>
+          <div class="cmd"></div>
+          <div id="alwaysRules" class="hidden"></div>
+          <div class="btns">
+            <button data-d="deny">Denegar</button>
+            <button data-d="" title="Que te pregunte en la terminal">Terminal</button>
+            <button id="always" class="hidden" data-d="always">Siempre</button>
+            <button class="allow" data-d="allow">Permitir</button>
+          </div>
+        </div>
+        <form id="chat" class="box hidden">
+          <div id="thumbs"></div>
+          <input id="msg" placeholder="Escríbele a Claude… (suelta archivos sobre mí)" autocomplete="off">
+          <input id="file" type="file" multiple hidden>
+          <button type="button" id="attach" title="Adjuntar archivos o imágenes">📎</button>
+          <button type="button" id="mic" title="Dictar: habla y se escribe aquí">🎤</button>
+          <button type="submit" title="Enviar">➤</button>
+        </form>
+        <div id="answerBox" class="box hidden">
+          <div id="answer"></div>
+          <div id="rail"><div id="thumb"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <span id="measure"></span>
+</div>
+
+<script src="jarvis.js"></script>
+<script>
+// Sin Electron (vista previa en un navegador) la página funciona igual, solo que sin eventos.
+const noop = () => {};
+const api = window.nimbo ?? new Proxy({}, { get: () => noop });
+const root = document.getElementById("nimbo");
+const look = document.getElementById("look");
+const label = document.getElementById("label");
+const svg = document.querySelector("#char svg");
+const wrap = document.getElementById("wrap");
+const content = document.getElementById("content");
+const pips = document.getElementById("pips");
+const measure = document.getElementById("measure");
+const badge = document.getElementById("badge");
+
+// --- Tamaño de la isla ---
+// Compacta: se ajusta al largo del texto (como una "isla dinámica"). Abierta: crece hasta el
+// contenido. Crecer usa resorte con rebote; encoger, la clase .closing (rápido, sin rebote).
+const BAR_H = 68;
+let lastSize = { w: 0, h: 0 };
+function layout() {
+  layoutQueued = 0;
+  if (mini) return;
+  if (root.classList.contains("dropping")) {
+    root.classList.remove("open", "solo");
+    wrap.classList.remove("closing");
+    wrap.style.setProperty("--w", "420px");
+    wrap.style.setProperty("--h", "152px");
+    lastSize = { w: 420, h: 152 };
+    return;
+  }
+  const open = [...content.children].some((e) => !e.classList.contains("hidden"));
+  root.classList.toggle("open", open);
+  if (open) root.classList.remove("solo");
+  let w, h;
+  if (open) {
+    w = 420;
+    h = Math.min(470, BAR_H + content.offsetHeight + 14);
+  } else {
+    const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
+    measure.textContent = text;
+    const textW = text ? Math.min(measure.offsetWidth, 270) : 0;
+    const pipsW = pips.children.length ? pips.children.length * 12 + 6 : 0;
+    w = text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150;
+    h = BAR_H;
+    if (state === "sleeping") { w = 132; h = 60; }
+    root.classList.toggle("solo", !text && !pipsW);
+  }
+  const shrinking = w < lastSize.w - 1 || h < lastSize.h - 1;
+  wrap.classList.toggle("closing", shrinking);
+  if (open !== root.classList.contains("was-open")) (open ? SOUNDS.open : SOUNDS.close)();
+  root.classList.toggle("was-open", open);
+  wrap.style.setProperty("--w", `${Math.round(w)}px`);
+  wrap.style.setProperty("--h", `${Math.round(h)}px`);
+  lastSize = { w, h };
+}
+let layoutQueued = 0;
+const relayout = () => { layoutQueued ||= requestAnimationFrame(layout); };
+new MutationObserver(relayout).observe(content, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+new ResizeObserver(relayout).observe(content);
+
+// --- Etiqueta: el texto viejo sube y se apaga mientras el nuevo entra desde abajo ---
+const EASE_TICK = "cubic-bezier(.4, 0, .2, 1)";
+function setLabel(text) {
+  if (text === label.textContent) return;
+  if (label.textContent && text && label.classList.contains("show")) {
+    const ghost = label.cloneNode(true);
+    ghost.removeAttribute("id");
+    ghost.style.cssText = "color:#8f959e;background:none;animation:none";
+    label.parentNode.append(ghost);
+    ghost.animate([{ transform: "none", opacity: 1 }, { transform: "translate(-6px,-20px) scale(.9)", opacity: 0 }],
+      { duration: 380, easing: EASE_TICK, fill: "forwards" }).onfinish = () => ghost.remove();
+    label.animate([{ transform: "translateY(20px)", opacity: 0 }, { transform: "none", opacity: 1 }],
+      { duration: 380, easing: EASE_TICK });
+  }
+  label.textContent = text;
+}
+
+// --- Insignia: al cambiar de estado encoge (90 ms), cambia y vuelve con rebote (280 ms) ---
+const BADGE_STATES = ["thinking", "working", "needs", "finished", "error"];
+function swapBadge(prev, next) {
+  if (!BADGE_STATES.includes(prev) || !BADGE_STATES.includes(next) || prev === next) return;
+  badge.animate([{ transform: "scale(1)" }, { transform: "scale(0)", offset: .32 }, { transform: "scale(1.15)", offset: .8 }, { transform: "scale(1)" }],
+    { duration: 380, easing: "ease-out" });
+}
+
+const SLEEP_AFTER = 120_000;
+let state = "idle";
+let backTimer, sleepTimer, labelTimer;
+
+function setState(next, text = "", { back, labelFor } = {}) {
+  const prev = state;
+  state = next;
+  Jarvis.setState(next);
+  root.className = root.className.replace(/state-\w+/, "state-" + next);
+  // El saltito y el temblor son de una sola vez: se reinician aunque el estado se repita.
+  if (next === "finished" || next === "error") {
+    const bob = document.getElementById("bob");
+    bob.style.animation = "none"; void bob.getBBox(); bob.style.animation = "";
+  }
+  if (prev !== next) {
+    swapBadge(prev, next);
+    blink(); // un parpadeo tapa el cambio de cara
+  }
+
+  setLabel(text);
+  label.classList.toggle("show", !!text);
+  clearTimeout(labelTimer);
+  if (text && labelFor) labelTimer = setTimeout(() => { label.classList.remove("show"); relayout(); }, labelFor);
+  relayout();
+
+  clearTimeout(backTimer);
+  if (back) backTimer = setTimeout(settle, back);
+  clearTimeout(sleepTimer);
+  if (next === "idle") sleepTimer = setTimeout(() => setState("sleeping"), SLEEP_AFTER);
+}
+
+// --- Sonidos sintetizados (nada de archivos) ---
+let muted = false;
+let mini = false; // modo juego: chiquito en una esquina y sin sonido
+// Sintetizador: ataque de 6 ms, caída exponencial, glide de tono, vibrato y un parcial
+// "campana" opcional; todo pasa por un volumen maestro bajo y un poco de reverberación.
+let audio, master;
+let lastSoundAt = 0;
+function audioOut() {
+  lastSoundAt = performance.now();
+  if (audio) {
+    if (audio.state === "suspended") audio.resume();
+    return master;
+  }
+  audio = new AudioContext();
+  master = audio.createGain();
+  master.gain.value = 0.12;
+  const dry = audio.createGain();
+  const wet = audio.createGain();
+  wet.gain.value = 0.2;
+  const verb = audio.createConvolver();
+  // Respuesta al impulso generada: ruido que se apaga en 1,3 s.
+  const len = Math.floor(audio.sampleRate * 1.3);
+  const ir = audio.createBuffer(2, len, audio.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.4);
+  }
+  verb.buffer = ir;
+  master.connect(dry).connect(audio.destination);
+  master.connect(verb).connect(wet).connect(audio.destination);
+  return master;
+}
+function tone({ f, to, d = .15, type = "sine", g = .5, delay = 0, vib = 0, vibf = 6, h = 0 }) {
+  if (muted || mini) return;
+  const out = audioOut();
+  const t = audio.currentTime + delay;
+  const voice = (freq, gain, dur) => {
+    const o = audio.createOscillator();
+    const gn = audio.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(freq * (to / f), t + dur * .9);
+    if (vib) {
+      const lfo = audio.createOscillator();
+      const lg = audio.createGain();
+      lfo.frequency.value = vibf;
+      lg.gain.value = vib;
+      lfo.connect(lg).connect(o.frequency);
+      lfo.start(t);
+      lfo.stop(t + dur);
+    }
+    gn.gain.setValueAtTime(.0001, t);
+    gn.gain.exponentialRampToValueAtTime(gain, t + .006);
+    gn.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(gn).connect(out);
+    o.start(t);
+    o.stop(t + dur + .02);
+  };
+  voice(f, g, d);
+  if (h) voice(f * h, g * .3, d * .35); // parcial inarmónico: suena a campanita
+}
+// Whoosh: ruido filtrado con un barrido de frecuencia (abrir hacia arriba, cerrar hacia abajo).
+function whoosh(from, to, d = .22, g = .18) {
+  if (muted || mini) return;
+  const out = audioOut();
+  const t = audio.currentTime;
+  const buf = audio.createBuffer(1, Math.floor(audio.sampleRate * d), audio.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const src = audio.createBufferSource();
+  const bp = audio.createBiquadFilter();
+  const gn = audio.createGain();
+  src.buffer = buf;
+  bp.type = "bandpass";
+  bp.Q.value = 1.4;
+  bp.frequency.setValueAtTime(from, t);
+  bp.frequency.exponentialRampToValueAtTime(to, t + d);
+  gn.gain.setValueAtTime(.0001, t);
+  gn.gain.exponentialRampToValueAtTime(g, t + d * .3);
+  gn.gain.exponentialRampToValueAtTime(.0001, t + d);
+  src.connect(bp).connect(gn).connect(out);
+  src.start(t);
+}
+// Gramática: éxito = acorde mayor que sube; error = dos notas que bajan; atención = misma nota
+// con campana; micro-feedback = tonos cortos, agudos y casi inaudibles.
+const SOUNDS = {
+  hello: () => { tone({ f: 523, d: .14, g: .4 }); tone({ f: 784, d: .22, g: .4, delay: .085, h: 2.76 }); },
+  finish: () => [523, 659, 784].forEach((f, i) => tone({ f, d: i === 2 ? .45 : .18, g: .45, delay: i * .085, h: i === 2 ? 2.76 : 0 })),
+  needs: () => { tone({ f: 880, d: .16, type: "triangle", g: .45, h: 2.76 }); tone({ f: 880, d: .24, type: "triangle", g: .45, delay: .18, h: 2.76 }); },
+  error: () => { tone({ f: 392, d: .2, type: "triangle", g: .5 }); tone({ f: 311, d: .42, type: "triangle", g: .5, delay: .17 }); },
+  poke: () => tone({ f: 620, to: 980, d: .1, g: .25 }),
+  greet: () => [523, 659, 784, 1047].forEach((f, i) => tone({ f, d: i === 3 ? .5 : .16, g: .4, delay: i * .085, h: i === 3 ? 2.76 : 0 })),
+  love: () => [784, 988, 1175].forEach((f, i) => tone({ f, d: .2, g: .3, delay: i * .1, vib: i === 2 ? 8 : 0 })),
+  dizzy: () => tone({ f: 700, to: 380, d: .7, type: "triangle", g: .35, vib: 40, vibf: 9 }),
+  gulp: () => { tone({ f: 330, to: 160, d: .2, g: .6 }); tone({ f: 200, to: 120, d: .12, g: .3, delay: .16 }); },
+  yawn: () => tone({ f: 420, to: 300, d: .9, g: .15, vib: 6, vibf: 5 }),
+  hover: () => tone({ f: 2100, d: .05, g: .05 }),
+  open: () => whoosh(500, 2400, .26, .14),
+  close: () => whoosh(2200, 400, .22, .1),
+};
+// El audio se suspende tras unos segundos de silencio, para no gastar CPU.
+setInterval(() => { if (audio?.state === "running" && performance.now() - lastSoundAt > 4000) audio.suspend(); }, 5000);
+
+// --- Eventos de Claude Code ---
+const TOOLS = { Bash: "Ejecuta", PowerShell: "Ejecuta", Read: "Lee", Write: "Escribe", Edit: "Edita",
+  MultiEdit: "Edita", Glob: "Busca", Grep: "Busca", WebSearch: "Busca en la web", WebFetch: "Abre",
+  Task: "Agente", Agent: "Agente", TodoWrite: "Tareas", NotebookEdit: "Notebook" };
+const base = (p) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+
+function toolLabel(tool, input = {}) {
+  const name = TOOLS[tool] ?? tool;
+  const detail = input.command ?? (input.file_path && base(input.file_path)) ??
+    (input.path && base(input.path)) ?? input.pattern ?? input.query ?? input.url ?? input.description;
+  return detail ? `${name} · ${String(detail).slice(0, 60)}` : name;
+}
+
+// --- Varios chats a la vez: qué está haciendo cada uno ---
+// main.js agrega p.title (el título del chat en la barra lateral de la app).
+const sessions = new Map(); // session_id → { title, state, step, t }
+const STALE_MS = 20 * 60_000;
+const sessionBox = document.getElementById("sessions");
+
+function track(p, st, step) {
+  const id = p.session_id ?? p.title;
+  if (!id) return;
+  if (st === null) sessions.delete(id);
+  else {
+    const prev = sessions.get(id);
+    sessions.set(id, { title: p.title || base(p.cwd ?? "") || "Claude", state: st, step: step ?? prev?.step ?? "",
+      t: Date.now(), steps: prev?.steps ?? [], n: prev?.n ?? 0 });
+    recordStep(sessions.get(id), p);
+  }
+  renderSessions();
+  renderPips();
+}
+// Un puntito por chat activo en la barra de la isla (máx. 5), del color de su estado.
+const STATE_COLOR = { working: "#4da3ff", thinking: "#9b87ff", needs: "#ffb020", finished: "#34c77b", error: "#e5484d", idle: "#6b717a" };
+let lastPips = "";
+function renderPips() {
+  const list = liveSessions().slice(0, 5);
+  const key = list.map((s) => s.title + s.state).join("|");
+  if (key === lastPips) return; // sin cambios: no reiniciar sus animaciones
+  lastPips = key;
+  pips.replaceChildren(...list.map((s) => {
+    const p = el("span", `pip ${s.state}`);
+    p.style.setProperty("--c", STATE_COLOR[s.state] ?? "#888");
+    p.title = `${s.title} · ${s.step}`;
+    return p;
+  }));
+  relayout();
+}
+// Últimos 4 pasos de cada chat: { label, tool, input, out, status: run | ok | fail }
+function recordStep(s, p) {
+  const last = s.steps[s.steps.length - 1];
+  switch (p.hook_event_name) {
+    case "UserPromptSubmit":
+      s.steps = [];
+      s.n = 0;
+      break;
+    case "PreToolUse":
+      if (last?.status === "run") last.status = "ok";
+      s.n++;
+      s.steps.push({ label: toolLabel(p.tool_name, p.tool_input), tool: p.tool_name, input: p.tool_input ?? {}, status: "run" });
+      s.steps = s.steps.slice(-4);
+      break;
+    case "PostToolUse":
+      if (last?.status === "run") { last.status = "ok"; last.out = p.tool_response; }
+      break;
+    case "PostToolUseFailure":
+      if (last?.status === "run") { last.status = "fail"; last.out = p.tool_response ?? p.error; }
+      break;
+    case "Stop":
+      if (last?.status === "run") last.status = "ok";
+      break;
+  }
+  renderLive();
+}
+
+// --- Vista en vivo: el chat que más recientemente hizo algo ---
+const liveBox = document.getElementById("live");
+function hidePanel() {
+  sessionBox.classList.add("hidden");
+  liveBox.classList.add("hidden");
+  appsBox.classList.add("hidden");
+  appView.classList.add("hidden");
+  openApp = null;
+}
+const lines = (text, max) => String(text ?? "").replace(/\r/g, "").split("\n").slice(0, max);
+function codeView(step) {
+  const { tool, input = {}, out } = step;
+  const view = el("div", "code");
+  const tab = (name, note = "") => { const t = el("div", "tab", ""); t.append("📄 " + name, el("em", "", note)); view.append(t); };
+  let i = 0;
+  const add = (cls, text) => { const l = el("div", `ln ${cls}`, text || " "); if (cls === "add") l.style.setProperty("--i", i++); view.append(l); };
+  if (tool === "Edit" || tool === "MultiEdit") {
+    tab(base(input.file_path ?? ""), "edita");
+    const edits = tool === "Edit" ? [input] : (input.edits ?? []).slice(0, 2);
+    for (const e of edits) {
+      lines(e.old_string, 3).forEach((t) => add("del", "- " + t));
+      lines(e.new_string, 4).forEach((t) => add("add", "+ " + t));
+    }
+  } else if (tool === "Write") {
+    tab(base(input.file_path ?? ""), "nuevo");
+    lines(input.content, 6).forEach((t) => add("add", "+ " + t));
+  } else if (tool === "Bash" || tool === "PowerShell") {
+    add("cmd", "$ " + lines(input.command, 2).join(" "));
+    const text = typeof out === "string" ? out : [out?.stdout, out?.stderr].filter(Boolean).join("\n");
+    lines(text, 40).filter((t) => t.trim()).slice(-5).forEach((t) => add("out", t));
+  } else return null;
+  return view;
+}
+let liveKey = "";
+function renderLive() {
+  if (liveBox.classList.contains("hidden")) return;
+  const s = liveSessions().find((x) => x.steps?.length);
+  if (!s) return liveBox.classList.add("hidden");
+  const cur = s.steps[s.steps.length - 1];
+  // Solo se redibuja si cambió algo: así las animaciones de tecleo no se reinician solas.
+  const key = s.title + s.state + s.n + s.steps.map((x) => x.status).join();
+  if (key === liveKey) return;
+  liveKey = key;
+  const head = el("div", "lhead");
+  head.append(el("span", `dot ${s.state}`), el("b", "", s.title), el("span", "sub", "Claude Code"),
+    el("span", "count", s.state === "finished" ? "listo" : `paso ${s.n}`));
+  const steps = el("div", "steps");
+  for (const st of s.steps) {
+    const row = el("div", `lstep ${st.status}`);
+    row.append(el("i"), el("span", "", st.label));
+    steps.append(row);
+  }
+  liveBox.replaceChildren(head, steps, ...[codeView(cur)].filter(Boolean));
+}
+function showLive() {
+  if (!liveSessions().some((x) => x.steps?.length)) return;
+  liveKey = "";
+  liveBox.classList.remove("hidden");
+  renderLive();
+}
+
+function liveSessions() {
+  const now = Date.now();
+  for (const [id, s] of sessions) if (now - s.t > STALE_MS) sessions.delete(id);
+  return [...sessions.values()].sort((a, b) => b.t - a.t);
+}
+// Tras un "¡Listo!" o un error, Nimbo vuelve a lo que esté haciendo otro chat (o descansa).
+function settle() {
+  const busy = liveSessions().find((s) => s.state === "working" || s.state === "thinking");
+  if (busy) setState(busy.state, `${busy.title} · ${busy.step}`);
+  else setState("idle");
+}
+const ago = (t) => {
+  const s = Math.round((Date.now() - t) / 1000);
+  return s < 60 ? `${s}s` : `${Math.round(s / 60)}m`;
+};
+function renderSessions() {
+  renderApps();
+  if (sessionBox.classList.contains("hidden")) return;
+  const list = liveSessions();
+  if (!list.length) { sessionBox.classList.add("hidden"); return; }
+  const rows = list.map((s, i) => {
+    const row = el("div", "srow");
+    row.style.setProperty("--d", `${i * .035}s`); // entran escalonadas, 35 ms entre filas
+    row.append(el("span", `dot ${s.state}`), el("b", "", s.title), el("span", "step", s.step), el("span", "ago", ago(s.t)));
+    return row;
+  });
+  const head = list.length === 1 ? "1 chat activo" : `${list.length} chats activos`;
+  sessionBox.replaceChildren(el("div", "head", head), ...rows);
+}
+
+// --- Apps: píldoras (Chats, Trello, GitHub, WhatsApp, Pendientes) y la vista de cada una ---
+// Al pasar el mouse solo sale la fila de píldoras, y solo las que tienen algo (cuenta > 0);
+// el detalle de una se abre al tocarla, de a una. Así el panel nunca muestra todo a la vez.
+const appsBox = document.getElementById("apps");
+const appView = document.getElementById("appview");
+let trelloData = null;
+let trelloBusy = false;
+let openApp = null; // la app cuya tarjeta está abierta
+let lastApps = "";
+const alertedCards = new Set();
+const miniCloud = (color) => {
+  const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svgEl.setAttribute("class", "mini");
+  svgEl.style.setProperty("--c", color);
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", "#mini");
+  svgEl.append(use);
+  return svgEl;
+};
+function appsList() {
+  const out = [{ id: "chats", name: "Chats", color: "#d97757", count: liveSessions().length }];
+  if (trelloData) out.push({ id: "trello", name: "Trello", color: "#579dff", count: trelloData.boards.reduce((n, b) => n + (b.pending || 0), 0) });
+  if (github !== null) out.push({ id: "github", name: "GitHub", color: "#a371f7", count: github.length });
+  if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
+  out.push({ id: "pend", name: "Pendientes", color: "#ffd23f", count: pendingList.length });
+  return out.filter((a) => a.count > 0);
+}
+function renderApps() {
+  if (appsBox.classList.contains("hidden")) return;
+  const list = appsList();
+  appsBox.classList.toggle("hidden", !list.length);
+  // Sin cambios no se redibuja: llega con cada evento de un chat y reemplazar los botones
+  // se comería el clic que estuviera en curso.
+  const key = list.map((a) => a.id + a.count + a.color).join() + openApp;
+  if (key === lastApps) return;
+  lastApps = key;
+  appsBox.replaceChildren(...list.map((a) => {
+    const p = el("button", `pill${openApp === a.id ? " on" : ""}`);
+    p.type = "button";
+    p.style.setProperty("--c", a.color);
+    p.append(miniCloud(a.color), el("span", "", a.name), el("b", "", String(a.count)));
+    p.onclick = () => { openApp = openApp === a.id ? null : a.id; renderApps(); renderAppView(); };
+    return p;
+  }));
+}
+const listColor = (name = "") => (/bloque/i.test(name) ? "red" : /revisi|review/i.test(name) ? "purple" : /proceso|progres|doing|haciendo/i.test(name) ? "blue" : "");
+function dueChip(iso) {
+  if (!iso) return null;
+  const ms = Date.parse(iso) - Date.now();
+  if (!Number.isFinite(ms)) return null;
+  return el("span", `chip2 ${ms < 0 ? "red" : ms < 864e5 ? "amber" : ""}`, ms < 0 ? "vencida" : fmtDue(iso));
+}
+function renderAppView() {
+  const app = appsList().find((a) => a.id === openApp);
+  // "Chats" usa sus dos cajas de siempre (lista de chats + vista en vivo) en vez de #appview.
+  const chats = app?.id === "chats";
+  if (chats && sessionBox.classList.contains("hidden")) {
+    sessionBox.classList.add("fresh");
+    setTimeout(() => sessionBox.classList.remove("fresh"), 900);
+  }
+  sessionBox.classList.toggle("hidden", !chats);
+  if (chats) { renderSessions(); showLive(); } else liveBox.classList.add("hidden");
+  if (!app || chats) { appView.classList.add("hidden"); return; }
+  appView.style.setProperty("--c", app.color);
+  const head = el("div", "ahead");
+  head.append(miniCloud(app.color), el("b", "", app.name));
+  const rows = [];
+  if (app.id === "trello") {
+    head.append(el("span", "sub", trelloData.boards.filter((b) => b.pending).map((b) => `${b.name} · ${b.pending}`).join(" · ") || "nada pendiente"));
+    const again = el("button", "", trelloBusy ? "Actualizando…" : "Actualizar");
+    again.type = "button";
+    again.onclick = () => api.trelloRefresh();
+    head.append(again);
+    for (const c of trelloData.cards) {
+      const r = el("div", "arow link");
+      r.title = `${c.board} · ${c.list}`;
+      r.onclick = () => c.url && api.openUrl(c.url);
+      r.append(el("span", `chip2 ${listColor(c.list)}`, c.list), el("span", "name", c.name), ...[dueChip(c.due)].filter(Boolean));
+      rows.push(r);
+    }
+    rows.push(el("div", "afoot", `Actualizado ${fmtDue(trelloData.at)}`));
+  } else if (app.id === "github") {
+    head.append(el("span", "sub", `${github.length} sin leer`));
+    for (const n of github.slice(0, 6)) {
+      const r = el("div", "arow link");
+      r.onclick = () => api.openGithub();
+      r.append(el("span", "chip2 purple", (n.repo ?? "").split("/").pop() || "repo"), el("span", "name", n.title));
+      rows.push(r);
+    }
+  } else if (app.id === "wa") {
+    const chats = waChats();
+    const ignored = whatsapp.chats.filter((c) => c.ignore);
+    head.append(el("span", "sub", chats.length ? `${chats.length} ${chats.length === 1 ? "chat" : "chats"}` : `${waCount()} sin leer`));
+    const open = el("button", "open allow", "Abrir WhatsApp");
+    open.type = "button";
+    open.onclick = () => api.openWhatsapp();
+    head.append(open);
+    if (whatsapp.headline) rows.push(el("div", "afoot", whatsapp.headline));
+    const CHIP = { trabajo: ["blue", "Trabajo"], personal: ["green", "Personal"], grupo: ["purple", "Grupo"], otro: ["", "Nuevo"] };
+    for (const c of chats.slice(0, 7)) {
+      const r = el("div", `arow${c.urgent ? " urgent" : ""}`);
+      const [color, text] = c.urgent ? ["red", "Urgente"] : CHIP[c.kind] ?? CHIP.otro;
+      const name = el("span", "name");
+      name.append(el("b", "", c.n > 1 ? `${c.name} (${c.n})` : c.name), el("i", "", c.summary));
+      name.title = c.summary;
+      r.append(el("span", `chip2 ${color}`, text), name);
+      rows.push(r);
+    }
+    if (ignored.length) rows.push(el("div", "afoot", `Ignorados: ${ignored.map((c) => `${c.name} (${c.n})`).join(", ")}`.slice(0, 150)));
+    if (!whatsapp.read) rows.push(el("div", "afoot", "Para ver quién escribe y qué es urgente: clic derecho en Nimbo > Leer mensajes de WhatsApp."));
+    else if (!whatsapp.access) rows.push(el("div", "afoot", "Falta permiso: Configuración de Windows > Privacidad > Notificaciones."));
+    else if (!whatsapp.chats.length && whatsapp.count) rows.push(el("div", "afoot", "Sin vista previa: esos chats no dejaron notificación en Windows."));
+  } else if (app.id === "pend") {
+    head.append(el("span", "sub", "tus recordatorios"));
+    for (const p of pendingList.slice(0, 6)) {
+      const r = el("div", "arow");
+      const done = el("button", "done", "✓");
+      done.type = "button";
+      done.title = "Marcar como hecho";
+      done.onclick = () => api.reminderDone(p.id);
+      r.append(el("span", "name", p.text), ...[dueChip(p.due) ?? el("span", "chip2", "sin fecha")], done);
+      rows.push(r);
+    }
+  }
+  appView.replaceChildren(head, ...rows);
+  appView.classList.remove("hidden");
+}
+// WhatsApp (solo lectura, ver whatsapp.js): chats sin leer + quién escribió, clasificado por
+// tu claude en trabajo / personal / grupo, con lo urgente aparte.
+let whatsapp = null; // { running, access, count, chats: [{ name, kind, urgent, ignore, summary, n }], headline }
+const waChats = () => (whatsapp?.chats ?? []).filter((c) => !c.ignore).sort((a, b) => b.urgent - a.urgent);
+// Con notificaciones: los chats que importan (los grupos ignorados no cuentan). Sin ellas: el
+// número del título de la ventana.
+const waCount = () => (whatsapp?.chats.length ? waChats().length : whatsapp?.count ?? 0);
+let urgentTimer;
+api.onWhatsapp(onWhatsapp);
+function onWhatsapp(d, alert) {
+  const was = whatsapp ? waCount() : null;
+  whatsapp = d;
+  if (alert && !mini) {
+    // Urgente: alarma roja, tres avisos y el mensaje fijo 12 s (nada que ver con el saludo normal).
+    root.classList.add("wa-urgent");
+    clearTimeout(urgentTimer);
+    urgentTimer = setTimeout(() => root.classList.remove("wa-urgent"), 12000);
+    [0, 450, 900].forEach((ms) => setTimeout(SOUNDS.needs, ms));
+    setState("needs", `🚨 ${alert.name}: ${alert.summary}`.slice(0, 90), { labelFor: 12000, back: 12000 });
+  } else if (was !== null && waCount() > was && !mini) {
+    const last = waChats().at(-1);
+    emote("hello", 1600);
+    SOUNDS.hello();
+    setState(state, (last ? `WhatsApp · ${last.name}${last.summary ? ": " + last.summary : ""}` : `WhatsApp: ${waCount()} sin leer`).slice(0, 90), { labelFor: 5000 });
+  }
+  renderApps();
+  if (openApp === "wa") renderAppView();
+}
+api.trello().then((d) => { trelloData = d; });
+api.onTrelloBusy((b) => { trelloBusy = b; if (openApp === "trello") renderAppView(); });
+api.onTrello((d) => {
+  trelloData = d;
+  // Aviso si una tarjeta vence en menos de un día (una vez por tarjeta).
+  const soon = d.cards.find((c) => c.due && Date.parse(c.due) - Date.now() < 864e5 && !alertedCards.has(c.url || c.name));
+  if (soon) {
+    alertedCards.add(soon.url || soon.name);
+    emote("hello", 1600);
+    SOUNDS.needs();
+    setState(state, `Trello: "${soon.name}" vence ${fmtDue(soon.due)}`.slice(0, 90), { labelFor: 6000 });
+  }
+  renderApps();
+  if (openApp === "trello") renderAppView();
+});
+
+// GitHub: main.js consulta `gh` cada 5 min; si llega una notificación nueva, Nimbo avisa.
+let github = null; // null = todavía no se sabe
+api.onGithub((list) => {
+  const before = github;
+  github = Array.isArray(list) ? list.slice(0, 50) : [];
+  if (before && github.length > before.length) {
+    emote("hello", 1600);
+    SOUNDS.hello();
+    setState(state, `GitHub: ${github[0].title}`.slice(0, 90), { labelFor: 5000 });
+  }
+  renderSessions();
+  renderApps();
+  if (openApp === "github") renderAppView();
+});
+setInterval(() => { renderSessions(); renderPips(); }, 5000); // refresca los "hace 2m" y quita los viejos
+
+function handle(p) {
+  const who = p.title || base(p.cwd ?? "") || "Claude";
+  switch (p.hook_event_name) {
+    case "SessionStart":
+      track(p, "idle", "empezó");
+      setState("idle", `Hola 👋 · ${who}`, { labelFor: 3500 });
+      SOUNDS.hello();
+      break;
+    case "UserPromptSubmit": {
+      const asked = (p.prompt ?? "Pensando…").replace(/\s+/g, " ").slice(0, 70);
+      track(p, "thinking", asked);
+      setState("thinking", `${who} · ${asked}`);
+      break;
+    }
+    case "PreToolUse": {
+      const step = toolLabel(p.tool_name, p.tool_input);
+      track(p, "working", step);
+      setState("working", `${who} · ${step}`);
+      break;
+    }
+    case "PostToolUse":
+      track(p, "working");
+      if (state !== "working") setState("working", label.textContent);
+      break;
+    case "PostToolUseFailure": {
+      const step = `⚠ Falló · ${toolLabel(p.tool_name, p.tool_input)}`;
+      track(p, "working", step);
+      setState("working", `${who} · ${step}`);
+      break;
+    }
+    case "Notification":
+      // Permisos pendientes o "esperando tu respuesta": las dos cosas te necesitan.
+      track(p, "needs", p.message ?? "te necesita");
+      setState("needs", `${who}: ${p.message ?? "te necesita"}`);
+      SOUNDS.needs();
+      break;
+    case "Stop":
+      track(p, "finished", "terminó");
+      setState("finished", `¡Listo! · ${who}`, { back: 5000 });
+      SOUNDS.finish();
+      break;
+    case "StopFailure":
+      track(p, "error", "falló");
+      setState("error", `Algo falló en ${who} 😢`, { back: 8000, labelFor: 2500 });
+      SOUNDS.error();
+      break;
+    case "SessionEnd":
+      track(p, null);
+      settle();
+      break;
+  }
+}
+window.handleHook = handle; // para probar a mano desde la consola
+api.onHook(handle);
+api.onMuted((m) => (muted = m));
+
+// --- Ojos que siguen el cursor ---
+api.onCursor(({ x, y }) => {
+  const r = svg.getBoundingClientRect();
+  const s = r.width / 240;
+  const dx = x - (r.left + 120 * s);
+  const dy = y - (r.top + 64 * s);
+  if (lookOverride) return; // está mirando alrededor por su cuenta
+  Jarvis.look(dx, dy);
+  let lx = Math.tanh(dx / 260);
+  let ly = Math.tanh(dy / 200);
+  // Pensando: mira arriba a la derecha, con solo un 35 % de atención al cursor.
+  if (state === "thinking") { lx = .35 * lx + .65 * .55; ly = .35 * ly - .65 * .55; }
+  look.style.transform = `translate(${lx * 3.8}px,${ly * 3}px)`;
+});
+
+// --- Parpadeo: cierra en 70 ms, abre en 130; cada 2,2–5,4 s; 22 % de las veces, doble ---
+function blink(double = Math.random() < .22) {
+  if (state === "sleeping" || /emote-dizzy/.test(root.className)) return;
+  for (const eye of document.querySelectorAll(".eyes-open .eye")) {
+    eye.animate([{ transform: "scaleY(1)" }, { transform: "scaleY(.06)", offset: .35, easing: "cubic-bezier(.2,.8,.3,1)" }, { transform: "scaleY(1)" }],
+      { duration: 200, easing: "cubic-bezier(.45,0,.55,1)" });
+  }
+  if (double) setTimeout(() => blink(false), 230);
+}
+(function blinkLoop() {
+  setTimeout(() => { blink(); blinkLoop(); }, 2200 + Math.random() * 3200);
+})();
+
+api.onMini((m) => {
+  mini = m;
+  root.classList.toggle("mini", m);
+  if (m) toggleChat(false);
+  else { lastSize = { w: 0, h: 0 }; relayout(); showReminder(); }
+});
+
+// --- Interacción: la ventana solo atrapa el mouse sobre la nube y las cajas ---
+const hit = document.getElementById("hit");
+// Le cuenta al proceso principal dónde están las partes tocables; él decide, con la
+// posición real del cursor, cuándo la ventana acepta clics.
+let lastRects = "";
+function reportHitRects() {
+  const rects = [...document.querySelectorAll("#hit, .solid")]
+    .map((e) => e.getBoundingClientRect())
+    .filter((r) => r.width && r.height)
+    .map((r) => ({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }));
+  const key = JSON.stringify(rects);
+  if (key !== lastRects) {
+    lastRects = key;
+    api.hitRects(rects);
+  }
+}
+// ponytail: sondeo cada 200 ms en vez de observar cada cambio de layout; son 2–4 rectángulos.
+setInterval(reportHitRects, 200);
+// Al pasar el mouse: despierta y muestra los chats activos (si el chat no está abierto).
+let hoverTimer, loveTimer;
+let lastLove = 0;
+api.onHover((on) => {
+  clearTimeout(hoverTimer);
+  clearTimeout(loveTimer);
+  root.classList.toggle("hovering", on && !mini);
+  if (on) {
+    lastActivity = Date.now();
+    blink(false);
+    SOUNDS.hover();
+    loveTimer = setTimeout(() => {
+      if (Date.now() - lastLove > 6000 && !emoting()) { lastLove = Date.now(); emote("love", 1500); SOUNDS.love(); }
+    }, 1900);
+    if (state === "sleeping") setState("idle");
+    if (!mini && chat.classList.contains("hidden") && card.classList.contains("hidden") && remindCard.classList.contains("hidden") && setupBox.classList.contains("hidden") && appsList().length) {
+      appsBox.classList.remove("hidden");
+      renderApps();
+    }
+  } else {
+    hoverTimer = setTimeout(() => hidePanel(), 700);
+  }
+});
+
+// --- Conexiones y ajustes: qué está conectado y cómo conectar lo que falta ---
+// Se abre solo la primera vez y desde el menú. Cada fila: punto verde/ámbar, qué es, y su botón.
+const setupBox = document.getElementById("setup");
+let setupBusy = "";
+function renderSetup(s) {
+  const act = async (action, value) => {
+    setupBusy = action;
+    renderSetup(s);
+    const next = await api.setupDo(action, value);
+    setupBusy = "";
+    if (!setupBox.classList.contains("hidden")) renderSetup(next);
+  };
+  const btn = (text, action, value, cls = "") => {
+    const b = el("button", cls, setupBusy === action ? "…" : text);
+    b.type = "button";
+    b.disabled = !!setupBusy;
+    b.onclick = () => act(action, value);
+    return b;
+  };
+  const row = (ok, title, text, ...actions) => {
+    const r = el("div", "crow");
+    const info = el("div", "cinfo");
+    const line = el("span");
+    // `así` en el texto se muestra como código (para los comandos que hay que escribir).
+    text.split("`").forEach((part, i) => line.append(i % 2 ? el("code", "", part) : part));
+    info.append(el("b", "", title), line);
+    r.append(el("span", `cdot ${ok === true ? "on" : ok === false ? "off" : ""}`), info, ...actions);
+    return r;
+  };
+  const head = el("div", "ahead");
+  const close = el("button", "allow", "Listo");
+  close.type = "button";
+  close.onclick = () => { api.setupDo("done"); closeSetup(); };
+  head.append(el("b", "", "Conexiones"), el("span", "sub", "lo que Nimbo puede ver"), close);
+
+  const name = el("input");
+  name.value = s.name;
+  name.placeholder = "Tu nombre";
+  name.maxLength = 30;
+  name.onchange = () => api.setupDo("name", name.value);
+
+  const claude = !s.claude ? row(false, "Claude Code", "No lo encontré en este equipo.", btn("Cómo instalarlo", "open", "claude"))
+    : s.hooks === "on" ? row(true, "Claude Code", "Conectado: ve tus chats y te pasa los permisos.", btn("Desconectar", "hooks-off"))
+    : s.hooks === "stale" ? row(false, "Claude Code", "La conexión apunta a otra carpeta.", btn("Reconectar", "hooks-on", null, "allow"))
+    : s.hooks === "error" ? row(false, "Claude Code", "No pude leer `~/.claude/settings.json`: revisa que sea JSON válido.")
+    : row(false, "Claude Code", "Conéctalo para ver tus chats en vivo y aprobar permisos.", btn("Conectar", "hooks-on", null, "allow"));
+  const github = s.github === "on" ? row(true, "GitHub", "Conectado con tu sesión de gh.")
+    : s.github === "off" ? row(false, "GitHub", "Abre una terminal y escribe `gh auth login`.")
+    : row(null, "GitHub", "Opcional: avisa de tus notificaciones.", btn("Instalar GitHub CLI", "open", "gh"));
+  const trello = s.trello !== null ? row(true, "Trello", `Conectado: ${s.trello} ${s.trello === 1 ? "pendiente" : "pendientes"}.`, btn("Actualizar", "trello"))
+    : row(null, "Trello", "Opcional: activa el conector de Trello en claude.ai y pulsa Probar (tarda 1 min).", btn("claude.ai", "open", "connectors"), btn("Probar", "trello"));
+  const wa = s.whatsappRead ? row(true, "WhatsApp", "Resume quién te escribió y avisa lo urgente.", btn("Reglas", "whatsapp-rules"), btn("Apagar", "whatsapp", false))
+    : row(null, "WhatsApp", "Opcional: tu Claude resume tus notificaciones de WhatsApp.", btn("Activar", "whatsapp", true));
+  const auto = row(s.autostart ? true : null, "Iniciar con Windows", s.autostart ? "Nimbo arranca al prender el equipo." : "Que Nimbo arranque solo al prender el equipo.",
+    btn(s.autostart ? "Quitar" : "Activar", "autostart", !s.autostart));
+
+  const rows = [head, claude, row(s.name ? true : null, "Tu nombre", "Para saludarte.", name), github, trello, wa, auto];
+  if (s.error) rows.push(el("div", "afoot", `No se pudo: ${s.error}`));
+  setupBox.replaceChildren(...rows);
+}
+async function openSetup() {
+  if (mini) return;
+  hidePanel();
+  toggleChat(false);
+  renderSetup(await api.setup());
+  setupBox.classList.remove("hidden");
+  api.chatOpen(true); // la ventana acepta teclado mientras el panel está abierto (para el nombre)
+}
+function closeSetup() {
+  setupBox.classList.add("hidden");
+  api.chatOpen(false);
+}
+api.onSetupOpen(openSetup);
+
+// --- Gestos: hola, cariño, mareo, bostezo, tragar ---
+let emoteTimer;
+function emote(name, ms = 1400) {
+  root.className = root.className.replace(/\s*emote-\w+/g, "");
+  void root.offsetWidth; // fuerza a que las animaciones del gesto empiecen de nuevo
+  root.classList.add(`emote-${name}`);
+  Jarvis.emote(name, ms);
+  clearTimeout(emoteTimer);
+  emoteTimer = setTimeout(() => root.classList.remove(`emote-${name}`), ms);
+}
+const emoting = () => /emote-/.test(root.className);
+
+// Un clic abre/cierra el chat; varios seguidos son "cariños"; muchos lo marean.
+let clicks = 0;
+let clickTimer;
+wrap.addEventListener("click", (e) => {
+  // composedPath y no closest(): una píldora se redibuja en su propio clic, y para cuando el
+  // evento llega aquí el botón ya no está en la página (closest daba null y se abría el chat).
+  if (e.composedPath().includes(content) || suppressClick) return;
+  lastActivity = Date.now();
+  clicks++;
+  clearTimeout(clickTimer);
+  SOUNDS.poke();
+  Jarvis.poke();
+  root.classList.remove("poke"); void root.offsetWidth; root.classList.add("poke");
+  setTimeout(() => root.classList.remove("poke"), 650);
+  if (clicks === 1) {
+    clickTimer = setTimeout(() => {
+      clicks = 0;
+      if (mini) api.toggleMini(); // tocarlo en mini lo devuelve a su tamaño
+      else toggleChat();
+    }, 280);
+    return;
+  }
+  if (clicks === 2) { emote("love", 1500); SOUNDS.love(); }
+  if (clicks === 5) { emote("dizzy", 2600); SOUNDS.dizzy(); setState(state, "Ya, ya… 😵‍💫", { labelFor: 2200 }); }
+  clickTimer = setTimeout(() => (clicks = 0), 900);
+});
+
+// --- Vida propia en reposo: mira alrededor, se estira, bosteza si llevas rato sin usarlo ---
+let lastActivity = Date.now();
+let lookOverride = false;
+(function idleLife() {
+  setTimeout(() => {
+    const quiet = state === "idle" && !emoting() && chat.classList.contains("hidden") && !mini;
+    if (quiet) {
+      const roll = Math.random();
+      if (Date.now() - lastActivity > 60_000 && roll < 0.35) {
+        emote("yawn", 1500);
+        SOUNDS.yawn();
+      } else if (roll < 0.75) {
+        // Mira a un lado y al otro, ignorando el cursor un momento.
+        lookOverride = true;
+        const side = Math.random() < 0.5 ? -1 : 1;
+        look.style.transform = `translate(${3 * side}px,0)`;
+        Jarvis.look(260 * side, 0);
+        setTimeout(() => { look.style.transform = `translate(${-3 * side}px,0)`; Jarvis.look(-260 * side, 0); }, 700);
+        setTimeout(() => (lookOverride = false), 1400);
+      } else {
+        root.classList.remove("poke"); void root.offsetWidth; root.classList.add("poke");
+        setTimeout(() => root.classList.remove("poke"), 650);
+      }
+    }
+    idleLife();
+  }, 9000 + Math.random() * 11000);
+})();
+wrap.addEventListener("contextmenu", (e) => {
+  if (e.target.closest("input, textarea")) return; // ahí sirve el menú de copiar/pegar
+  e.preventDefault();
+  api.menu();
+});
+
+// --- Nivel 2: aprobar permisos desde la nube ---
+const card = document.getElementById("card");
+const FIELDS = ["command", "file_path", "path", "url", "query", "pattern", "prompt", "description"];
+let cardRid = "";
+api.onPermission((p) => {
+  const input = p.tool_input ?? {};
+  const field = FIELDS.find((k) => typeof input[k] === "string" && input[k].trim());
+  // Se muestra el comando o archivo completo: aprobar "Bash" a ciegas no sirve de nada.
+  card.querySelector(".what").textContent = `${p.title || base(p.cwd ?? "")} quiere usar ${p.tool_name ?? "una herramienta"}`;
+  hidePanel();
+  // Completo y sin recortar a ciegas: el campo principal y, debajo, el resto de lo que manda
+  // (p. ej. el contenido de un Write o el cambio de un Edit). Si es largo, la caja hace scroll.
+  const rest = Object.entries(input).filter(([k, v]) => k !== field && v !== undefined && v !== "")
+    .map(([k, v]) => `— ${k} —\n${typeof v === "string" ? v : JSON.stringify(v, null, 1)}`);
+  card.querySelector(".cmd").textContent = [field ? input[field] : "", ...rest].filter(Boolean).join("\n\n").slice(0, 20000);
+  card.querySelector(".cmd").scrollTop = 0;
+  cardRid = p.rid;
+  // "Siempre": Claude Code propone reglas (p. ej. Bash(npm test:*)); hook.js se las devuelve.
+  const rules = (Array.isArray(p.permission_suggestions) ? p.permission_suggestions : [])
+    .flatMap((x) => x.rules ?? []).map((r) => (r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName));
+  const always = document.getElementById("always");
+  always.classList.toggle("hidden", !rules.length);
+  always.title = `Permitir siempre: ${rules.join(", ")}`;
+  // Lo que "Siempre" dejaría aprobado para el futuro, a la vista (no solo en un tooltip).
+  const rulesLine = document.getElementById("alwaysRules");
+  rulesLine.textContent = `"Siempre" aprobaría: ${rules.join(", ")}`;
+  rulesLine.classList.toggle("hidden", !rules.length);
+  setState("needs");
+  card.classList.remove("hidden");
+  SOUNDS.needs();
+});
+card.addEventListener("click", (e) => {
+  const d = e.target.dataset?.d;
+  if (d === undefined) return;
+  api.decide(d, cardRid);
+  card.classList.add("hidden");
+  const text = { allow: "Aprobado ✓", always: "Aprobado para siempre ✓", deny: "Denegado ✋", "": "Te pregunta en la terminal" }[d];
+  setState(d === "allow" || d === "always" ? "working" : "idle", text, { labelFor: 2500 });
+});
+api.onPermissionDone(() => card.classList.add("hidden"));
+
+// --- Recordatorios: main.js los avisa cuando vencen; aquí la tarjeta y la lista de pendientes ---
+const remindCard = document.getElementById("remind");
+const remindQueue = [];
+let pendingList = [];
+api.reminders().then((l) => { pendingList = l ?? []; });
+api.onReminders((l) => {
+  pendingList = l ?? [];
+  renderSessions();
+  renderApps();
+  if (openApp === "pend") renderAppView();
+});
+api.onReminder((r) => { remindQueue.push(r); showReminder(); });
+// "hoy 3:00 p. m.", "mañana 9:00 a. m.", "vie 3 oct, 9:00 a. m." o "sin fecha"
+function fmtDue(iso) {
+  if (!iso) return "sin fecha";
+  const d = new Date(iso);
+  const hour = d.toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" });
+  const day = (offset) => { const t = new Date(); t.setDate(t.getDate() + offset); return t.toDateString(); };
+  if (d.toDateString() === day(0)) return `hoy ${hour}`;
+  if (d.toDateString() === day(1)) return `mañana ${hour}`;
+  return `${d.toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" })}, ${hour}`;
+}
+function showReminder() {
+  const r = remindQueue[0];
+  if (!r || mini || !remindCard.classList.contains("hidden")) return;
+  remindCard.dataset.id = r.id;
+  remindCard.querySelector(".rtext").textContent = r.text;
+  remindCard.querySelector(".rdue").textContent = fmtDue(r.due);
+  hidePanel();
+  remindCard.classList.remove("hidden");
+  setState("needs", `⏰ ${r.text}`);
+  emote("hello", 1400);
+  SOUNDS.needs();
+}
+remindCard.addEventListener("click", (e) => {
+  const action = e.target.dataset?.r;
+  if (!action) return;
+  const id = remindCard.dataset.id;
+  if (action === "done") api.reminderDone(id);
+  else api.reminderSnooze(id, 10);
+  remindQueue.shift();
+  remindCard.classList.add("hidden");
+  setState(state, action === "done" ? "✓ Hecho" : "⏰ Te aviso en 10 min", { labelFor: 2200 });
+  setTimeout(() => { settle(); showReminder(); }, 2300);
+});
+
+// --- Chat con Claude (clic en la nube) ---
+const chat = document.getElementById("chat");
+const msg = document.getElementById("msg");
+const answer = document.getElementById("answer");
+const answerBox = document.getElementById("answerBox");
+const rail = document.getElementById("rail");
+const thumb = document.getElementById("thumb");
+
+function updateRail() {
+  const { scrollTop, scrollHeight, clientHeight } = answer;
+  const on = scrollHeight > clientHeight + 2;
+  rail.classList.toggle("on", on);
+  if (!on) return;
+  const h = rail.clientHeight;
+  const th = Math.max(18, (h * clientHeight) / scrollHeight);
+  thumb.style.height = `${th}px`;
+  thumb.style.top = `${((h - th) * scrollTop) / (scrollHeight - clientHeight)}px`;
+}
+answer.addEventListener("scroll", updateRail);
+new MutationObserver(updateRail).observe(answer, { childList: true, subtree: true, characterData: true });
+new ResizeObserver(updateRail).observe(answerBox);
+let asking = false;
+
+function toggleChat(open = chat.classList.contains("hidden")) {
+  chat.classList.toggle("hidden", !open);
+  if (!open) answerBox.classList.add("hidden");
+  api.chatOpen(open);
+  if (open) setTimeout(() => msg.focus(), 60);
+}
+msg.addEventListener("keydown", (e) => { if (e.key === "Escape") toggleChat(false); });
+
+// --- Adjuntos: soltar sobre Nimbo, 📎 o Ctrl+V (sirve con capturas de Win+Shift+S) ---
+// Las imágenes van dentro del mensaje; el resto (PDF, código, texto…) va por su ruta y
+// el orquestador lo lee con Read (solo lectura).
+const thumbs = document.getElementById("thumbs");
+const fileInput = document.getElementById("file");
+const MAX_IMAGE = 5 * 1024 * 1024; // límite de la API por imagen
+const MAX_FILES = 10;
+let images = []; // { media_type, data, url }
+let files = []; // { path, name }
+
+function addFile(file) {
+  if (/^image\/(png|jpeg|gif|webp)$/.test(file.type) && file.size <= MAX_IMAGE) return addImage(file);
+  const p = api.filePath(file);
+  if (!p || files.length >= MAX_FILES || files.some((f) => f.path === p)) return;
+  files.push({ path: p, name: file.name });
+  renderThumbs();
+}
+
+function addImage(file) {
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) return;
+  if (file.size > MAX_IMAGE) {
+    answer.textContent = `"${file.name}" pesa más de 5 MB.`;
+    answer.classList.remove("wait");
+    answerBox.classList.remove("hidden");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    images.push({ media_type: file.type, data: reader.result.split(",")[1], url: reader.result });
+    renderThumbs();
+  };
+  reader.readAsDataURL(file);
+}
+function renderThumbs() {
+  const imgs = images.map((img, i) => {
+    const e = document.createElement("img");
+    e.src = img.url;
+    e.title = "Quitar";
+    e.onclick = () => { images.splice(i, 1); renderThumbs(); };
+    return e;
+  });
+  const chips = files.map((f, i) => {
+    const c = el("div", "chip");
+    c.title = `${f.path}\n(clic para quitar)`;
+    c.append("📄", el("span", "", f.name));
+    c.onclick = () => { files.splice(i, 1); renderThumbs(); };
+    return c;
+  });
+  thumbs.replaceChildren(...imgs, ...chips);
+}
+document.getElementById("attach").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => { [...fileInput.files].forEach(addFile); fileInput.value = ""; msg.focus(); });
+msg.addEventListener("paste", (e) => [...e.clipboardData.files].forEach(addFile));
+
+// Soltar archivos sobre Nimbo: abre la boca mientras pasan por encima y se los traga.
+// Fin del arrastre por vigilante: mientras el archivo está encima llegan "dragover" cada
+// pocos ms; si dejan de llegar (lo soltaste en otro lado, cancelaste o la ventana dejó de
+// recibir el mouse al salir de la isla), Nimbo vuelve a la normalidad. Contar
+// dragenter/dragleave fallaba: al salir de la isla Windows ya no avisa y quedaba trabado.
+const charEl = document.getElementById("char");
+let dragWatch = 0;
+let swallowing = false;
+function startDrop() {
+  if (root.classList.contains("dropping")) return;
+  hidePanel();
+  root.classList.add("drag-over", "dropping");
+  Jarvis.setLevel(0.6);
+  relayout();
+}
+function endDrop() {
+  clearTimeout(dragWatch);
+  root.classList.remove("drag-over", "dropping");
+  charEl.style.left = "";
+  Jarvis.setLevel(0);
+  lastSize = { w: 0, h: 0 };
+  relayout();
+}
+function watchDrag() {
+  clearTimeout(dragWatch);
+  dragWatch = setTimeout(() => { if (!swallowing) endDrop(); }, 350);
+}
+document.addEventListener("dragenter", (e) => { e.preventDefault(); startDrop(); watchDrag(); });
+// Mientras arrastras, el personaje grande sigue al cursor por la isla.
+document.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  startDrop();
+  watchDrag();
+  const w = wrap.getBoundingClientRect();
+  const cw = charEl.offsetWidth;
+  charEl.style.left = `${Math.max(8, Math.min(w.width - cw - 8, e.clientX - w.left - cw * .46))}px`;
+});
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  clearTimeout(dragWatch);
+  const dropped = [...(e.dataTransfer?.files ?? [])];
+  if (!dropped.length) return endDrop();
+  swallow(dropped, e.clientX, e.clientY);
+});
+
+// Cada archivo vuela de donde lo soltaste a la boca: primero se levanta un poco
+// (anticipación) y luego acelera encogiéndose, como absorbido por un embudo.
+function swallow(dropped, x, y) {
+  swallowing = true;
+  const c = charEl.getBoundingClientRect();
+  const mx = c.left + c.width * .5;
+  const my = c.top + c.height * .62;
+  const flights = dropped.slice(0, 5).map((file, i) => {
+    const f = el("div", "flyer");
+    if (file.type.startsWith("image/")) {
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(file);
+      f.append(img);
+    } else f.append("📄");
+    f.append(el("span", "", file.name));
+    document.body.append(f);
+    const { width: fw, height: fh } = f.getBoundingClientRect();
+    const at = (px, py, sx, sy, r) => `translate(${px - fw / 2}px,${py - fh / 2}px) scale(${sx},${sy}) rotate(${r}deg)`;
+    return f.animate([
+      { transform: at(x, y, 1, 1, 0), opacity: 1 },
+      { transform: at(x, y - 12, 1.08, 1.08, -4), opacity: 1, offset: .2 },
+      { transform: at((x + mx) / 2, (y + my) / 2, .6, .45, 6), opacity: 1, offset: .7 },
+      { transform: at(mx, my, .1, .05, 10), opacity: .2 },
+    ], { duration: 560, delay: i * 90, easing: "cubic-bezier(.55,0,.85,.35)", fill: "forwards" }).finished.then(() => f.remove());
+  });
+  Promise.all(flights).then(() => {
+    root.classList.remove("drag-over"); // cierra la boca: traga
+    emote("gulp", 700);
+    SOUNDS.gulp();
+    setTimeout(() => { root.classList.add("chew"); setTimeout(() => root.classList.remove("chew"), 460); }, 380);
+    // Después de masticar, la isla vuelve a su tamaño con el chat abierto y los adjuntos.
+    setTimeout(() => {
+      swallowing = false;
+      endDrop();
+      dropped.forEach(addFile);
+      if (chat.classList.contains("hidden")) toggleChat(true);
+      setState(state, dropped.length === 1 ? `Me tragué "${dropped[0].name}" 📎` : `Me tragué ${dropped.length} archivos 📎`, { labelFor: 2500 });
+    }, 900);
+  });
+}
+
+chat.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = msg.value.trim() || (images.length ? "¿Qué ves en esta imagen?" : files.length ? "Revisa estos archivos." : "");
+  if (!text || asking) return;
+  asking = true;
+  lastActivity = Date.now();
+  const sent = images.map(({ media_type, data }) => ({ media_type, data }));
+  const paths = files.map((f) => f.path);
+  images = [];
+  files = [];
+  renderThumbs();
+  msg.value = "";
+  await askAndShow({ text, images: sent, files: paths });
+  asking = false;
+});
+
+// --- Barra de progreso: rápida hasta el 60 %, lenta hasta el 92 %, y ahí espera la respuesta ---
+const prog = document.getElementById("progress");
+let progRaf = 0;
+const eOut = (t) => 1 - Math.pow(1 - t, 3);
+const eInOut = (t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+function progressStart(expectedMs) {
+  cancelAnimationFrame(progRaf);
+  prog.classList.remove("done");
+  prog.classList.add("on");
+  const t0 = performance.now();
+  const tick = () => {
+    const u = (performance.now() - t0) / expectedMs;
+    const p = u < .4 ? .6 * eOut(u / .4) : u < .85 ? .6 + .32 * eInOut((u - .4) / .45) : .92 + .05 * (1 - Math.exp(-(u - .85) * 2));
+    prog.style.setProperty("--p", `${(p * 100).toFixed(1)}%`);
+    progRaf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+function progressEnd() {
+  cancelAnimationFrame(progRaf);
+  prog.style.setProperty("--p", "100%");
+  prog.classList.add("done");
+  setTimeout(() => prog.classList.remove("on"), 700);
+  setTimeout(() => prog.classList.remove("done"), 1100);
+}
+
+async function askAndShow(message) {
+  answer.replaceChildren(el("div", "", "Pensando…"));
+  answer.classList.add("wait");
+  answerBox.classList.remove("hidden");
+  progressStart(message.files?.length || message.images?.length ? 25_000 : 15_000);
+  const r = await api.ask(message);
+  progressEnd();
+  if (r?.added?.length) setTimeout(() => setState(state, `⏰ Anotado: ${r.added[0].text}`, { labelFor: 3500 }), 300);
+  answer.classList.remove("wait");
+  answer.replaceChildren(el("div", "reply", r?.text ?? "No pude hablar con Claude."));
+  for (const d of r?.dispatch ?? []) answer.append(proposal(d));
+  answer.scrollTop = 0;
+  return r;
+}
+
+// --- Orquestador: Nimbo propone un prompt para otro chat; tú lo revisas y lo envías ---
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function proposal(d) {
+  const box = el("div", "prop");
+  const head = el("div", "what", `→ ${d.project}${d.title ? " · " + d.title : ""}`);
+  if (d.active) head.append(el("span", "warn", "  ⚠ abierto en la app: ahí no verás esto hasta reabrirlo"));
+  const prompt = el("textarea");
+  prompt.value = d.prompt;
+  const send = el("button", "allow", "Enviar");
+  const drop = el("button", "", "Descartar");
+  const btns = el("div", "btns");
+  btns.append(send, drop);
+  box.append(head, prompt, btns);
+
+  drop.onclick = () => box.remove();
+  send.onclick = async () => {
+    // Mientras el otro chat trabaja se esconde el texto; el progreso va en la etiqueta
+    // (los hooks de ese chat también mueven a Nimbo: "Ejecuta · git push", etc.).
+    const text = prompt.value;
+    box.classList.add("hidden");
+    answer.querySelector(".reply")?.classList.add("hidden");
+    if (!answer.querySelector(".prop:not(.hidden)")) answerBox.classList.add("hidden");
+    setState("working", `→ ${d.project} trabajando…`);
+
+    progressStart(60_000);
+    const res = await api.dispatch(d.session, text);
+    progressEnd();
+    box.replaceChildren(el("div", "done", `✓ ${res?.project ?? d.project}: ${res?.text ?? "(sin respuesta)"}`));
+    box.classList.remove("hidden");
+    answerBox.classList.remove("hidden");
+    setState("finished", `¡Listo! · ${d.project}`, { back: 5000 });
+    SOUNDS.finish();
+  };
+  return box;
+}
+
+// Posición a lo largo del borde superior (la guarda main.js)
+api.onAnchor((f) => root.style.setProperty("--f", f));
+
+// --- Arrastrar a Nimbo por el borde de arriba ---
+// Se agarra de la barra de la isla. Menos de 6 px de movimiento sigue siendo un clic.
+// Mientras se mueve: se inclina hacia atrás según la velocidad y deja una estela; al
+// soltarlo aterriza con un rebote.
+let dragDown = null; // { x, id } desde que se presiona
+let dragging = false;
+let suppressClick = false;
+let lean = 0, leanTarget = 0, leanRaf = 0, lastDragX = 0;
+const islandEl = document.getElementById("island");
+function leanLoop() {
+  lean += (leanTarget - lean) * .22;
+  leanTarget *= .86; // sin movimiento vuelve a enderezarse
+  charEl.style.setProperty("--lean", `${lean.toFixed(2)}deg`);
+  islandEl.style.setProperty("--trail", Math.min(Math.abs(lean) / 10, 1).toFixed(2));
+  islandEl.style.setProperty("--trail-dir", lean > 0 ? "90deg" : "270deg");
+  Jarvis.look(-lean * 40, 0);
+  leanRaf = dragging ? requestAnimationFrame(leanLoop) : 0;
+}
+wrap.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0 || mini || e.target.closest("#content")) return;
+  dragDown = { x: e.screenX, id: e.pointerId };
+});
+wrap.addEventListener("pointermove", (e) => {
+  if (!dragDown) return;
+  // Si llega un movimiento sin botón presionado, es que la suelta se perdió: terminar.
+  if (e.buttons === 0) return endDrag();
+  if (!dragging && Math.abs(e.screenX - dragDown.x) > 6) {
+    dragging = true;
+    wrap.setPointerCapture(dragDown.id);
+    root.classList.add("dragging");
+    hidePanel();
+    api.dragStart({ w: wrap.offsetWidth, grab: e.clientX - wrap.getBoundingClientRect().left });
+    SOUNDS.open();
+    islandEl.animate([{ transform: "scale(1)" }, { transform: "scale(1.05, .94)" }, { transform: "scale(1)" }], { duration: 260, easing: "ease-out" });
+    lastDragX = e.screenX;
+    leanLoop();
+  }
+  if (dragging) {
+    // Se inclina en contra del movimiento, como si lo llevaras colgando.
+    leanTarget = Math.max(-16, Math.min(16, (e.screenX - lastDragX) * 1.3));
+    lastDragX = e.screenX;
+  }
+});
+function endDrag() {
+  if (dragging) {
+    dragging = false;
+    suppressClick = true; // el clic que llega tras soltar no debe abrir el chat
+    setTimeout(() => (suppressClick = false), 250);
+    api.dragEnd();
+    root.classList.remove("dragging");
+    charEl.style.removeProperty("--lean");
+    lastSize = { w: 0, h: 0 };
+    relayout();
+    // Aterrizaje: se aplasta contra el borde y rebota.
+    islandEl.animate([{ transform: "scale(1.07, .88)" }, { transform: "scale(.97, 1.06)" }, { transform: "scale(1.01, .99)" }, { transform: "scale(1)" }],
+      { duration: 420, easing: "cubic-bezier(.3, 1.4, .5, 1)" });
+    SOUNDS.close();
+    emote("hello", 900);
+  }
+  dragDown = null;
+}
+// La suelta se escucha por varios caminos: mientras la ventana se mueve bajo el cursor, el
+// evento puede llegar a otro elemento o perderse, y Nimbo no debe quedar pegado al mouse.
+for (const type of ["pointerup", "pointercancel", "mouseup"]) document.addEventListener(type, endDrag, true);
+wrap.addEventListener("lostpointercapture", endDrag);
+window.addEventListener("blur", endDrag);
+api.onDragAbort(endDrag);
+
+api.onTheme((t) => {
+  const jarvis = t === "jarvis";
+  root.classList.toggle("theme-jarvis", jarvis);
+  root.classList.toggle("theme-cloud", !jarvis);
+  Jarvis.setActive(jarvis);
+});
+
+// Entrada: baja desde arriba con un rebote y saluda.
+let NAME = ""; // tu nombre para el saludo (prefs.json → "name")
+api.onName((n) => { NAME = n; });
+setTimeout(() => root.classList.remove("enter"), 60);
+setState("idle");
+setTimeout(() => {
+  const h = new Date().getHours();
+  const hi = h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
+  emote("hello", 1600);
+  SOUNDS.greet();
+  setState("idle", NAME ? `${hi}, ${NAME} 👋` : `${hi} 👋`, { labelFor: 3500 });
+}, 900);
+</script>
+<script src="voice.js"></script>
+</body>
+</html>

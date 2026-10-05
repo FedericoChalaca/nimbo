@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<canvas id="c" width="1280" height="720"></canvas>
+<script>
+// Recibe cuadros JPEG, los pinta en el canvas y graba el canvas en tiempo real.
+const { ipcRenderer } = require("electron");
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
+const type = ["video/mp4;codecs=avc1.640028", "video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp9", "video/webm"]
+  .find((t) => MediaRecorder.isTypeSupported(t));
+const rec = new MediaRecorder(c.captureStream(30), { mimeType: type, videoBitsPerSecond: 9_000_000 });
+const chunks = [];
+rec.ondataavailable = (e) => chunks.push(e.data);
+rec.onstop = async () => ipcRenderer.send("video", type, Buffer.from(await new Blob(chunks).arrayBuffer()));
+
+let started = false, busy = false, next = null;
+async function draw(buf) {
+  const bmp = await createImageBitmap(new Blob([buf], { type: "image/jpeg" }));
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close();
+  if (!started) { started = true; rec.start(1000); }
+}
+ipcRenderer.on("frame", async (_e, buf) => {
+  if (busy) { next = buf; return; } // si llega más rápido de lo que se pinta, gana el último
+  busy = true;
+  await draw(buf);
+  while (next) { const b = next; next = null; await draw(b); }
+  busy = false;
+});
+ipcRenderer.on("stop", () => setTimeout(() => rec.stop(), 400));
+ipcRenderer.send("ready", type);
+</script>

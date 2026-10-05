@@ -1,0 +1,9 @@
+node_modules/
+RESUMEN-*.md
+*.log
+*.lnk
+.claude/
+.env*
+promo/*.mp4
+promo/*.webm
+dist/
