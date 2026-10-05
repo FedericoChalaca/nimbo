@@ -109,4 +109,4 @@ The idea and several island-interface techniques come from [Coucou](https://gith
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).

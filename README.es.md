@@ -107,4 +107,4 @@ La idea y varias técnicas de la interfaz de isla vienen de [Coucou](https://git
 
 ## Licencia
 
-MIT. Ver [LICENSE](LICENSE).
+MIT. Ver [LICENSE](LICENSE) y [NOTICE.md](NOTICE.md).
