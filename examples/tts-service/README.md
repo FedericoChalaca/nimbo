@@ -51,6 +51,7 @@ node api/tts.js
 2. Pick two voices in their library and copy each voice id (shown in the voice details).
 3. Deploy this folder. With [Vercel](https://vercel.com): `npx vercel deploy --prod`.
 4. Add the environment variables from the table above (`ELEVENLABS_API_KEY`, `VOICE_ID`, `VOICE_ID_NUBE`) and redeploy.
+
 Want the same voices the author of Nimbo uses? Set `VOICE_ID` to `GiHilf3fHb3pWiIA7qeA` (JARVIS look) and `VOICE_ID_NUBE` to `JK49IyqaHR8eMG201PHI` (cloud look). A voice id is not a key: it names the voice and gives no access to any account. If ElevenLabs says the voice is not found, look it up by that id in their voice library and add it to your account first.
 
 5. Put the address in `%APPDATA%\nimbo\prefs.json` as `ttsUrl` and restart Nimbo.
