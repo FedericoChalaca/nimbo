@@ -20,23 +20,135 @@ No necesita API key: usa el `claude` que ya tienes instalado y con sesión inici
 
 No necesitas Node.js. Sí necesitas Claude Code instalado y con sesión iniciada (`claude` en una terminal).
 
-Para quitarlo, desinstala Nimbo desde Configuración de Windows → Aplicaciones. El desinstalador también quita los hooks de Nimbo de Claude Code; tus ajustes en `%APPDATA%
-imbo` se conservan.
+Para quitarlo, desinstala Nimbo desde Configuración de Windows → Aplicaciones. El desinstalador también quita los hooks de Nimbo de Claude Code; tus ajustes en `%APPDATA%\nimbo` se conservan.
 
 > Nimbo usa el idioma de tu Windows (español o inglés). Cámbialo cuando quieras: clic derecho → **Idioma / Language**.
 
 ## Conectar todo
 
-Clic derecho en Nimbo → **Conexiones y ajustes** (la primera vez se abre solo). Cada fila tiene un punto verde o ámbar y un botón.
+Todo se conecta desde un solo lugar: clic derecho en Nimbo → **Conexiones y ajustes** (la primera vez se abre solo). Cada fila tiene un punto y un botón:
 
-| Conexión | Qué te da | Cómo se conecta |
-|---|---|---|
-| **Claude Code** | Tus chats en vivo y las tarjetas de permiso | Pulsa **Conectar**. Agrega los hooks de Nimbo a `~/.claude/settings.json` (antes hace una copia con fecha y no toca tus otros hooks). **Desconectar** los quita. |
-| **Tu nombre** | Un saludo con tu nombre | Escríbelo en la casilla. |
-| **GitHub** | Una píldora con tus notificaciones sin leer | Instala [GitHub CLI](https://cli.github.com) y corre `gh auth login`. Nimbo usa esa sesión. |
-| **Trello** | Una píldora con tus tarjetas pendientes | Activa el conector de Trello en [claude.ai → Ajustes → Conectores](https://claude.ai/settings/connectors) y pulsa **Probar** (tarda cerca de un minuto). |
-| **WhatsApp** | Chats sin leer, quién escribió y qué es urgente | Abre WhatsApp de escritorio. Para los resúmenes, pulsa **Activar** (ver [WhatsApp](#whatsapp-opcional-solo-lectura)). |
-| **Iniciar con Windows** | Nimbo arranca al prender el equipo | Pulsa **Activar**. |
+- 🟢 verde: conectado y funcionando
+- 🟠 ámbar: falta un paso tuyo
+- ⚪ gris: opcional, sin configurar
+
+Solo Claude Code es obligatorio. Lo demás es opcional y lo puedes agregar cuando quieras.
+
+### 1. Claude Code (obligatorio)
+
+Qué te da: tus chats en vivo en la isla y los permisos como tarjetas.
+
+1. Comprueba que Claude Code funciona: abre una terminal, escribe `claude` e inicia sesión si te lo pide.
+2. En el panel Conexiones de Nimbo, pulsa **Conectar**.
+3. Escribe cualquier mensaje en una sesión de Claude Code (terminal, app de escritorio o editor). La isla muestra el nombre del chat y lo que está haciendo.
+
+Si no aparece nada, cierra y vuelve a abrir la sesión de Claude Code que ya tenías abierta: toma la conexión al arrancar.
+
+Qué hace **Conectar**: agrega los hooks de Nimbo a `~/.claude/settings.json`. Antes hace una copia con fecha y no toca los hooks que ya tuvieras. **Desconectar** los quita.
+
+### 2. Tu nombre
+
+Escríbelo en la casilla para que Nimbo te salude por tu nombre.
+
+### 3. GitHub (opcional)
+
+Qué te da: una píldora morada con tus notificaciones de GitHub sin leer, y un aviso cuando llega una nueva.
+
+1. Instala [GitHub CLI](https://cli.github.com):
+
+```bash
+winget install --id GitHub.cli
+```
+
+2. Inicia sesión:
+
+```bash
+gh auth login
+```
+
+3. Vuelve a abrir el panel Conexiones: la fila de GitHub queda en verde. Nimbo consulta cada 5 minutos con esa sesión; nunca ve tu contraseña ni tu token.
+
+### 4. Trello (opcional)
+
+Qué te da: una píldora azul con tus tarjetas pendientes, y un aviso cuando una vence en menos de 24 horas. Solo lectura: Nimbo no puede crear, mover ni borrar tarjetas.
+
+1. Abre [claude.ai → Ajustes → Conectores](https://claude.ai/settings/connectors), busca **Trello**, pulsa **Conectar** y autoriza tu cuenta de Trello. Usa la misma cuenta de Claude que usas en Claude Code.
+2. En el panel Conexiones de Nimbo, pulsa **Probar**. La primera lectura tarda cerca de un minuto.
+3. La fila queda en verde con el número de pendientes. Se actualiza cada 30 minutos, o al momento con clic derecho → **Actualizar Trello**.
+
+Una tarjeta cuenta como pendiente si está abierta y tiene fecha de vencimiento sin completar, o está en una lista como Por hacer, En proceso, Bloqueado o Inbox.
+
+### 5. WhatsApp (opcional, solo lectura)
+
+Tiene dos niveles. El primero no te pide nada.
+
+**Nivel 1: cuántos chats sin leer.** Abre WhatsApp de escritorio (la app de Microsoft Store). Nimbo lee el número del título de la ventana y lo muestra en la píldora de WhatsApp.
+
+**Nivel 2: quién escribió y qué es urgente.** Apagado hasta que lo actives.
+
+1. En el panel Conexiones, en la fila de WhatsApp, pulsa **Activar**.
+2. Comprueba que Windows muestra las notificaciones de WhatsApp con su texto: Configuración de Windows → Sistema → Notificaciones → WhatsApp activado, y en WhatsApp → Ajustes → Notificaciones, la vista previa del mensaje activada. Nimbo lee esas notificaciones; sin notificación no hay resumen.
+3. Dile qué te importa: pulsa **Reglas** (o clic derecho → **Reglas de WhatsApp**). Es un archivo de texto; escríbelo con tus palabras y guarda. Por ejemplo:
+
+```text
+Trabajo: Laura (mi jefa), Andrés (cliente), el grupo "Equipo Rocket".
+Grupos que no me importan: Fútbol los jueves, Vecinos del edificio.
+Urgente: algo de trabajo que pide respuesta hoy, un cliente molesto, un pago, algo caído, o una emergencia de familia.
+```
+
+4. Recomendado: que sea 100 % local. Instala [Ollama](https://ollama.com) y descarga un modelo pequeño (2 GB, una sola vez):
+
+```bash
+ollama pull llama3.2:3b
+```
+
+Deja Ollama abierto. La fila de WhatsApp dirá "Lo resume un modelo local": cerca de un segundo por chat, sin gastar tokens, y los mensajes no salen de tu PC. Sin Ollama lo hace tu propio Claude (Haiku): entre 10 y 20 segundos por tanda, y cuenta contra tu uso de Claude.
+
+Qué vas a ver:
+
+| En la isla | Qué significa |
+|---|---|
+| Botón verde con un número | Chats con resumen que no has visto. Tócalo para abrirlo. |
+| El botón gira, "WhatsApp · resumiendo…" | El modelo está leyendo los mensajes nuevos. |
+| "WhatsApp · Laura: pide el informe" | El resumen, que sale unos segundos cuando está listo. |
+| Isla roja que late, tres avisos | Algo urgente según tus reglas. |
+| ↩ una línea debajo de cada chat, con **Copiar** | Una respuesta sugerida. Cópiala y pégala en WhatsApp si te sirve; Nimbo nunca envía nada. |
+| **Visto** (dentro del resumen) | Ya lo leíste: se cierra y esos mensajes no vuelven a salir. También pasa solo al cerrar el resumen. |
+| **Resumir ahora** (dentro del resumen) | Pedirlo otra vez, por ejemplo tras cambiar tus reglas. |
+
+Ten en cuenta:
+
+- Las respuestas son sugerencias de un modelo pequeño: léelas antes de pegar. Puedes describir tu estilo en el archivo de reglas ("contesto corto e informal").
+- Lo que ya viste no se vuelve a resumir ni a anunciar, aunque reinicies Nimbo. Solo vuelve a avisar cuando llega un mensaje nuevo.
+- Los chats silenciados, y los mensajes que llegan con la ventana de WhatsApp al frente, no dejan notificación, así que Nimbo no los ve.
+- Los grupos que marcaste como sin importancia se cuentan, pero nunca suenan.
+- En modo mini los resúmenes se pausan y se ponen al día al salir.
+- Para forzar uno u otro, pon `waModel` en `%APPDATA%\nimbo\prefs.json` con `"claude"` o con el nombre de un modelo de Ollama.
+
+**Privacidad.** Nimbo no tiene servidores ni telemetría: nada llega al autor de Nimbo ni a nadie más. Lee las notificaciones que Windows ya te mostró, con la API oficial de Windows; no abre tu sesión de WhatsApp, no usa librerías no oficiales, y nunca envía ni marca nada como leído en WhatsApp. Con un modelo local el texto se queda en tu PC. Sin él, el texto de esas notificaciones (escrito por otras personas) va a Anthropic a través de **tu** cuenta de Claude, igual que cualquier cosa que le escribes a Claude. Nimbo guarda los mensajes solo en memoria, nunca en disco (en disco solo quedan los números internos de las notificaciones que ya viste, sin texto).
+
+### 6. Iniciar con Windows
+
+Pulsa **Activar** y Nimbo arranca al prender el equipo.
+
+### 7. Tus notas (opcional)
+
+Si tienes tus notas en una carpeta (un vault de Obsidian, por ejemplo), el chat de Nimbo puede leerlas para responder cosas como "¿qué proyectos tengo en pausa?". Agrega la carpeta en `%APPDATA%\nimbo\prefs.json` y reinicia Nimbo:
+
+```json
+{ "vault": "D:\\mis-notas" }
+```
+
+### Si algo no funciona
+
+| Problema | Qué revisar |
+|---|---|
+| La isla no reacciona a mis chats | Conexiones → Claude Code debe estar en verde. Luego reinicia la sesión de Claude Code. |
+| La fila de Claude Code dice "apunta a otra carpeta" | Moviste o reinstalaste Nimbo. Pulsa **Reconectar**. |
+| Falta una píldora | Las píldoras solo aparecen cuando tienen algo: con cero notificaciones o cero tarjetas se ocultan. |
+| WhatsApp dice "Sin vista previa" | Esos chats no dejaron notificación en Windows. Mira el paso 2 de WhatsApp. |
+| Los resúmenes de WhatsApp tardan | Estás usando Claude. Instala Ollama y un modelo pequeño (paso 4 de WhatsApp). |
+| El dictado no hace nada la primera vez | Descarga el modelo de voz una sola vez (unos 76 MB). La isla muestra el avance. |
 
 ## Qué hace
 
@@ -55,23 +167,11 @@ Clic derecho en Nimbo → **Conexiones y ajustes** (la primera vez se abre solo)
 |---|---|
 | Pasar el mouse | Aparecen las píldoras (Chats, Trello, GitHub, WhatsApp, Pendientes). Toca una para ver su detalle. |
 | Un clic | Abre o cierra el chat. |
+| Clic en el botón verde | Abre el resumen de WhatsApp. |
 | Clic derecho | Menú: conexiones, idioma, apariencia, modo mini, WhatsApp, silenciar, salir. |
 | Arrastrar la barra | Lo mueve por el borde de arriba. |
 | Soltar un archivo encima | Se lo "come" y lo adjunta al chat. |
 | `Ctrl+Alt+N` | Modo mini. |
-
-## WhatsApp (opcional, solo lectura)
-
-Apagado por defecto. Nimbo siempre muestra cuántos chats tienes sin leer (lo lee del título de la ventana de WhatsApp de escritorio). Si activas **Leer mensajes de WhatsApp**:
-
-- Lee las notificaciones de WhatsApp que Windows ya te mostró, con la API oficial de Windows. No abre tu sesión de WhatsApp, no usa librerías no oficiales, y nunca envía ni marca nada como leído.
-- Le pasa esos textos a **tu** Claude para que diga quién escribió, qué es trabajo, qué grupos ignorar y qué es urgente. Lo urgente hace sonar una alarma roja, distinta.
-- Tú defines qué es trabajo y qué grupos ignorar en un archivo de texto: clic derecho → **Reglas de WhatsApp**.
-- **¿Lo quieres 100 % local?** Si [Ollama](https://ollama.com) está abierto con un modelo de texto pequeño (por ejemplo `ollama pull llama3.2:3b`), Nimbo lo usa en vez de Claude: cerca de un segundo por chat, sin gastar tokens, y los mensajes no salen de tu PC (si el modelo local falla, ese chat queda sin etiqueta; no se manda a Claude). El panel Conexiones muestra quién está resumiendo.
-
-Quién ve tus mensajes: solo tu propio Claude. Nimbo no tiene servidores ni telemetría, así que nada llega al autor de Nimbo ni a nadie más. Al activarlo, el texto de esas notificaciones (escrito por otras personas) se envía a Anthropic a través de **tu** cuenta de Claude para clasificarlo, igual que cualquier cosa que le escribes a Claude. Nimbo lo guarda solo en memoria, nunca en disco, y lo olvida cuando WhatsApp marca todo como leído. Solo ve los chats que dejaron notificación (los silenciados no).
-
-Está apagado hasta que tú lo actives, y se apaga con un clic.
 
 ## Seguridad
 
@@ -80,7 +180,7 @@ Nimbo se sienta entre tú y los permisos de Claude Code, así que esto importa:
 - El servidor local solo escucha en `127.0.0.1` y solo acepta mensajes firmados (HMAC-SHA256) por `hook.js` con un secreto que cambia en cada arranque. Una página web u otro programa no puede aprobar comandos por ti.
 - La tarjeta de permiso muestra el comando o el cambio completo. Lee antes de permitir.
 - El chat de Nimbo solo puede leer archivos. Para cambiar algo en un proyecto, te propone un prompt y lo envía únicamente cuando haces clic.
-- Los resúmenes de Trello y WhatsApp corren sin herramientas: un texto ajeno no puede hacer que Claude ejecute nada.
+- Los resúmenes de Trello y WhatsApp corren sin herramientas: un texto ajeno no puede hacer que un modelo ejecute nada.
 - Nimbo no guarda contraseñas, tokens ni API keys. GitHub usa tu sesión de `gh`; Trello, el conector de tu Claude.
 
 Si encuentras un problema de seguridad, abre un issue.

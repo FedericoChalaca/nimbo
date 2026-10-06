@@ -151,6 +151,22 @@ una tarjeta vence en < 24 h.
   al modelo que agrupe o que devuelva nombres/ids: llama3.2:3b mezclaba chats y marcaba todo urgente.
 - Medido el 2026-10-05 con 12 casos inventados (`wa-eval` en el historial): llama3.2:3b en una GTX 1650 →
   urgencia 12/12, todo correcto 10/12, ~1 s por chat (9 s el primero, mientras carga); Haiku → 12/12, 21 s.
+- Que se VEA (el usuario creía que no resumía): botón propio en la barra (`#waBtn`: chats que esperan, gira
+  mientras resume, rojo si hay urgente; clic = abre el resumen), etiqueta "WhatsApp · resumiendo…" mientras
+  trabaja y, al terminar, el resumen sale solo 7 s (`state.busy` / `state.last` / `state.brain`). En la vista:
+  quién resumió y "Resumir ahora" (`wa.refresh()`).
+- Lo ya visto no vuelve: `dismiss()` (botón "Visto", "Abrir WhatsApp", o cerrar el resumen tras ≥ 2 s a la
+  vista: `waViewed()`) guarda los ids en `%APPDATA%
+imbowhatsapp-vistos.json` (solo números, sin texto;
+  también los ids cuya alarma ya sonó). Al arrancar, lo que seguía pendiente se resume en silencio
+  (`state.quiet`). Con lectura activa, el botón y la píldora cuentan chats con resumen sin ver, no el título.
+- Respuesta sugerida: campo `reply` del veredicto (va al FINAL del JSON: primero decide, después redacta;
+  puesto antes, el modelo local dejaba de respetar los grupos ignorados). Se muestra con "Copiar"
+  (`clipboard` en main). Nimbo nunca escribe en WhatsApp.
+- `labeled` distingue "Nuevo" (sin resumir) de "Otro" (resumido como otro). `NIMBO_DEBUG=1` imprime el tipo
+  de error de Ollama (nunca texto).
+- Al depurar, NO imprimir `label.textContent` ni capturar la isla con datos reales: ahí sale el resumen de un
+  mensaje privado. Para ver la interfaz, inyectar un estado inventado con `onWhatsapp({...})`.
 - En modo mini no se clasifica (el modelo local ocuparía la tarjeta de video mientras se juega); al salir,
   `wa.poke()` se pone al día. El modelo se descarga de memoria a los 3 min (`keep_alive`).
 - Las llamadas a `claude -p` de WhatsApp y Trello llevan `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`: sin
@@ -183,7 +199,7 @@ tarjetas; tocarlo lo devuelve. **Temas**: JARVIS (por defecto) o Nube, en el men
 **Conexiones y ajustes** (`#setup`, menú o primera vez con `prefs.onboarded` en false): una fila por conexión
 (Claude Code, nombre, GitHub, Trello, WhatsApp, iniciar con Windows) con punto verde/ámbar y su botón.
 `main.js`: `setup` devuelve el estado y `setup-do` ejecuta UNA acción de una lista fija (la página nunca manda
-URLs ni rutas). Los hooks se instalan desde ahí con `install-hooks.js` (`status/install/uninstall`).
+URLs ni rutas; "Guía" abre la sección "Conectar todo" del README en el idioma de la interfaz). Los hooks se instalan desde ahí con `install-hooks.js` (`status/install/uninstall`).
 
 **Instalador** (`npm run dist`, electron-builder, NSIS por usuario → `dist/Nimbo-Setup.exe`, sin firmar).
 `asar: false`: `hook.js` tiene que ser un archivo real y el código queda editable. La app instalada no exige

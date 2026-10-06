@@ -1,6 +1,6 @@
 // Nimbo: ventana transparente arriba de la pantalla + servidor local que recibe
 // los hooks de Claude Code y se los pasa al personaje.
-const { app, BrowserWindow, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification } = require("electron");
+const { app, BrowserWindow, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard } = require("electron");
 const { execFile } = require("child_process");
 const { pathToFileURL } = require("url");
 const crypto = require("crypto");
@@ -261,6 +261,7 @@ ipcMain.on("open-url", (_e, url) => {
 let whatsapp = null; // { running, access, count, chats, headline }
 const wa = createWhatsapp({
   rulesFile: path.join(app.getPath("userData"), "whatsapp-reglas.txt"),
+  seenFile: path.join(app.getPath("userData"), "whatsapp-vistos.json"), // solo números de notificación, sin texto
   lang,
   model: () => prefs.waModel, // "" automático · "claude" · o un modelo de Ollama
   paused: () => mini,
@@ -279,6 +280,10 @@ function watchWhatsapp() {
 }
 app.on("before-quit", () => waChild?.kill());
 ipcMain.on("open-whatsapp", () => shell.openExternal("whatsapp://"));
+ipcMain.on("whatsapp-refresh", () => wa.refresh());
+ipcMain.on("whatsapp-dismiss", () => wa.dismiss());
+// Copiar la respuesta sugerida: Nimbo no escribe en WhatsApp, tú la pegas si te sirve.
+ipcMain.on("copy", (_e, text) => clipboard.writeText(String(text ?? "").slice(0, 500)));
 
 // --- Trello: a través de tu claude (conector de claude.ai), solo lectura, cada 30 min ---
 const trello = createTrello(path.join(app.getPath("userData"), "trello.json"));
@@ -344,7 +349,11 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
       case "whatsapp": prefs.whatsappRead = value === true; savePrefs(); watchWhatsapp(); break;
       case "whatsapp-rules": shell.openPath(wa.rulesFile); break;
       case "trello": await refreshTrello(); break;
-      case "open": if (Object.hasOwn(LINKS, value)) shell.openExternal(LINKS[value]); break;
+      case "open":
+        // "guide" = la guía de conexiones del README, en el idioma de la interfaz.
+        if (value === "guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#conectar-todo" : "README.md#connect-everything"}`);
+        else if (Object.hasOwn(LINKS, value)) shell.openExternal(LINKS[value]);
+        break;
       case "done": prefs.onboarded = true; savePrefs(); break;
     }
   } catch (e) {

@@ -68,6 +68,24 @@
   @keyframes shine { from { background-position: 130% 0; } to { background-position: -130% 0; } }
   #measure { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: nowrap; font-weight: 500;
     font-size: 13.5px; font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+  /* Botón de WhatsApp en la barra: chats sin leer; late mientras se resume; rojo si hay algo urgente */
+  #waBtn { flex: none; position: relative; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px; background: #25d366; color: #05270f;
+    font: 800 12px "Segoe UI Variable Text", "Segoe UI", sans-serif; animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both; }
+  #waBtn:hover { filter: brightness(1.15); }
+  #waBtn.urgent { background: #ff4d4f; color: #fff; }
+  #waBtn.busy::after { content: ""; position: absolute; inset: -4px; border-radius: 999px; border: 2px solid transparent;
+    border-top-color: #25d366; border-right-color: #25d366; animation: spin .8s linear infinite; }
+  #waBtn.urgent.busy::after { border-top-color: #ff4d4f; border-right-color: #ff4d4f; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .afoot.row { display: flex; align-items: center; gap: 6px; }
+  .afoot.row button { padding: 3px 10px; font-size: 11px; }
+  .afoot.row button:first-of-type { margin-left: auto; }
+  .ahead button + button { margin-left: 6px; }
+  /* Respuesta sugerida, debajo de su chat */
+  .areply { display: flex; align-items: center; gap: 8px; margin: -3px 6px 5px 12px; padding-left: 10px; border-left: 2px solid rgba(37, 211, 102, .45);
+    font-size: 12px; color: #c9cdd6; }
+  .areply span { flex: 1; min-width: 0; user-select: text; }
+  .areply button { flex: none; padding: 3px 10px; font-size: 11px; }
   #pips { display: flex; gap: 5px; flex: none; }
   #pips:empty { display: none; }
   .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--c, #888);
@@ -553,6 +571,7 @@
       </div>
       <div id="bar">
         <div id="ticker"><span id="label"></span></div>
+        <button id="waBtn" class="hidden" type="button" title="Resumen de WhatsApp"></button>
         <div id="pips"></div>
         <div id="progress"><i></i></div>
       </div>
@@ -629,6 +648,7 @@ const svg = document.querySelector("#char svg");
 const wrap = document.getElementById("wrap");
 const content = document.getElementById("content");
 const pips = document.getElementById("pips");
+const waBtn = document.getElementById("waBtn");
 const measure = document.getElementById("measure");
 const badge = document.getElementById("badge");
 
@@ -661,7 +681,7 @@ function layout() {
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
     measure.textContent = text;
-    const pipsW = pips.children.length ? pips.children.length * 12 + 6 : 0;
+    const pipsW = (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10);
     // El texto ocupa lo que quepa (el resto se corta con "…"): la isla no pasa de MAX_W.
     const textW = text ? Math.min(measure.offsetWidth, 270, MAX_W - 116 - 12 - pipsW - 16) : 0;
     w = text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150;
@@ -918,7 +938,16 @@ function recordStep(s, p) {
 
 // --- Vista en vivo: el chat que más recientemente hizo algo ---
 const liveBox = document.getElementById("live");
+// Cuándo se abrió el resumen de WhatsApp (0 = cerrado). Al cerrarlo después de haberlo tenido
+// a la vista al menos 2 s, cuenta como leído y esos mensajes no vuelven a salir.
+let waOpenedAt = 0;
+function waViewed() {
+  const read = waOpenedAt && Date.now() - waOpenedAt > 2000 && whatsapp?.read && !whatsapp.busy && whatsapp.chats.length;
+  waOpenedAt = 0;
+  if (read) api.whatsappDismiss();
+}
 function hidePanel() {
+  if (openApp === "wa") waViewed();
   sessionBox.classList.add("hidden");
   liveBox.classList.add("hidden");
   appsBox.classList.add("hidden");
@@ -1048,7 +1077,13 @@ function renderApps() {
     p.type = "button";
     p.style.setProperty("--c", a.color);
     p.append(miniCloud(a.color), el("span", "", a.name), el("b", "", String(a.count)));
-    p.onclick = () => { openApp = openApp === a.id ? null : a.id; renderApps(); renderAppView(); };
+    p.onclick = () => {
+      if (openApp === "wa") waViewed();
+      openApp = openApp === a.id ? null : a.id;
+      if (openApp === "wa") waOpenedAt = Date.now();
+      renderApps();
+      renderAppView();
+    };
     return p;
   }));
 }
@@ -1102,23 +1137,49 @@ function renderAppView() {
     head.append(el("span", "sub", chats.length ? `${chats.length} ${chats.length === 1 ? "chat" : "chats"}` : t("{0} sin leer", waCount())));
     const open = el("button", "open allow", t("Abrir WhatsApp"));
     open.type = "button";
-    open.onclick = () => api.openWhatsapp();
+    open.onclick = () => { api.openWhatsapp(); if (whatsapp.read) { waOpenedAt = 0; api.whatsappDismiss(); } };
     head.append(open);
     if (whatsapp.headline) rows.push(el("div", "afoot", whatsapp.headline));
     const CHIP = { trabajo: ["blue", t("Trabajo")], personal: ["green", "Personal"], grupo: ["purple", t("Grupo")], otro: ["", t("Nuevo")] };
     for (const c of chats.slice(0, 7)) {
       const r = el("div", `arow${c.urgent ? " urgent" : ""}`);
-      const [color, text] = c.urgent ? ["red", t("Urgente")] : CHIP[c.kind] ?? CHIP.otro;
+      // "Nuevo" = todavía sin resumir; "Otro" = resumido y no es trabajo, personal ni grupo.
+      const [color, text] = c.urgent ? ["red", t("Urgente")] : c.kind === "otro" && c.labeled ? ["", t("Otro")] : CHIP[c.kind] ?? CHIP.otro;
       const name = el("span", "name");
       name.append(el("b", "", c.n > 1 ? `${c.name} (${c.n})` : c.name), el("i", "", c.summary));
       name.title = c.summary;
       r.append(el("span", `chip2 ${color}`, text), name);
       rows.push(r);
+      if (c.reply) {
+        // Sugerencia para contestar: se copia y la pegas tú en WhatsApp (Nimbo no envía nada).
+        const line = el("div", "areply");
+        const copy = el("button", "", t("Copiar"));
+        copy.type = "button";
+        copy.title = t("Copia la respuesta sugerida para pegarla en WhatsApp");
+        copy.onclick = () => { api.copy(c.reply); copy.textContent = t("Copiado ✓"); setTimeout(() => (copy.textContent = t("Copiar")), 1500); };
+        line.append(el("span", "", `↩ ${c.reply}`), copy);
+        rows.push(line);
+      }
     }
     if (ignored.length) rows.push(el("div", "afoot", t("Ignorados: {0}", ignored.map((c) => `${c.name} (${c.n})`).join(", ")).slice(0, 150)));
     if (!whatsapp.read) rows.push(el("div", "afoot", t("Para ver quién escribe y qué es urgente: clic derecho en Nimbo > Leer mensajes de WhatsApp.")));
     else if (!whatsapp.access) rows.push(el("div", "afoot", t("Falta permiso: Configuración de Windows > Privacidad > Notificaciones.")));
     else if (!whatsapp.chats.length && whatsapp.count) rows.push(el("div", "afoot", t("Sin vista previa: esos chats no dejaron notificación en Windows.")));
+    if (whatsapp.read && whatsapp.chats.length) {
+      // Quién resumió (o que está en eso) y un botón para pedirlo de nuevo.
+      const foot = el("div", "afoot row", whatsapp.busy ? t("Resumiendo…") : !whatsapp.brain ? t("Aún sin resumir.")
+        : whatsapp.brain === "claude" ? t("Resumido por tu Claude.") : t("Resumido en tu equipo por {0}.", whatsapp.brain));
+      const again = el("button", "", t("Resumir ahora"));
+      again.type = "button";
+      again.disabled = whatsapp.busy === true;
+      again.onclick = () => api.whatsappRefresh();
+      const seenBtn = el("button", "allow", t("Visto"));
+      seenBtn.type = "button";
+      seenBtn.title = t("Ya lo leí: cerrar y no volver a mostrarlo");
+      seenBtn.onclick = () => { waOpenedAt = 0; api.whatsappDismiss(); openApp = null; renderApps(); renderAppView(); };
+      foot.append(again, seenBtn);
+      rows.push(foot);
+    }
   } else if (app.id === "pend") {
     head.append(el("span", "sub", t("tus recordatorios")));
     for (const p of pendingList.slice(0, 6)) {
@@ -1140,12 +1201,45 @@ let whatsapp = null; // { running, access, count, chats: [{ name, kind, urgent, 
 const waChats = () => (whatsapp?.chats ?? []).filter((c) => !c.ignore).sort((a, b) => b.urgent - a.urgent);
 // Con notificaciones: los chats que importan (los grupos ignorados no cuentan). Sin ellas: el
 // número del título de la ventana.
-const waCount = () => (whatsapp?.chats.length ? waChats().length : whatsapp?.count ?? 0);
+const waCount = () => (whatsapp?.read || whatsapp?.chats.length ? waChats().length : whatsapp?.count ?? 0);
 let urgentTimer;
 api.onWhatsapp(onWhatsapp);
+// Abre de una el resumen de WhatsApp (lo mismo que pasar el mouse y tocar su píldora).
+function openWaSummary() {
+  if (mini || !card.classList.contains("hidden")) return;
+  lastActivity = Date.now();
+  toggleChat(false);
+  appsBox.classList.remove("hidden");
+  if (openApp === "wa") waViewed();
+  openApp = openApp === "wa" ? null : "wa";
+  if (openApp === "wa") waOpenedAt = Date.now();
+  renderApps();
+  renderAppView();
+}
+const WA_BUSY = () => t("WhatsApp · resumiendo…");
 function onWhatsapp(d, alert) {
   const was = whatsapp ? waCount() : null;
+  const wasBusy = whatsapp?.busy === true;
   whatsapp = d;
+  // El botón de la barra: cuántos chats te esperan, girando mientras se resume.
+  const n = waCount();
+  const showBtn = d.read === true && (n > 0 || d.busy === true);
+  if (showBtn === waBtn.classList.contains("hidden")) { waBtn.classList.toggle("hidden", !showBtn); relayout(); }
+  waBtn.textContent = n > 0 ? String(n) : "";
+  waBtn.classList.toggle("busy", d.busy === true);
+  waBtn.classList.toggle("urgent", waChats().some((c) => c.urgent));
+  if (!alert && !mini && !d.quiet && !root.classList.contains("wa-urgent")) {
+    if (d.busy && !wasBusy) {
+      // Igual que un chat de Claude trabajando: se ve que está en eso.
+      setLabel(WA_BUSY());
+      label.classList.add("show");
+      relayout();
+    } else if (!d.busy && wasBusy) {
+      // Terminó: el resumen sale solo unos segundos (si todo era ruido de grupos, no dice nada).
+      if (d.last) setState(state, `WhatsApp · ${d.last.name}: ${d.last.summary}`.slice(0, 90), { labelFor: 7000 });
+      else if (label.textContent === WA_BUSY()) { label.classList.remove("show"); relayout(); }
+    }
+  }
   if (alert && !mini) {
     // Urgente: alarma roja, tres avisos y el mensaje fijo 12 s (nada que ver con el saludo normal).
     root.classList.add("wa-urgent");
@@ -1154,10 +1248,10 @@ function onWhatsapp(d, alert) {
     [0, 450, 900].forEach((ms) => setTimeout(SOUNDS.needs, ms));
     setState("needs", `🚨 ${alert.name}: ${alert.summary}`.slice(0, 90), { labelFor: 12000, back: 12000 });
   } else if (was !== null && waCount() > was && !mini) {
-    const last = waChats().at(-1);
+    // Llegó un mensaje: saluda. El texto lo pone el resumen cuando esté (arriba).
     emote("hello", 1600);
     SOUNDS.hello();
-    setState(state, (last ? `WhatsApp · ${last.name}${last.summary ? ": " + last.summary : ""}` : `WhatsApp: ${t("{0} sin leer", waCount())}`).slice(0, 90), { labelFor: 5000 });
+    if (!d.busy && !d.read) setState(state, `WhatsApp: ${t("{0} sin leer", waCount())}`, { labelFor: 5000 });
   }
   renderApps();
   if (openApp === "wa") renderAppView();
@@ -1360,7 +1454,7 @@ function renderSetup(s) {
   const close = el("button", "allow", t("Listo"));
   close.type = "button";
   close.onclick = () => { api.setupDo("done"); closeSetup(); };
-  head.append(el("b", "", t("Conexiones")), el("span", "sub", t("lo que Nimbo puede ver")), close);
+  head.append(el("b", "", t("Conexiones")), el("span", "sub", t("lo que Nimbo puede ver")), btn(t("Guía"), "open", "guide"), close);
 
   const name = el("input");
   name.value = s.name;
@@ -1418,6 +1512,7 @@ const emoting = () => /emote-/.test(root.className);
 let clicks = 0;
 let clickTimer;
 wrap.addEventListener("click", (e) => {
+  if (e.target.closest("#waBtn")) return openWaSummary();
   // composedPath y no closest(): una píldora se redibuja en su propio clic, y para cuando el
   // evento llega aquí el botón ya no está en la página (closest daba null y se abría el chat).
   if (e.composedPath().includes(content) || suppressClick) return;
