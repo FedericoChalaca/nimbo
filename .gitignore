@@ -7,3 +7,4 @@ RESUMEN-*.md
 promo/*.mp4
 promo/*.webm
 dist/
+!promo/nimbo-intro.mp4

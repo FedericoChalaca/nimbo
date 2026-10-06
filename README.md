@@ -6,6 +6,10 @@ A floating companion for [Claude Code](https://claude.com/claude-code) on Window
 
 No API key: it uses the `claude` you already have installed and signed in.
 
+[![Watch the 10-second intro](promo/nimbo-intro.jpg)](promo/nimbo-intro.mp4)
+
+*▶ Click to watch the intro (10 s, Spanish captions). It is an AI-generated concept video; the real interface is the one below.*
+
 ![Nimbo in action](promo/nimbo.gif)
 
 ## Install

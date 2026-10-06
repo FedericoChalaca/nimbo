@@ -6,6 +6,10 @@ Un compañero flotante para [Claude Code](https://claude.com/claude-code) en Win
 
 No necesita API key: usa el `claude` que ya tienes instalado y con sesión iniciada.
 
+[![Mira la intro de 10 segundos](promo/nimbo-intro.jpg)](promo/nimbo-intro.mp4)
+
+*▶ Haz clic para ver la intro (10 s). Es un video conceptual generado con IA; la interfaz real es la de abajo.*
+
 ![Nimbo en acción](promo/nimbo.gif)
 
 ## Instalar
