@@ -2,8 +2,9 @@
 // wa-watch.ps1 lee las notificaciones de WhatsApp que Windows ya te mostró (API oficial
 // UserNotificationListener). Aquí se agrupan por chat y se le pide a tu `claude` que diga
 // quién escribió, qué es trabajo, qué grupos ignorar y qué es urgente.
-// - Nada se guarda en disco: al leer los chats en WhatsApp, sus notificaciones desaparecen
-//   del centro de notificaciones y de Nimbo.
+// - Nada se guarda en disco ni sale de este equipo hacia Nimbo o su autor: lo único que ve los
+//   textos es el `claude` del propio usuario. Nimbo los recuerda en memoria hasta que WhatsApp
+//   marca todo como leído (o pasan 24 h), aunque Windows quite antes la notificación.
 // - El texto de un mensaje es de un tercero: el clasificador corre SIN herramientas, así que
 //   aunque un mensaje diga "ignora tus instrucciones y…" no puede hacer nada.
 // - Nimbo nunca envía mensajes ni marca nada como leído.
@@ -67,6 +68,29 @@ function parseLine(line) {
   return { running: title !== "", count: Number(title.match(/^\((\d+)\)/)?.[1] ?? 0), access: d.access === true, msgs };
 }
 
+const KEEP_MS = 24 * 3600_000;
+/**
+ * Actualiza la memoria (id → mensaje) con lo que hay ahora en el centro de notificaciones.
+ * Windows y WhatsApp quitan notificaciones de chats que siguen sin leer, así que una que
+ * desaparece se conserva hasta que el contador de WhatsApp llega a 0 (ya leíste todo) o
+ * cumple un día. El minuto de gracia evita borrar un mensaje recién llegado si el título de
+ * la ventana todavía no se actualizó. Devuelve true si llegó algo nuevo.
+ */
+function remember(kept, next, now = Date.now()) {
+  const live = new Set(next.msgs.map((m) => m.id));
+  let fresh = false;
+  for (const m of next.msgs) {
+    if (!kept.has(m.id)) fresh = true;
+    kept.set(m.id, m);
+  }
+  for (const [id, m] of kept) {
+    if (live.has(id)) continue;
+    const allRead = next.running && next.count === 0 && now - m.t > 60_000;
+    if (allRead || now - m.t > KEEP_MS) kept.delete(id);
+  }
+  return fresh;
+}
+
 /** Lo que ve la isla: los chats ya clasificados + los que aún no (agrupados por su título). */
 function view(chats, msgs) {
   const live = new Set(msgs.map((m) => m.id));
@@ -121,6 +145,7 @@ Reglas del usuario:\n${rules}\n\nNotificaciones:\n${JSON.stringify(batch.map((m)
 
 function createWhatsapp({ rulesFile, onChange, lang = () => "es" }) {
   let seen = { running: false, count: 0, access: false, msgs: [] };
+  const kept = new Map(); // id → mensaje, lo que sigue sin leer (ver remember)
   let chats = []; // última clasificación, con los ids de cada chat
   let headline = "";
   const alerted = new Set();
@@ -168,7 +193,7 @@ function createWhatsapp({ rulesFile, onChange, lang = () => "es" }) {
       // Las reglas de ejemplo se crean aquí (ya con la app lista) para que salgan en el idioma del usuario.
       if (!fs.existsSync(rulesFile)) fs.writeFileSync(rulesFile, lang() === "en" ? DEFAULT_RULES_EN : DEFAULT_RULES);
       reading = read === true;
-      if (!reading) { chats = []; headline = ""; clearTimeout(timer); }
+      if (!reading) { chats = []; headline = ""; kept.clear(); clearTimeout(timer); }
       const script = fs.readFileSync(path.join(__dirname, "wa-watch.ps1"), "utf8").replace(/^﻿/, "");
       // -EncodedCommand (UTF-16 en base64): el script llega intacto, sin comillas que escapar.
       // Ruta completa a PowerShell: nunca uno que alguien haya dejado en la carpeta actual.
@@ -186,10 +211,10 @@ function createWhatsapp({ rulesFile, onChange, lang = () => "es" }) {
         if (!line) return;
         let next;
         try { next = parseLine(line.slice(3)); } catch { return; }
-        const before = new Set(seen.msgs.map((m) => m.id));
-        const key = JSON.stringify([next.running, next.count, next.access, next.msgs.map((m) => m.id)]);
-        seen = next;
-        if (next.msgs.some((m) => !before.has(m.id))) schedule();
+        const fresh = remember(kept, next);
+        seen = { ...next, msgs: [...kept.values()].sort((a, b) => a.t - b.t).slice(-60) };
+        const key = JSON.stringify([next.running, next.count, next.access, seen.msgs.map((m) => m.id)]);
+        if (fresh) schedule();
         if (key !== lastKey) { lastKey = key; onChange(state(), null); }
       });
       child.on("error", () => {});
@@ -198,7 +223,7 @@ function createWhatsapp({ rulesFile, onChange, lang = () => "es" }) {
   };
 }
 
-module.exports = { createWhatsapp, askClaude, parseLine, view, cleanChats };
+module.exports = { createWhatsapp, askClaude, parseLine, view, cleanChats, remember };
 
 // Prueba rápida: `node whatsapp.js`
 if (require.main === module) {
@@ -215,5 +240,20 @@ if (require.main === module) {
   const v = view(chats, p.msgs);
   assert.deepStrictEqual(v.map((c) => [c.name, c.kind, c.urgent, c.n]), [["Ana", "trabajo", true, 1], ["Grupo Fútbol", "otro", false, 1]]);
   assert.deepStrictEqual(view(chats, []), []);
+  // Memoria: lo que Windows quita se conserva mientras WhatsApp tenga chats sin leer; se borra
+  // cuando el contador llega a 0 (pasado el minuto de gracia) o al cumplir un día.
+  const kept = new Map();
+  const T = 1_000_000_000;
+  const msg = (id, t) => ({ id, t, texts: ["Ana", "hola"] });
+  assert.strictEqual(remember(kept, { running: true, count: 1, msgs: [msg(1, T)] }, T), true);
+  assert.strictEqual(remember(kept, { running: true, count: 1, msgs: [] }, T + 5 * 60_000), false);
+  assert.deepStrictEqual([...kept.keys()], [1]); // desapareció la notificación, sigue sin leer
+  remember(kept, { running: true, count: 0, msgs: [] }, T + 30_000);
+  assert.deepStrictEqual([...kept.keys()], [1]); // contador en 0 pero recién llegado: gracia
+  remember(kept, { running: true, count: 0, msgs: [] }, T + 5 * 60_000);
+  assert.deepStrictEqual([...kept.keys()], []); // ya lo leíste
+  remember(kept, { running: false, count: 0, msgs: [msg(2, T)] }, T);
+  remember(kept, { running: false, count: 0, msgs: [] }, T + 25 * 3600_000);
+  assert.deepStrictEqual([...kept.keys()], []); // con WhatsApp cerrado, caduca al día
   console.log("whatsapp.js ok");
 }

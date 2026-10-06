@@ -1,5 +1,5 @@
 # Nimbo · WhatsApp de escritorio, SOLO LECTURA.
-# Cada 10 s escribe una línea "wa:{json}" con:
+# Cada 3 s escribe una línea "wa:{json}" con:
 #   title  → título de la ventana de WhatsApp ("(3) WhatsApp" = 3 chats sin leer; "" = cerrada)
 #   access → si se pueden leer notificaciones: lo activaste en Nimbo (NIMBO_WA_READ=1) y
 #            Windows lo permite (Configuración > Privacidad > Notificaciones)
@@ -38,11 +38,13 @@ if ($env:NIMBO_WA_READ -eq '1') { try {
   $access = "$status" -eq 'Allowed'
 } catch {} }
 
+$title = ''
+$tick = 0
 while ($true) {
-  $title = ''
-  try {
+  # El título cambia poco y listar procesos cuesta más: se mira una de cada 4 vueltas.
+  if ($tick++ % 4 -eq 0) { $title = ''; try {
     $title = "$((Get-Process | Where-Object { $_.MainWindowTitle -match '^(\(\d+\)\s*)?WhatsApp$' } | Select-Object -First 1).MainWindowTitle)"
-  } catch {}
+  } catch {} }
   $msgs = @()
   if ($access) {
     try {
@@ -58,5 +60,5 @@ while ($true) {
   }
   $line = @{ title = $title; access = $access; msgs = @($msgs) } | ConvertTo-Json -Compress -Depth 4
   try { [Console]::Out.WriteLine('wa:' + $line); [Console]::Out.Flush() } catch { break }
-  Start-Sleep -Seconds 10
+  Start-Sleep -Seconds 3
 }

@@ -61,7 +61,9 @@ Apagado por defecto. Nimbo siempre muestra cuántos chats tienes sin leer (lo le
 - Le pasa esos textos a **tu** Claude para que diga quién escribió, qué es trabajo, qué grupos ignorar y qué es urgente. Lo urgente hace sonar una alarma roja, distinta.
 - Tú defines qué es trabajo y qué grupos ignorar en un archivo de texto: clic derecho → **Reglas de WhatsApp**.
 
-Ten en cuenta: al activarlo, el texto de esas notificaciones (escrito por otras personas) se envía a Anthropic a través de tu cuenta de Claude para clasificarlo. Nimbo no lo guarda en disco. Solo ve los chats que dejaron notificación (los silenciados no).
+Quién ve tus mensajes: solo tu propio Claude. Nimbo no tiene servidores ni telemetría, así que nada llega al autor de Nimbo ni a nadie más. Al activarlo, el texto de esas notificaciones (escrito por otras personas) se envía a Anthropic a través de **tu** cuenta de Claude para clasificarlo, igual que cualquier cosa que le escribes a Claude. Nimbo lo guarda solo en memoria, nunca en disco, y lo olvida cuando WhatsApp marca todo como leído. Solo ve los chats que dejaron notificación (los silenciados no).
+
+Está apagado hasta que tú lo actives, y se apaga con un clic.
 
 ## Seguridad
 

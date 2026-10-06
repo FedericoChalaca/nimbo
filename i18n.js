@@ -128,7 +128,7 @@ const NIMBO_EN = {
   "Resume quién te escribió y avisa lo urgente.": "Summarizes who wrote and flags what is urgent.",
   "Reglas": "Rules",
   "Apagar": "Turn off",
-  "Opcional: tu Claude resume tus notificaciones de WhatsApp.": "Optional: your Claude summarizes your WhatsApp notifications.",
+  "Opcional: tu propio Claude resume tus mensajes. Nada pasa por Nimbo ni por su autor.": "Optional: your own Claude summarizes your messages. Nothing goes through Nimbo or its author.",
   "Activar": "Turn on",
   "Iniciar con Windows": "Start with Windows",
   "Nimbo arranca al prender el equipo.": "Nimbo starts when you log in.",

@@ -1,6 +1,6 @@
 {
   "name": "nimbo",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Un compañero flotante para Claude Code en Windows: ve qué hacen tus chats, aprueba permisos y habla con tu Claude",
   "main": "main.js",
   "private": true,

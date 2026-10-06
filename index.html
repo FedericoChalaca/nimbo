@@ -25,7 +25,7 @@
   /* ── La isla ──────────────────────────────────────────────────────────────
      Cuelga del borde de arriba. Crece con rebote (resorte) y encoge rápido sin
      rebote (.closing): misma asimetría que usan las islas de referencia. */
-  #wrap { position: absolute; top: 0; left: calc(var(--f, .5) * 100%); transform: translateX(calc(var(--f, .5) * -100%));
+  #wrap { position: absolute; top: 0; left: calc(14px + var(--f, .5) * (100% - 28px)); transform: translateX(calc(var(--f, .5) * -100%));
     width: var(--w, 112px); height: var(--h, 52px);
     transition: width .52s cubic-bezier(.32, 1.22, .42, 1), height .52s cubic-bezier(.32, 1.22, .42, 1),
       transform .75s cubic-bezier(.34, 1.56, .64, 1); }
@@ -636,6 +636,9 @@ const badge = document.getElementById("badge");
 // Compacta: se ajusta al largo del texto (como una "isla dinámica"). Abierta: crece hasta el
 // contenido. Crecer usa resorte con rebote; encoger, la clase .closing (rápido, sin rebote).
 const BAR_H = 68;
+// La ventana mide 440 y a cada lado de la isla va una esquina invertida de 14: más ancha que
+// esto, la ventana la recorta y pierde las curvas.
+const MAX_W = 412;
 let lastSize = { w: 0, h: 0 };
 function layout() {
   layoutQueued = 0;
@@ -643,9 +646,9 @@ function layout() {
   if (root.classList.contains("dropping")) {
     root.classList.remove("open", "solo");
     wrap.classList.remove("closing");
-    wrap.style.setProperty("--w", "420px");
+    wrap.style.setProperty("--w", `${MAX_W}px`);
     wrap.style.setProperty("--h", "152px");
-    lastSize = { w: 420, h: 152 };
+    lastSize = { w: MAX_W, h: 152 };
     return;
   }
   const open = [...content.children].some((e) => !e.classList.contains("hidden"));
@@ -653,13 +656,14 @@ function layout() {
   if (open) root.classList.remove("solo");
   let w, h;
   if (open) {
-    w = 420;
+    w = MAX_W;
     h = Math.min(470, BAR_H + content.offsetHeight + 14);
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
     measure.textContent = text;
-    const textW = text ? Math.min(measure.offsetWidth, 270) : 0;
     const pipsW = pips.children.length ? pips.children.length * 12 + 6 : 0;
+    // El texto ocupa lo que quepa (el resto se corta con "…"): la isla no pasa de MAX_W.
+    const textW = text ? Math.min(measure.offsetWidth, 270, MAX_W - 116 - 12 - pipsW - 16) : 0;
     w = text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150;
     h = BAR_H;
     if (state === "sleeping") { w = 132; h = 60; }
@@ -1375,7 +1379,7 @@ function renderSetup(s) {
   const trello = s.trello !== null ? row(true, "Trello", t(s.trello === 1 ? "Conectado: {0} pendiente." : "Conectado: {0} pendientes.", s.trello), btn(t("Actualizar"), "trello"))
     : row(null, "Trello", t("Opcional: activa el conector de Trello en claude.ai y pulsa Probar (tarda 1 min)."), btn("claude.ai", "open", "connectors"), btn(t("Probar"), "trello"));
   const wa = s.whatsappRead ? row(true, "WhatsApp", t("Resume quién te escribió y avisa lo urgente."), btn(t("Reglas"), "whatsapp-rules"), btn(t("Apagar"), "whatsapp", false))
-    : row(null, "WhatsApp", t("Opcional: tu Claude resume tus notificaciones de WhatsApp."), btn(t("Activar"), "whatsapp", true));
+    : row(null, "WhatsApp", t("Opcional: tu propio Claude resume tus mensajes. Nada pasa por Nimbo ni por su autor."), btn(t("Activar"), "whatsapp", true));
   const auto = row(s.autostart ? true : null, t("Iniciar con Windows"), s.autostart ? t("Nimbo arranca al prender el equipo.") : t("Que Nimbo arranque solo al prender el equipo."),
     btn(s.autostart ? t("Quitar") : t("Activar"), "autostart", !s.autostart));
 

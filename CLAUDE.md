@@ -134,9 +134,13 @@ una tarjeta vence en < 24 h.
   --no-session-persistence`: el texto de un mensaje es de un tercero y no debe poder nada (probado con un
   mensaje "ignora tus instrucciones…": lo marcó como spam). `--setting-sources project` además evita que
   dispare los hooks de Nimbo.
-- Nada de mensajes en disco: la fuente de verdad es el centro de notificaciones; al leer el chat en
-  WhatsApp, su notificación desaparece y con ella la fila en Nimbo. Solo se ve lo que dejó notificación
-  (chats silenciados o mensajes llegados con WhatsApp en primer plano no).
+- Nada de mensajes en disco. Windows/WhatsApp quitan notificaciones de chats que siguen sin leer, así que
+  `remember()` las conserva en memoria hasta que el contador del título llega a 0 (con 1 min de gracia) o
+  pasan 24 h. Solo se ve lo que dejó notificación (chats silenciados o con WhatsApp en primer plano no).
+- Probado de punta a punta con un mensaje real (2026-10-05): visto a los 2 s, clasificado a los 23 s.
+- Privacidad, no negociable: sigue APAGADO hasta que el usuario lo active (un clic, sin diálogos extra). Lo
+  único que ve los textos es el `claude` del propio usuario; Nimbo no tiene servidores ni telemetría.
+  Al depurar, imprimir solo estructura (cuántos chats, tipo, urgente), nunca nombres ni textos.
 - Nunca envía, ni marca como leído, ni toca la sesión. Nada de puentes no oficiales tipo
   whatsapp-web.js/Baileys: arriesgan el bloqueo del número. No pasar estos resúmenes al orquestador.
 Enlaces: `open-url` solo abre https de trello.com y github.com.
@@ -145,12 +149,14 @@ Ojo: los estilos/selectores del personaje van con `#char svg`, no `svg` a secas 
 **Arrastrar por el borde de arriba.** Se agarra de la barra de la isla (no del contenido); < 6 px sigue
 siendo clic. La página avisa `drag-start` (ancho de la isla y punto de agarre) y `drag-end`; el bucle del
 cursor de `main.js` mueve la ventana y manda `anchor` = `prefs.pos` (0 izquierda … 1 derecha), que la página
-pone en `--f`: la isla se alinea dentro de la ventana según `--f`, por eso llega a las esquinas sin cortarse.
+pone en `--f`: la isla se alinea dentro de la ventana según `--f`, dejando siempre 14 px a cada lado para sus
+esquinas invertidas (`left: 14px + f·(100% − 28px)`; la fórmula del arrastre en `main.js` usa lo mismo).
 Animación: se inclina según la velocidad (`--lean`), estela (`#island::after`), cara de emoción y rebote al
 soltar. El final del arrastre tiene varias redes (pointerup/mouseup en `document`, move con `buttons === 0`,
 `lostpointercapture`, `blur` y un corte a los 30 s en main → `drag-abort`): con una sola se quedaba pegado.
 
-**Tamaños.** Personaje 120×70 (`#char`), barra de 68 px (`BAR_H` en JS y `#bar`/`#content` en CSS: van
+**Tamaños.** La isla nunca pasa de `MAX_W` = 412 (ventana 440 − dos esquinas invertidas de 14): más ancha, la
+ventana la recorta y pierde las curvas (pasó al agrandar el personaje). Personaje 120×70 (`#char`), barra de 68 px (`BAR_H` en JS y `#bar`/`#content` en CSS: van
 juntos). El modelo ocupa ~60 % de su caja: por eso la caja es más alta que la barra.
 
 **Modo mini** (Ctrl+Alt+N o menú): 100×60 en la esquina elegida (se guarda), sin sonidos ni

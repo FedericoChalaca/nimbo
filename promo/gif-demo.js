@@ -3,7 +3,7 @@
 (async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const cb = window.__cb;
-  const S1 = { session_id: "s1", title: "tienda-web", cwd: "D:/proyectos/tienda-web" };
+  const S1 = { session_id: "s1", title: "web-shop", cwd: "D:/projects/web-shop" };
   const hook = (name, extra = {}) => handle({ hook_event_name: name, ...S1, ...extra });
   const pill = (name) => [...appsBox.querySelectorAll(".pill")].find((p) => p.textContent.includes(name));
 
@@ -11,7 +11,7 @@
   await sleep(2600); // entra y saluda
 
   // Un chat trabajando, con su diff en vivo
-  hook("UserPromptSubmit", { prompt: "Agrega modo oscuro al checkout" });
+  hook("UserPromptSubmit", { prompt: "Add dark mode to the checkout" });
   await sleep(1300);
   hook("PreToolUse", { tool_name: "Edit", tool_input: { file_path: "src/checkout/theme.css",
     old_string: "  --bg: #ffffff;", new_string: "  --bg: light-dark(#fff, #0f1115);\n  color-scheme: light dark;" } });
@@ -25,7 +25,7 @@
   await sleep(500);
 
   // Permiso → Permitir → listo
-  cb.permission({ ...S1, rid: "r1", tool_name: "Bash", tool_input: { command: "git push origin feature/modo-oscuro" } });
+  cb.permission({ ...S1, rid: "r1", tool_name: "Bash", tool_input: { command: "git push origin feature/dark-mode" } });
   await sleep(2300);
   document.querySelector("#card .allow").click();
   await sleep(1100);
@@ -34,8 +34,8 @@
 
   // WhatsApp urgente
   onWhatsapp({ running: true, read: true, access: true, count: 1, headline: "", chats: [
-    { name: "Laura", kind: "trabajo", urgent: true, ignore: false, summary: "El checkout está caído", n: 2 }] },
-    { name: "Laura", summary: "El checkout está caído" });
+    { name: "Laura", kind: "trabajo", urgent: true, ignore: false, summary: "The checkout is down", n: 2 }] },
+    { name: "Laura", summary: "The checkout is down" });
   await sleep(2600);
   root.classList.remove("wa-urgent");
   setState("idle");

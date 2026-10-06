@@ -116,11 +116,12 @@ function createWindow() {
     if (drag) {
       // La isla se alinea dentro de la ventana según f (0 izquierda … 1 derecha), así llega a
       // las esquinas sin cortarse. Se despeja la x de la ventana para que la isla quede justo
-      // bajo el punto por donde la agarraste: islaIzq = winX + f·(W − w), f = (winX − a.x)/span.
+      // bajo el punto por donde la agarraste. A cada lado se reservan 14 px para sus esquinas
+      // invertidas: islaIzq = winX + 14 + f·(W − 28 − w), f = (winX − a.x)/span.
       const a = screen.getPrimaryDisplay().workArea;
       const span = a.width - W;
-      const k = (W - drag.w) / span;
-      const wx = Math.round(Math.min(a.x + span, Math.max(a.x, (p.x - drag.grab + a.x * k) / (1 + k))));
+      const k = (W - 28 - drag.w) / span;
+      const wx = Math.round(Math.min(a.x + span, Math.max(a.x, (p.x - drag.grab - 14 + a.x * k) / (1 + k))));
       prefs.pos = (wx - a.x) / span;
       if (wx !== b.x) {
         win.setBounds({ x: wx, y: a.y, width: W, height: H });

@@ -61,7 +61,9 @@ Off by default. Nimbo always shows how many chats you have unread (read from the
 - It passes those texts to **your** Claude to tell you who wrote, what is work, which groups to ignore, and what is urgent. Urgent messages trigger a different, red alarm.
 - You define what counts as work and which groups to ignore in a plain text file: right-click → **WhatsApp rules**.
 
-Be aware: when this is on, the text of those notifications (written by other people) is sent to Anthropic through your Claude account to be classified. Nimbo does not store it on disk. It only sees chats that produced a notification (muted chats do not).
+Who sees your messages: only your own Claude. Nimbo has no servers and no telemetry, so nothing goes to Nimbo's author or to anyone else. When this is on, the text of those notifications (written by other people) is sent to Anthropic through **your** Claude account to be classified, the same way as anything you type into Claude. Nimbo keeps it in memory only, never on disk, and forgets it once WhatsApp shows everything as read. It only sees chats that produced a notification (muted chats do not).
+
+It stays off until you turn it on, and you can turn it off with one click.
 
 ## Security
 

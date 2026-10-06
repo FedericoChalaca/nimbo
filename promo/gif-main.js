@@ -69,6 +69,6 @@ app.whenReady().then(() => {
     console.log("gif:", OUT, (gif.bytes().length / 1e6).toFixed(1) + " MB,", frames.length, "cuadros,", `${size.width}×${size.height}`);
     app.quit();
   });
-  win.loadURL("nimbo://app/index.html");
+  win.loadURL("nimbo://app/index.html?lang=en"); // el README principal está en inglés
 });
 setTimeout(() => { console.log("tiempo agotado"); app.exit(1); }, 120_000);
