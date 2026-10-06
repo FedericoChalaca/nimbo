@@ -126,6 +126,8 @@ const NIMBO_EN = {
   "Opcional: activa el conector de Trello en claude.ai y pulsa Probar (tarda 1 min).": "Optional: enable the Trello connector on claude.ai, then press Test (takes 1 min).",
   "Probar": "Test",
   "Resume quién te escribió y avisa lo urgente.": "Summarizes who wrote and flags what is urgent.",
+  "Lo resume tu propio Claude. Con Ollama lo haría un modelo local, sin gastar tokens.": "Summarized by your own Claude. With Ollama, a local model would do it at no token cost.",
+  "Lo resume un modelo local ({0}): nada sale de tu equipo.": "Summarized by a local model ({0}): nothing leaves your PC.",
   "Reglas": "Rules",
   "Apagar": "Turn off",
   "Opcional: tu propio Claude resume tus mensajes. Nada pasa por Nimbo ni por su autor.": "Optional: your own Claude summarizes your messages. Nothing goes through Nimbo or its author.",

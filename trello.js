@@ -48,7 +48,8 @@ function createTrello(cacheFile) {
           "--allowedTools", ...READ_TOOLS, "--disallowedTools", ...WRITE_TOOLS];
         const cwd = path.join(os.tmpdir(), "nimbo-trello");
         fs.mkdirSync(cwd, { recursive: true });
-        const r = await runClaude(args, { cwd, input: PROMPT });
+        // (La variable evita que cada consulta deje un "chat" con título en ~/.claude/projects.)
+        const r = await runClaude(args, { cwd, input: PROMPT, env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });
         let out = r.structured_output;
         if (!out && r.result) { try { out = JSON.parse(r.result); } catch {} }
         if (out && Array.isArray(out.boards) && Array.isArray(out.cards)) {

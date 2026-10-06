@@ -172,7 +172,7 @@ let mini = false;
 const prefsFile = path.join(app.getPath("userData"), "prefs.json");
 // name: cómo te saluda · vault: carpeta de notas que el orquestador puede leer (opcional) ·
 // whatsappRead: leer y resumir notificaciones de WhatsApp (apagado hasta que lo actives).
-let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "", whatsappRead: false, onboarded: false };
+let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "", whatsappRead: false, waModel: "", onboarded: false };
 try {
   prefs = { ...prefs, ...JSON.parse(fs.readFileSync(prefsFile, "utf8")) };
 } catch {}
@@ -205,6 +205,7 @@ function placeWindow() {
 function setMini(on) {
   mini = on;
   if (mini) pending?.finish("");
+  else if (prefs.whatsappRead === true) wa.poke(); // lo que llegó mientras jugabas
   win.webContents.send("mini", mini);
   placeWindow();
 }
@@ -261,6 +262,8 @@ let whatsapp = null; // { running, access, count, chats, headline }
 const wa = createWhatsapp({
   rulesFile: path.join(app.getPath("userData"), "whatsapp-reglas.txt"),
   lang,
+  model: () => prefs.waModel, // "" automático · "claude" · o un modelo de Ollama
+  paused: () => mini,
   onChange(state, alert) {
     whatsapp = state;
     if (!win || win.isDestroyed()) return;
@@ -321,6 +324,7 @@ async function setupStatus() {
     github: await ghStatus(),
     trello: t ? t.boards.reduce((n, b) => n + (b.pending || 0), 0) : null,
     whatsappRead: prefs.whatsappRead === true,
+    whatsappBrain: prefs.whatsappRead === true ? await wa.brain() : "",
     autostart: app.getLoginItemSettings(loginItem()).openAtLogin,
   };
 }

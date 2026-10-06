@@ -26,10 +26,10 @@ const ACTIVE_MS = 2 * 60_000;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 /** Ejecuta `claude` y devuelve la línea final "result" de su salida. */
-function runClaude(args, { cwd, input }) {
+function runClaude(args, { cwd, input, env }) {
   return new Promise((resolve) => {
     if (!CLAUDE_EXE) return resolve({ error: t("No encontré claude.exe. Instala Claude Code o define NIMBO_CLAUDE con su ruta.") });
-    const child = spawn(CLAUDE_EXE, args, { cwd, windowsHide: true });
+    const child = spawn(CLAUDE_EXE, args, { cwd, windowsHide: true, env: env ? { ...process.env, ...env } : process.env });
     let out = "";
     let err = "";
     const killer = setTimeout(() => child.kill(), 10 * 60_000);

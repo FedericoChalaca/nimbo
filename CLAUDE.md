@@ -138,6 +138,24 @@ una tarjeta vence en < 24 h.
   `remember()` las conserva en memoria hasta que el contador del título llega a 0 (con 1 min de gracia) o
   pasan 24 h. Solo se ve lo que dejó notificación (chats silenciados o con WhatsApp en primer plano no).
 - Probado de punta a punta con un mensaje real (2026-10-05): visto a los 2 s, clasificado a los 23 s.
+- Quién resume (`brain()`): si Ollama responde en `127.0.0.1:11434` y tiene un modelo de TEXTO pequeño
+  (`pickLocal`: llama3.2, qwen, gemma, phi, mistral; el más liviano, < 6 GB), lo hace ese modelo local: sin
+  tokens y sin que el texto salga del equipo. Si no, el Claude del usuario (Haiku por el CLI: ~9 s y
+  ~3.100 tokens de entrada + ~900 de salida por llamada, casi todo es el andamiaje del CLI). `prefs.waModel`
+  lo fuerza ("claude" o un nombre de modelo). Los modelos de visión (minicpm-v, moondream) no sirven:
+  minicpm-v ni respondió en 4 min en una GTX 1650.
+- Solo se manda al modelo lo NUEVO (`mergeChats` une con lo ya clasificado); ya no hay "headline".
+- Los chats los arma el CÓDIGO (`groupChats`: título de la notificación; "Persona @ Grupo" → grupo) y el
+  modelo solo devuelve el veredicto de cada uno (`summary`, `kind`, `ignore`, `urgent`; `label()` lo valida).
+  Al modelo local se le pregunta un chat por llamada; a Claude, todos numerados en una. No volver a pedirle
+  al modelo que agrupe o que devuelva nombres/ids: llama3.2:3b mezclaba chats y marcaba todo urgente.
+- Medido el 2026-10-05 con 12 casos inventados (`wa-eval` en el historial): llama3.2:3b en una GTX 1650 →
+  urgencia 12/12, todo correcto 10/12, ~1 s por chat (9 s el primero, mientras carga); Haiku → 12/12, 21 s.
+- En modo mini no se clasifica (el modelo local ocuparía la tarjeta de video mientras se juega); al salir,
+  `wa.poke()` se pone al día. El modelo se descarga de memoria a los 3 min (`keep_alive`).
+- Las llamadas a `claude -p` de WhatsApp y Trello llevan `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`: sin
+  eso, aun con `--no-session-persistence`, cada llamada dejaba un "chat" con título en `~/.claude/projects`
+  (y gastaba otra llamada al modelo para titularlo). El usuario lo veía como "cada mensaje se manda a un chat".
 - Privacidad, no negociable: sigue APAGADO hasta que el usuario lo active (un clic, sin diálogos extra). Lo
   único que ve los textos es el `claude` del propio usuario; Nimbo no tiene servidores ni telemetría.
   Al depurar, imprimir solo estructura (cuántos chats, tipo, urgente), nunca nombres ni textos.
@@ -171,7 +189,11 @@ URLs ni rutas). Los hooks se instalan desde ahí con `install-hooks.js` (`status
 `asar: false`: `hook.js` tiene que ser un archivo real y el código queda editable. La app instalada no exige
 Node: `hookCommand()` escribe `%APPDATA%\nimbo\hook.cmd`, que corre `hook.js` con el propio `Nimbo.exe` en modo
 Node (`ELECTRON_RUN_AS_NODE=1`); en desarrollo el hook es `node hook.js`. Si la ruta cambió, el panel dice
-"Reconectar" (`hooks: "stale"`). El instalador se sube como asset del release de GitHub.
+"Reconectar" (`hooks: "stale"`). Al DESINSTALAR (no al actualizar), `build/installer.nsh` corre
+`install-hooks.js --uninstall` con el propio exe: sin eso Claude Code quedaba llamando a un programa borrado.
+Probado en real el 2026-10-05: instalar en silencio (`/S`), conectar, recibir eventos, desinstalar; los datos
+de `%APPDATA%
+imbo` se conservan. El instalador se sube como asset del release de GitHub.
 
 **Video y GIF** (`promo/`): `npm run promo` (mp4 con textos) y `npm run promo:gif` (el GIF del README). Cargan el
 `index.html` REAL en una ventana fuera de pantalla con una API falsa (`promo-preload.js`, un Proxy: lo que se
@@ -207,7 +229,7 @@ la página sin `?lang` (español).
 - Pendiente conocido: el script va en línea en `index.html`, así que el CSP lleva `'unsafe-inline'`.
 
 ## Estado en disco
-`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `whatsappRead`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
+`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
 caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
 
 ## Lecciones (cosas que ya fallaron)
@@ -235,6 +257,8 @@ caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
   `main.js`): usar siempre `replace(a, () => b)`.
 - Las pruebas por CDP del arrastre mueven la ventana hacia el cursor REAL (main usa
   `screen.getCursorScreenPoint()`), y cambian `prefs.pos`: restaurarlo al terminar.
+- Al escribir rutas de Windows en `prefs.json` desde un script, ojo con las barras: `"D:…"` sin escapar
+  guardó un tabulador vertical y el vault estuvo roto sin avisar. Verificar con `fs.existsSync`.
 - Nada personal en el código: nombre, vault y rutas van en `prefs.json`. El repo es público.
 - Se quitaron: modo conversación por voz, Piper/voz de Windows y whisper-small (lentos en este equipo).
 
@@ -250,10 +274,12 @@ de la app en su propia carpeta, que reparte con `ListAgents`/`SendMessage`; el c
 para preguntas rápidas, recordatorios y el vault.
 
 ## Probar cambios
-1. `taskkill /F /IM electron.exe`, luego `npx electron . --remote-debugging-port=9333` y evaluar
+1. `taskkill /F /IM electron.exe`, luego `npx electron . --remote-debugging-port=9477` y evaluar
    en la página por CDP (`Runtime.evaluate`).
-2. Al terminar, cerrar esa instancia y relanzar con `Nimbo.lnk`: el puerto 9333 NO debe quedar
+2. Al terminar, cerrar esa instancia y relanzar con `Nimbo.lnk`: el puerto 9477 NO debe quedar
    abierto y no hay que dejar estilos de prueba (fondo oscuro, zoom) en la ventana del usuario.
+   El puerto de depuración NO puede ser 9333 ni 9222: otra sesión de Claude que automatiza un navegador se
+   conectó a ese puerto y navegó la ventana de Nimbo a su propia página. Usar uno raro (9477) y cerrarlo.
 3. No mover el mouse ni hacer clics reales del usuario sin preguntar (puede estar jugando).
 4. Tras tocar `orchestrator.js`, probar `ask` sin variables `CLAUDE*`/`ANTHROPIC*` del entorno
    (si no, `claude` usa la cuenta de la sesión que lo lanzó).

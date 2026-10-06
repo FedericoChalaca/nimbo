@@ -16,6 +16,9 @@ No API key: it uses the `claude` you already have installed and signed in.
 
 You do not need Node.js. You do need Claude Code installed and signed in (`claude` in a terminal).
 
+To remove it, uninstall Nimbo from Windows Settings → Apps. The uninstaller also removes Nimbo's hooks from Claude Code; your settings in `%APPDATA%
+imbo` are kept.
+
 > Nimbo follows your Windows language (English or Spanish). Change it any time: right-click → **Idioma / Language**.
 
 ## Connect everything
@@ -60,6 +63,7 @@ Off by default. Nimbo always shows how many chats you have unread (read from the
 - It reads the WhatsApp notifications Windows already showed you, through the official Windows notification API. It does not open your WhatsApp session, uses no unofficial libraries, and never sends anything or marks anything as read.
 - It passes those texts to **your** Claude to tell you who wrote, what is work, which groups to ignore, and what is urgent. Urgent messages trigger a different, red alarm.
 - You define what counts as work and which groups to ignore in a plain text file: right-click → **WhatsApp rules**.
+- **Want it fully local?** If [Ollama](https://ollama.com) is running with a small text model (for example `ollama pull llama3.2:3b`), Nimbo uses it instead of Claude: about a second per chat, no tokens spent, and the messages never leave your PC (if the local model fails, that chat simply stays unlabeled; it is not sent to Claude). The Connections panel shows which one is summarizing.
 
 Who sees your messages: only your own Claude. Nimbo has no servers and no telemetry, so nothing goes to Nimbo's author or to anyone else. When this is on, the text of those notifications (written by other people) is sent to Anthropic through **your** Claude account to be classified, the same way as anything you type into Claude. Nimbo keeps it in memory only, never on disk, and forgets it once WhatsApp shows everything as read. It only sees chats that produced a notification (muted chats do not).
 

@@ -16,6 +16,9 @@ No necesita API key: usa el `claude` que ya tienes instalado y con sesión inici
 
 No necesitas Node.js. Sí necesitas Claude Code instalado y con sesión iniciada (`claude` en una terminal).
 
+Para quitarlo, desinstala Nimbo desde Configuración de Windows → Aplicaciones. El desinstalador también quita los hooks de Nimbo de Claude Code; tus ajustes en `%APPDATA%
+imbo` se conservan.
+
 > Nimbo usa el idioma de tu Windows (español o inglés). Cámbialo cuando quieras: clic derecho → **Idioma / Language**.
 
 ## Conectar todo
@@ -60,6 +63,7 @@ Apagado por defecto. Nimbo siempre muestra cuántos chats tienes sin leer (lo le
 - Lee las notificaciones de WhatsApp que Windows ya te mostró, con la API oficial de Windows. No abre tu sesión de WhatsApp, no usa librerías no oficiales, y nunca envía ni marca nada como leído.
 - Le pasa esos textos a **tu** Claude para que diga quién escribió, qué es trabajo, qué grupos ignorar y qué es urgente. Lo urgente hace sonar una alarma roja, distinta.
 - Tú defines qué es trabajo y qué grupos ignorar en un archivo de texto: clic derecho → **Reglas de WhatsApp**.
+- **¿Lo quieres 100 % local?** Si [Ollama](https://ollama.com) está abierto con un modelo de texto pequeño (por ejemplo `ollama pull llama3.2:3b`), Nimbo lo usa en vez de Claude: cerca de un segundo por chat, sin gastar tokens, y los mensajes no salen de tu PC (si el modelo local falla, ese chat queda sin etiqueta; no se manda a Claude). El panel Conexiones muestra quién está resumiendo.
 
 Quién ve tus mensajes: solo tu propio Claude. Nimbo no tiene servidores ni telemetría, así que nada llega al autor de Nimbo ni a nadie más. Al activarlo, el texto de esas notificaciones (escrito por otras personas) se envía a Anthropic a través de **tu** cuenta de Claude para clasificarlo, igual que cualquier cosa que le escribes a Claude. Nimbo lo guarda solo en memoria, nunca en disco, y lo olvida cuando WhatsApp marca todo como leído. Solo ve los chats que dejaron notificación (los silenciados no).
 
