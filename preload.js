@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   whatsappRefresh: () => ipcRenderer.send("whatsapp-refresh"),
   whatsappDismiss: () => ipcRenderer.send("whatsapp-dismiss"),
   copy: (text) => ipcRenderer.send("copy", text),
+  tts: (text) => ipcRenderer.invoke("tts", text),
+  onVoice: (fn) => ipcRenderer.on("voice", (_e, on) => fn(on)),
   trello: () => ipcRenderer.invoke("trello"),
   onTrello: (fn) => ipcRenderer.on("trello", (_e, d) => fn(d)),
   onTrelloBusy: (fn) => ipcRenderer.on("trello-busy", (_e, b) => fn(b)),

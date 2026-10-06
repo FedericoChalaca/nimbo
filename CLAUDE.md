@@ -26,6 +26,7 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 | `hook.js` | Lo ejecuta Claude Code en cada evento: firma y reenvía el JSON a Nimbo. |
 | `install-hooks.js` | Instala/quita los 10 hooks (PermissionRequest con timeout 75 s, el resto 5 s). |
 | `i18n.js` | Traducciones al inglés y `translator(lang)`; lo usan la página y el proceso principal. |
+| `tts.js` | Voz: limpia y recorta el texto y pide el mp3 al servicio de `prefs.ttsUrl` (`node tts.js` = autoprueba). |
 | `reminders.js` | Recordatorios en JSON (`node reminders.js` = autoprueba). |
 | `trello.js` | Tarjetas pendientes vía el conector de Trello de tu `claude` (solo lectura). |
 | `whatsapp.js` + `wa-watch.ps1` | WhatsApp de escritorio en solo lectura (`node whatsapp.js` = autoprueba). |
@@ -189,6 +190,23 @@ Animación: se inclina según la velocidad (`--lean`), estela (`#island::after`)
 soltar. El final del arrastre tiene varias redes (pointerup/mouseup en `document`, move con `buttons === 0`,
 `lostpointercapture`, `blur` y un corte a los 30 s en main → `drag-abort`): con una sola se quedaba pegado.
 
+**Voz** (`tts.js`, `speak()`/`stopSpeaking()` en `index.html`): Nimbo dice su respuesta corta (`r.text` en
+`askAndShow`; nunca los prompts de `dispatch`). La página pide el audio por IPC (`tts`) y `main.js` hace el
+POST a `prefs.ttsUrl` con `{text}` o `{text, voz: "nube"}` según `prefs.theme` EN ESE MOMENTO, así que
+cambiar de tema cambia la voz sin reiniciar. Devuelve el mp3 y la página lo reproduce desde un blob (el CSP
+ya permite `media-src blob:`; la página no llama a nadie). Interruptor `prefs.speak` (menú y Conexiones).
+Se corta (`stopSpeaking`) con: otra pregunta o respuesta, empezar a dictar (`voice.js`), cambio de tema, voz
+apagada (`voice`), sonidos silenciados. null = silencio: voz apagada, modo mini, sin `ttsUrl`, HTTP distinto de
+200, respuesta que no es audio, sin conexión o más de 10 s. Una llamada por respuesta, sin reintentos.
+`speechText` quita emojis/formato y corta en un punto hasta 1500 caracteres. La dirección del servicio va en
+`prefs.json`, NUNCA en el código (repo público: sería la cuota de voz del autor y los textos de otros
+pasarían por su servidor). Probado el 2026-10-05 con un servicio de mentira (503, 502, 413, no-audio, colgado,
+apagado) y con el servicio real en los dos temas; no se puede comprobar por código que las voces suenen
+distintas: el servicio no es determinista, hay que oírlo.
+`examples/tts-service/` es un servicio de ejemplo (función de Vercel → ElevenLabs, claves por variables de
+entorno) con el mismo contrato; su autoprueba no usa red. No va dentro del instalador.
+La fila "Apariencia" de Conexiones cambia de tema (`setup-do theme`): sirve también para probar por CDP.
+
 **Tamaños.** La isla nunca pasa de `MAX_W` = 412 (ventana 440 − dos esquinas invertidas de 14): más ancha, la
 ventana la recorta y pierde las curvas (pasó al agrandar el personaje). Personaje 120×70 (`#char`), barra de 68 px (`BAR_H` en JS y `#bar`/`#content` en CSS: van
 juntos). El modelo ocupa ~60 % de su caja: por eso la caja es más alta que la barra.
@@ -245,7 +263,7 @@ la página sin `?lang` (español).
 - Pendiente conocido: el script va en línea en `index.html`, así que el CSP lleva `'unsafe-inline'`.
 
 ## Estado en disco
-`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
+`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
 caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
 
 ## Lecciones (cosas que ya fallaron)

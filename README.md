@@ -139,6 +139,28 @@ If you keep notes in a folder (an Obsidian vault, for example), Nimbo's chat can
 { "vault": "D:\\my-notes" }
 ```
 
+### 8. Voice (optional)
+
+Nimbo can read its replies aloud, with a different voice for each look (cloud and JARVIS). It reads only its short answer, never the prompts it proposes for other chats.
+
+Nimbo does not talk to a voice provider and stores no keys. It sends the text to a text-to-speech service you choose and plays the audio that comes back:
+
+Do not have a service yet? [examples/tts-service](examples/tts-service) is one ready to deploy for ElevenLabs: you add your own key and the ids of the two voices you like.
+
+1. Put the address of your service in `%APPDATA%\nimbo\prefs.json` and restart Nimbo:
+
+```json
+{ "ttsUrl": "https://your-service.example/api/tts" }
+```
+
+2. In the Connections panel, on the Voice row, click **Turn on** (or right-click → **Read replies aloud**).
+
+The service receives `POST {"text": "..."}` for the JARVIS look and `POST {"text": "...", "voz": "nube"}` for the cloud look, and must answer with `audio/mpeg`. Texts are cut at a sentence end to fit 1500 characters.
+
+It stops talking when a new answer arrives, when you start dictating, when you switch looks, or when you turn the voice or all sounds off. If the service is down, slow (more than 10 seconds), or you are offline, Nimbo simply stays silent: one request per answer, no retries, no errors on screen.
+
+Keep in mind that the text of each reply is sent to that service.
+
 ### If something does not work
 
 | Problem | What to check |

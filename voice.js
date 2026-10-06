@@ -113,6 +113,7 @@
   let dictating = false;
   async function dictate() {
     if (dictating) return finish(); // segundo clic = ya terminé
+    stopSpeaking(); // si Nimbo estaba hablando, se calla para escucharte
     dictating = true;
     micBtn.classList.add("live");
     try {

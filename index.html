@@ -1342,7 +1342,7 @@ function handle(p) {
 }
 window.handleHook = handle; // para probar a mano desde la consola
 api.onHook(handle);
-api.onMuted((m) => (muted = m));
+api.onMuted((m) => { muted = m; if (m) stopSpeaking(); });
 
 // --- Ojos que siguen el cursor ---
 api.onCursor(({ x, y }) => {
@@ -1478,7 +1478,12 @@ function renderSetup(s) {
   const auto = row(s.autostart ? true : null, t("Iniciar con Windows"), s.autostart ? t("Nimbo arranca al prender el equipo.") : t("Que Nimbo arranque solo al prender el equipo."),
     btn(s.autostart ? t("Quitar") : t("Activar"), "autostart", !s.autostart));
 
-  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, wa, auto];
+  const look = row(null, t("Apariencia"), s.theme === "cloud" ? t("Nube. Cada apariencia tiene su propia voz.") : t("JARVIS. Cada apariencia tiene su propia voz."),
+    btn(s.theme === "cloud" ? "JARVIS" : t("Nube"), "theme", s.theme === "cloud" ? "jarvis" : "cloud"));
+  const voiceRow = s.voice === null ? row(null, t("Voz"), t("Opcional: pon en prefs.json la dirección de un servicio de voz (`ttsUrl`)."))
+    : s.voice ? row(true, t("Voz"), t("Lee sus respuestas en voz alta."), btn(t("Apagar"), "speak", false))
+    : row(null, t("Voz"), t("Que Nimbo lea sus respuestas en voz alta."), btn(t("Activar"), "speak", true));
+  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, wa, look, voiceRow, auto];
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));
   setupBox.replaceChildren(...rows);
 }
@@ -1869,7 +1874,38 @@ function progressEnd() {
   setTimeout(() => prog.classList.remove("done"), 1100);
 }
 
+// --- Voz: Nimbo dice su respuesta (main.js pide el audio con la voz del tema activo) ---
+// Una voz a la vez. Se corta si llega otra respuesta, si empiezas a dictar (voice.js), si cambias
+// de tema o si apagas la voz. Si no hay audio (voz apagada, sin internet…), no pasa nada.
+let speaking = null; // { audio, url } de lo que suena ahora
+let speakTurn = 0;
+function stopSpeaking() {
+  speakTurn++; // lo que venga en camino de una respuesta anterior ya no suena
+  if (!speaking) return;
+  speaking.audio.pause();
+  URL.revokeObjectURL(speaking.url);
+  speaking = null;
+  Jarvis.setLevel(0);
+}
+async function speak(text) {
+  stopSpeaking();
+  const turn = speakTurn;
+  if (!text || mini) return;
+  const bytes = await api.tts(text).catch(() => null);
+  if (!bytes || turn !== speakTurn) return;
+  const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+  const audio = new Audio(url);
+  speaking = { audio, url };
+  const done = () => { if (speaking?.audio === audio) stopSpeaking(); };
+  audio.onended = done;
+  audio.onerror = done;
+  audio.onplaying = () => Jarvis.setLevel(0.45); // la esfera crece mientras habla
+  audio.play().catch(done);
+}
+api.onVoice((on) => { if (!on) stopSpeaking(); });
+
 async function askAndShow(message) {
+  stopSpeaking(); // pregunta nueva: se calla lo anterior
   answer.replaceChildren(el("div", "", t("Pensando…")));
   answer.classList.add("wait");
   answerBox.classList.remove("hidden");
@@ -1879,6 +1915,7 @@ async function askAndShow(message) {
   if (r?.added?.length) setTimeout(() => setState(state, `⏰ Anotado: ${r.added[0].text}`, { labelFor: 3500 }), 300);
   answer.classList.remove("wait");
   answer.replaceChildren(el("div", "reply", r?.text ?? t("No pude hablar con Claude.")));
+  speak(r?.text); // solo la respuesta corta; los prompts propuestos para otros chats no se leen
   for (const d of r?.dispatch ?? []) answer.append(proposal(d));
   answer.scrollTop = 0;
   return r;
@@ -1997,6 +2034,7 @@ window.addEventListener("blur", endDrag);
 api.onDragAbort(endDrag);
 
 api.onTheme((t) => {
+  stopSpeaking(); // cada tema tiene su voz: lo que sonaba era la del otro
   const jarvis = t === "jarvis";
   root.classList.toggle("theme-jarvis", jarvis);
   root.classList.toggle("theme-cloud", !jarvis);

@@ -13,6 +13,7 @@ const { translator } = require("./i18n");
 const { createReminders } = require("./reminders");
 const { createTrello } = require("./trello");
 const { createWhatsapp } = require("./whatsapp");
+const { fetchSpeech, speechUrl } = require("./tts");
 
 const PORT = 47823;
 const W = 440;
@@ -172,7 +173,9 @@ let mini = false;
 const prefsFile = path.join(app.getPath("userData"), "prefs.json");
 // name: cómo te saluda · vault: carpeta de notas que el orquestador puede leer (opcional) ·
 // whatsappRead: leer y resumir notificaciones de WhatsApp (apagado hasta que lo actives).
-let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "", whatsappRead: false, waModel: "", onboarded: false };
+let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "", whatsappRead: false, waModel: "", onboarded: false,
+  // Voz: "speak" es el interruptor; "ttsUrl", el servicio de texto a voz (ver tts.js). Sin dirección no hay voz.
+  speak: false, ttsUrl: "" };
 try {
   prefs = { ...prefs, ...JSON.parse(fs.readFileSync(prefsFile, "utf8")) };
 } catch {}
@@ -328,11 +331,33 @@ async function setupStatus() {
     hooks: hookState,
     github: await ghStatus(),
     trello: t ? t.boards.reduce((n, b) => n + (b.pending || 0), 0) : null,
+    theme: prefs.theme,
+    voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
     whatsappRead: prefs.whatsappRead === true,
     whatsappBrain: prefs.whatsappRead === true ? await wa.brain() : "",
     autostart: app.getLoginItemSettings(loginItem()).openAtLogin,
   };
 }
+// --- Voz: la página pide el audio de una respuesta; aquí se decide con qué voz (el tema activo) ---
+// Devuelve el mp3 o null. null = en silencio, sin avisos: voz apagada, sonidos silenciados, sin
+// servicio configurado, sin internet o el servicio falló (una sola llamada, sin reintentos).
+const voiceReady = () => speechUrl(prefs.ttsUrl) !== null;
+ipcMain.handle("tts", (_e, text) => {
+  if (prefs.speak !== true || muted || mini || !voiceReady()) return null;
+  return fetchSpeech(prefs.ttsUrl, text, prefs.theme);
+});
+function setTheme(id) {
+  if (!["jarvis", "cloud"].includes(id)) return;
+  prefs.theme = id;
+  savePrefs();
+  win.webContents.send("theme", id); // la página corta lo que estuviera diciendo: la siguiente respuesta ya sale con la otra voz
+}
+function setSpeak(on) {
+  prefs.speak = on === true;
+  savePrefs();
+  win.webContents.send("voice", prefs.speak);
+}
+
 ipcMain.handle("setup", () => setupStatus());
 ipcMain.handle("setup-do", async (_e, action, value) => {
   let error;
@@ -347,6 +372,8 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         break;
       case "autostart": app.setLoginItemSettings({ ...loginItem(), openAtLogin: value === true }); break;
       case "whatsapp": prefs.whatsappRead = value === true; savePrefs(); watchWhatsapp(); break;
+      case "theme": setTheme(String(value)); break;
+      case "speak": setSpeak(value === true); break;
       case "whatsapp-rules": shell.openPath(wa.rulesFile); break;
       case "trello": await refreshTrello(); break;
       case "open":
@@ -399,11 +426,7 @@ ipcMain.on("menu", () => {
         label,
         type: "radio",
         checked: prefs.theme === id,
-        click: () => {
-          prefs.theme = id;
-          savePrefs();
-          win.webContents.send("theme", id);
-        },
+        click: () => setTheme(id),
       })),
     },
     {
@@ -438,6 +461,13 @@ ipcMain.on("menu", () => {
     { label: t("Reglas de WhatsApp…"), enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
     { label: t("Nueva conversación"), click: () => orchestrator.reset() },
     { type: "separator" },
+    {
+      label: t("Leer las respuestas en voz alta"),
+      type: "checkbox",
+      checked: prefs.speak === true,
+      enabled: voiceReady(),
+      click: (item) => setSpeak(item.checked),
+    },
     {
       label: t("Silenciar sonidos"),
       type: "checkbox",
