@@ -177,6 +177,7 @@ Keep in mind that the text of each reply is sent to that service.
 - **Watches your chats live.** Reacts to every Claude Code session at once: thinking, working, waiting for you, done, or failed. Shows the current step and the diff or terminal output of the active chat.
 - **Approves permissions from the island.** Allow, Deny, Always, or send it back to the terminal. The card shows the full command.
 - **Chats with your Claude.** Type, dictate (local Whisper, no audio leaves your PC), paste images, or drop files on it.
+- **Sees your screen when you ask.** Click 🖥 in the chat: it takes one screenshot, shows you the thumbnail, and you ask what you need ("what does this error mean?", "where do I click to export?"). No live view and nothing automatic: one picture, only when you press the button, sent to your Claude only when you send the message.
 - **Orchestrates.** It knows your chats: ask for something that belongs to another project and it drafts the prompt for that chat, and sends it only when you confirm.
 - **Reminders.** "Remind me tomorrow at 9 to send the invoice": it alerts on the island and with a Windows notification.
 - **Two looks.** A cloud with a face, or a JARVIS-style sphere of connected dots.
@@ -190,6 +191,7 @@ Keep in mind that the text of each reply is sent to that service.
 | Hover | Pills appear (Chats, Trello, GitHub, WhatsApp, Reminders). Click one to see its detail. |
 | Click | Opens or closes the chat. |
 | Click the green button | Opens the WhatsApp summary. |
+| 🖥 in the chat | Takes a screenshot of the screen where your cursor is and attaches it. Click the thumbnail to remove it. |
 | Right-click | Menu: connections, language, look, mini mode, WhatsApp, mute, quit. |
 | Drag the bar | Moves it along the top edge. |
 | Drop a file on it | It "eats" the file and attaches it to the chat. |

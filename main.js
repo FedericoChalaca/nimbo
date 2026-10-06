@@ -1,6 +1,6 @@
 // Nimbo: ventana transparente arriba de la pantalla + servidor local que recibe
 // los hooks de Claude Code y se los pasa al personaje.
-const { app, BrowserWindow, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard } = require("electron");
+const { app, BrowserWindow, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer } = require("electron");
 const { execFile } = require("child_process");
 const { pathToFileURL } = require("url");
 const crypto = require("crypto");
@@ -338,6 +338,32 @@ async function setupStatus() {
     autostart: app.getLoginItemSettings(loginItem()).openAtLogin,
   };
 }
+// --- Ver la pantalla: UN pantallazo, solo cuando tú pulsas 🖥 en el chat ---
+// No hay vista en vivo ni capturas automáticas. Se toma la pantalla donde está el cursor, se
+// reduce a lo que Claude aprovecha (1568 px de lado) y vuelve a la página como miniatura: tú
+// decides si la mandas. Nimbo se excluye de su propia captura para no tapar lo que hay debajo.
+const SHOT_MAX_SIDE = 1568;
+ipcMain.handle("screenshot", async () => {
+  if (!win || win.isDestroyed() || mini) return null;
+  try {
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const px = { width: display.size.width * display.scaleFactor, height: display.size.height * display.scaleFactor };
+    const k = Math.min(1, SHOT_MAX_SIDE / Math.max(px.width, px.height));
+    const thumbnailSize = { width: Math.round(px.width * k), height: Math.round(px.height * k) };
+    win.setContentProtection(true);
+    await new Promise((r) => setTimeout(r, 150)); // que Windows alcance a ocultar la ventana de la captura
+    const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize });
+    const source = sources.find((s) => s.display_id === String(display.id)) ?? sources[0];
+    if (!source || source.thumbnail.isEmpty()) return null;
+    const size = source.thumbnail.getSize();
+    return { media_type: "image/jpeg", data: source.thumbnail.toJPEG(82).toString("base64"), width: size.width, height: size.height };
+  } catch {
+    return null;
+  } finally {
+    if (!win.isDestroyed()) win.setContentProtection(false);
+  }
+});
+
 // --- Voz: la página pide el audio de una respuesta; aquí se decide con qué voz (el tema activo) ---
 // Devuelve el mp3 o null. null = en silencio, sin avisos: voz apagada, sonidos silenciados, sin
 // servicio configurado, sin internet o el servicio falló (una sola llamada, sin reintentos).

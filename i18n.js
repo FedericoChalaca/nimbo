@@ -52,6 +52,10 @@ const NIMBO_EN = {
   // — Chat y adjuntos —
   "Escríbele a Claude… (suelta archivos sobre mí)": "Message Claude… (or drop files on me)",
   "Adjuntar archivos o imágenes": "Attach files or images",
+  "Ver mi pantalla: toma un pantallazo y lo adjunta": "See my screen: takes a screenshot and attaches it",
+  "¿Qué necesitas de lo que ves en mi pantalla?": "What do you need from what is on my screen?",
+  "Mira mi pantalla y dime qué ves.": "Look at my screen and tell me what you see.",
+  "No pude tomar el pantallazo": "Could not take the screenshot",
   "Dictar: habla y se escribe aquí": "Dictate: speak and it types here",
   "Enviar": "Send",
   "Descartar": "Discard",

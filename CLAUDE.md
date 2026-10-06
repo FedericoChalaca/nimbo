@@ -51,6 +51,9 @@ respuesta cerraba la tarjeta de la siguiente).
 - Lista de chats: transcripciones `~/.claude/projects/*/*.jsonl` (título = `customTitle`/`agentName`,
   carpetas extra donde trabaja = raíces de `file_path` fuera del cwd). Excluye `scratch-workspaces`
   y corridas `sdk-cli`. Si hay `prefs.vault`, su chat siempre entra.
+- Cada propuesta es un ENCARGO con cuatro partes fijas (regla en `systemPrompt`): Objetivo, Contexto, Terminado
+  cuando (criterios comprobables) y Fuera de alcance. `DISPATCH_RULES` le pide al otro chat respetar el fuera de
+  alcance y responder criterio por criterio. Un encargo por chat; si una parte depende de otra, solo la primera.
 - `dispatch` (botón Enviar en la propuesta): `claude.exe -p --resume <id> --permission-mode auto
   --add-dir <carpetas> --append-system-prompt <reglas: hazlo tú, 2 frases, sin código>`.
 - Imágenes: Ctrl+V o 📎, van dentro del mensaje stream-json (base64), sin archivos temporales.
@@ -189,6 +192,14 @@ esquinas invertidas (`left: 14px + f·(100% − 28px)`; la fórmula del arrastre
 Animación: se inclina según la velocidad (`--lean`), estela (`#island::after`), cara de emoción y rebote al
 soltar. El final del arrastre tiene varias redes (pointerup/mouseup en `document`, move con `buttons === 0`,
 `lostpointercapture`, `blur` y un corte a los 30 s en main → `drag-abort`): con una sola se quedaba pegado.
+
+**Ver la pantalla** (botón 🖥 del chat → IPC `screenshot` en `main.js`): UN pantallazo de la pantalla donde
+está el cursor (`desktopCapturer`, reducido a 1568 px de lado, JPEG ~80 KB, ~1,3 s). Vuelve a la página como
+una imagen más (`images`, con `screen: true`) y viaja por el mismo camino que una imagen pegada; no se manda
+hasta que el usuario envía. `setContentProtection(true)` durante la captura saca a Nimbo de su propia foto
+(probado pintando la ventana de rojo: 25 píxeles rojos de 1 millón). Nada automático ni en vivo, y así debe
+seguir: nunca capturar por palabras del mensaje ni por temporizador. Con una captura, el orquestador puede
+responder hasta en 5 pasos (regla en `systemPrompt`). Al probar, no abrir la imagen: es la pantalla del usuario.
 
 **Voz** (`tts.js`, `speak()`/`stopSpeaking()` en `index.html`): Nimbo dice su respuesta corta (`r.text` en
 `askAndShow`; nunca los prompts de `dispatch`). La página pide el audio por IPC (`tts`) y `main.js` hace el

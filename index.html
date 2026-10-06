@@ -605,6 +605,7 @@
           <div id="thumbs"></div>
           <input id="msg" placeholder="Escríbele a Claude… (suelta archivos sobre mí)" autocomplete="off">
           <input id="file" type="file" multiple hidden>
+          <button type="button" id="shot" title="Ver mi pantalla: toma un pantallazo y lo adjunta">🖥</button>
           <button type="button" id="attach" title="Adjuntar archivos o imágenes">📎</button>
           <button type="button" id="mic" title="Dictar: habla y se escribe aquí">🎤</button>
           <button type="submit" title="Enviar">➤</button>
@@ -1743,6 +1744,23 @@ function renderThumbs() {
   thumbs.replaceChildren(...imgs, ...chips);
 }
 document.getElementById("attach").addEventListener("click", () => fileInput.click());
+// 🖥 Ver mi pantalla: un pantallazo que queda como miniatura (se puede quitar) hasta que envíes.
+const shotBtn = document.getElementById("shot");
+shotBtn.addEventListener("click", async () => {
+  if (shotBtn.disabled) return;
+  shotBtn.disabled = true;
+  const shot = await api.screenshot().catch(() => null);
+  shotBtn.disabled = false;
+  if (shot?.data) {
+    images.push({ media_type: shot.media_type, data: shot.data, url: `data:${shot.media_type};base64,${shot.data}`, screen: true });
+    renderThumbs();
+    SOUNDS.poke();
+    if (!msg.value) msg.placeholder = t("¿Qué necesitas de lo que ves en mi pantalla?");
+  } else {
+    setState(state, t("No pude tomar el pantallazo"), { labelFor: 3000 });
+  }
+  msg.focus();
+});
 fileInput.addEventListener("change", () => { [...fileInput.files].forEach(addFile); fileInput.value = ""; msg.focus(); });
 msg.addEventListener("paste", (e) => [...e.clipboardData.files].forEach(addFile));
 
@@ -1834,7 +1852,7 @@ function swallow(dropped, x, y) {
 
 chat.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const text = msg.value.trim() || (images.length ? t("¿Qué ves en esta imagen?") : files.length ? t("Revisa estos archivos.") : "");
+  const text = msg.value.trim() || (images.some((i) => i.screen) ? t("Mira mi pantalla y dime qué ves.") : images.length ? t("¿Qué ves en esta imagen?") : files.length ? t("Revisa estos archivos.") : "");
   if (!text || asking) return;
   asking = true;
   lastActivity = Date.now();
@@ -1844,6 +1862,7 @@ chat.addEventListener("submit", async (e) => {
   files = [];
   renderThumbs();
   msg.value = "";
+  msg.placeholder = t("Escríbele a Claude… (suelta archivos sobre mí)");
   await askAndShow({ text, images: sent, files: paths });
   asking = false;
 });

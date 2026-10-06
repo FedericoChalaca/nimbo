@@ -177,6 +177,7 @@ Ten en cuenta que el texto de cada respuesta se envía a ese servicio.
 - **Ve tus chats en vivo.** Reacciona a cada sesión de Claude Code (varias a la vez): pensando, trabajando, esperándote, listo o error. Muestra el paso actual y el diff o la terminal del chat activo.
 - **Aprueba permisos desde la isla.** Permitir, Denegar, Siempre o mandarlo a la terminal. La tarjeta muestra el comando completo.
 - **Chatea con tu Claude.** Escribe, dicta (Whisper local, el audio no sale de tu PC), pega imágenes o suéltale archivos encima.
+- **Ve tu pantalla cuando se lo pides.** Pulsa 🖥 en el chat: toma un pantallazo, te muestra la miniatura y le preguntas lo que necesites ("¿qué significa este error?", "¿dónde hago clic para exportar?"). No hay vista en vivo ni nada automático: una sola foto, solo cuando pulsas el botón, y se envía a tu Claude solo cuando mandas el mensaje.
 - **Orquesta.** Conoce tus chats: si pides algo que le toca a otro proyecto, redacta el prompt para ese chat y lo envía solo cuando tú confirmas.
 - **Recordatorios.** "Recuérdame mañana a las 9 enviar la factura": avisa en la isla y con una notificación de Windows.
 - **Dos apariencias.** Una nube con cara o una esfera de puntos estilo JARVIS.
@@ -190,6 +191,7 @@ Ten en cuenta que el texto de cada respuesta se envía a ese servicio.
 | Pasar el mouse | Aparecen las píldoras (Chats, Trello, GitHub, WhatsApp, Pendientes). Toca una para ver su detalle. |
 | Un clic | Abre o cierra el chat. |
 | Clic en el botón verde | Abre el resumen de WhatsApp. |
+| 🖥 en el chat | Toma un pantallazo de la pantalla donde está el cursor y lo adjunta. Toca la miniatura para quitarlo. |
 | Clic derecho | Menú: conexiones, idioma, apariencia, modo mini, WhatsApp, silenciar, salir. |
 | Arrastrar la barra | Lo mueve por el borde de arriba. |
 | Soltar un archivo encima | Se lo "come" y lo adjunta al chat. |
