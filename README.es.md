@@ -16,6 +16,8 @@ No necesita API key: usa el `claude` que ya tienes instalado y con sesión inici
 
 No necesitas Node.js. Sí necesitas Claude Code instalado y con sesión iniciada (`claude` en una terminal).
 
+> Nimbo usa el idioma de tu Windows (español o inglés). Cámbialo cuando quieras: clic derecho → **Idioma / Language**.
+
 ## Conectar todo
 
 Clic derecho en Nimbo → **Conexiones y ajustes** (la primera vez se abre solo). Cada fila tiene un punto verde o ámbar y un botón.
@@ -46,7 +48,7 @@ Clic derecho en Nimbo → **Conexiones y ajustes** (la primera vez se abre solo)
 |---|---|
 | Pasar el mouse | Aparecen las píldoras (Chats, Trello, GitHub, WhatsApp, Pendientes). Toca una para ver su detalle. |
 | Un clic | Abre o cierra el chat. |
-| Clic derecho | Menú: conexiones, apariencia, modo mini, WhatsApp, silenciar, salir. |
+| Clic derecho | Menú: conexiones, idioma, apariencia, modo mini, WhatsApp, silenciar, salir. |
 | Arrastrar la barra | Lo mueve por el borde de arriba. |
 | Soltar un archivo encima | Se lo "come" y lo adjunta al chat. |
 | `Ctrl+Alt+N` | Modo mini. |
@@ -97,7 +99,7 @@ Después conecta Claude Code desde el panel Conexiones (o con `npm run install-h
 
 Otros comandos: `npm test`, `npm run dist` (arma el instalador), `npm run promo` (graba el video de demostración), `npm run promo:gif` (regenera el GIF de arriba).
 
-Tus ajustes viven en `%APPDATA%\nimbo\`, nunca en la carpeta del proyecto. `CLAUDE.md` explica la arquitectura, los flujos y las lecciones aprendidas (sirve tanto a personas como a Claude Code).
+Tus ajustes viven en `%APPDATA%\nimbo\`, nunca en la carpeta del proyecto. Los textos de la interfaz están en `i18n.js` (español en el código, inglés en ese archivo). `CLAUDE.md` explica la arquitectura, los flujos y las lecciones aprendidas (sirve tanto a personas como a Claude Code).
 
 Si tu `claude.exe` no está donde lo dejan npm o el instalador nativo, define la variable de entorno `NIMBO_CLAUDE` con su ruta.
 

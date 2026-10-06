@@ -17,6 +17,9 @@ const PROJECTS = path.join(os.homedir(), ".claude", "projects");
 // Opcional (prefs.json → "vault"): tu carpeta de notas. El orquestador la puede leer y su
 // chat siempre está en la lista. Vacío = sin vault.
 let VAULT = "";
+// Idioma de las respuestas y de los avisos: lo pasa main.js (prefs.lang o el de Windows).
+let LANG = () => "es";
+const t = (s, ...a) => require("./i18n").translator(LANG())(s, ...a);
 // Así nombra Claude Code la carpeta de transcripciones de un cwd (D:\notas → D--notas).
 const projectDirName = (cwd) => cwd.replace(/[^a-zA-Z0-9]/g, "-");
 const ACTIVE_MS = 2 * 60_000;
@@ -25,7 +28,7 @@ const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 /** Ejecuta `claude` y devuelve la línea final "result" de su salida. */
 function runClaude(args, { cwd, input }) {
   return new Promise((resolve) => {
-    if (!CLAUDE_EXE) return resolve({ error: "No encontré claude.exe. Instala Claude Code o define NIMBO_CLAUDE con su ruta." });
+    if (!CLAUDE_EXE) return resolve({ error: t("No encontré claude.exe. Instala Claude Code o define NIMBO_CLAUDE con su ruta.") });
     const child = spawn(CLAUDE_EXE, args, { cwd, windowsHide: true });
     let out = "";
     let err = "";
@@ -39,7 +42,7 @@ function runClaude(args, { cwd, input }) {
         .split("\n")
         .map((line) => { try { return JSON.parse(line); } catch { return null; } })
         .findLast((o) => o?.type === "result");
-      resolve(result ?? { error: (err || "No pude hablar con Claude.").trim().slice(0, 600) });
+      resolve(result ?? { error: (err || t("No pude hablar con Claude.")).trim().slice(0, 600) });
     });
     child.stdin.end(input);
   });
@@ -166,11 +169,11 @@ function systemPrompt(sessions, pending = []) {
   const off = -now.getTimezoneOffset();
   const tz = `${off >= 0 ? "+" : "-"}${String(Math.floor(Math.abs(off) / 60)).padStart(2, "0")}:${String(Math.abs(off) % 60).padStart(2, "0")}`;
   const nowText = now.toLocaleString("es-CO", { dateStyle: "full", timeStyle: "short" });
-  const todo = pending.map((r) => `- id: ${r.id} | ${r.text} | ${r.due ? new Date(r.due).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" }) : "sin fecha"}`).join("\n");
+  const todo = pending.map((r) => `- id: ${r.id} | ${r.text} | ${r.due ? new Date(r.due).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" }) : t("sin fecha")}`).join("\n");
   const list = sessions
     .map((s) => `- id: ${s.id} | proyecto: ${s.project} | carpeta: ${s.cwd}${s.dirs.length ? ` | también trabaja en: ${s.dirs.join(", ")}` : ""} | título: ${s.title || "(sin título)"} | último pedido: ${s.lastPrompt || "-"}`)
     .join("\n");
-  return `Eres Nimbo, el orquestador personal del usuario. Hablas en español. Tus respuestas en "reply" son de máximo 2 frases cortas, sin listas largas ni código.
+  return `Eres Nimbo, el orquestador personal del usuario. Respondes en ${LANG() === "en" ? "inglés" : "español"}, salvo que el usuario te escriba en otro idioma. Tus respuestas en "reply" son de máximo 2 frases cortas, sin listas largas ni código.
 
 Ahora es ${nowText} (zona UTC${tz}).
 
@@ -204,7 +207,8 @@ function userMessage({ text, images = [] }) {
   return JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
 }
 
-function createOrchestrator(chatDir, { vault } = {}) {
+function createOrchestrator(chatDir, { vault, lang } = {}) {
+  if (typeof lang === "function") LANG = lang;
   fs.mkdirSync(chatDir, { recursive: true });
   VAULT = typeof vault === "string" && fs.statSync(vault, { throwIfNoEntry: false })?.isDirectory() ? vault : "";
   let sessionId = null;
@@ -250,7 +254,7 @@ function createOrchestrator(chatDir, { vault } = {}) {
         });
       const pendingIds = new Set(reminders.map((x) => x.id));
       return {
-        text: plan.reply || r.result || "(sin respuesta)",
+        text: plan.reply || r.result || t("(sin respuesta)"),
         dispatch,
         reminders: Array.isArray(plan.reminders) ? plan.reminders.slice(0, 10) : [],
         complete: (Array.isArray(plan.complete) ? plan.complete : []).filter((id) => pendingIds.has(id)),
@@ -262,12 +266,12 @@ function createOrchestrator(chatDir, { vault } = {}) {
     // de Claude Code considera seguro; lo riesgoso lo sigue bloqueando.
     async dispatch(id, prompt) {
       const s = known.get(id);
-      if (!s) return { text: "Ese chat ya no está en la lista." };
+      if (!s) return { text: t("Ese chat ya no está en la lista.") };
       const args = ["-p", "--resume", s.id, "--permission-mode", "auto", "--output-format", "json",
         "--append-system-prompt", DISPATCH_RULES];
       for (const dir of s.dirs) args.push("--add-dir", dir);
       const r = await runClaude(args, { cwd: s.cwd, input: String(prompt) });
-      return { text: r.error ?? (r.result || "(sin respuesta)"), project: s.project };
+      return { text: r.error ?? (r.result || t("(sin respuesta)")), project: s.project };
     },
   };
 }

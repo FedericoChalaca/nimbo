@@ -25,6 +25,7 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 | `stt-worker.js` | Worker con Whisper (`onnx-community/whisper-base`, CPU/wasm q8, 4 hilos). |
 | `hook.js` | Lo ejecuta Claude Code en cada evento: firma y reenvía el JSON a Nimbo. |
 | `install-hooks.js` | Instala/quita los 10 hooks (PermissionRequest con timeout 75 s, el resto 5 s). |
+| `i18n.js` | Traducciones al inglés y `translator(lang)`; lo usan la página y el proceso principal. |
 | `reminders.js` | Recordatorios en JSON (`node reminders.js` = autoprueba). |
 | `trello.js` | Tarjetas pendientes vía el conector de Trello de tu `claude` (solo lectura). |
 | `whatsapp.js` + `wa-watch.ps1` | WhatsApp de escritorio en solo lectura (`node whatsapp.js` = autoprueba). |
@@ -170,6 +171,15 @@ Node (`ELECTRON_RUN_AS_NODE=1`); en desarrollo el hook es `node hook.js`. Si la 
 `index.html` REAL en una ventana fuera de pantalla con una API falsa (`promo-preload.js`, un Proxy: lo que se
 agregue a `preload.js` no los rompe) y un guion. No muestran ventanas ni tocan `%APPDATA%\nimbo`.
 README en inglés (`README.md`) y español (`README.es.md`): al cambiar uno, cambiar el otro.
+
+**Idiomas (español / inglés).** Los textos van en ESPAÑOL en el código, envueltos en `t("…")`; `i18n.js` trae
+el inglés con el texto en español como clave (`{0}`, `{1}` = valores). Idioma = `prefs.lang` (menú "Idioma /
+Language") o, si no hay, el de Windows. `main.js` se lo pasa a la página en la URL (`?lang=en`); cambiarlo
+recarga la página. El HTML fijo (botones, títulos) se traduce solo al cargar y los dos textos del CSS llegan
+como variables (`--t-ask`, `--t-drop`). También siguen el idioma: el dictado (Whisper), las respuestas del
+orquestador, los resúmenes de WhatsApp y sus reglas de ejemplo. Al agregar un texto: `t("en español")` + su
+línea en `i18n.js`; `node i18n.js` (parte de `npm test`) falla si falta alguna. Los videos de `promo/` cargan
+la página sin `?lang` (español).
 
 ## Seguridad (no deshacer)
 - Servidor solo en `127.0.0.1`, y solo acepta `Host: 127.0.0.1:47823` (corta DNS rebinding). Cada

@@ -58,7 +58,7 @@
   #ticker span { position: absolute; left: 0; top: 0; max-width: 100%; line-height: 20px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: #e9eaee; font-size: 13.5px; }
   #label { opacity: 0; transition: opacity .3s; }
-  .open #ticker:not(:has(#label.show))::after { content: "¿En qué te ayudo?"; color: #6b717a; line-height: 20px; }
+  .open #ticker:not(:has(#label.show))::after { content: var(--t-ask, "¿En qué te ayudo?"); color: #6b717a; line-height: 20px; }
   #label.show { opacity: 1; }
   .state-sleeping #label { opacity: 0; }
   /* Brillo que recorre el texto mientras Claude piensa o trabaja */
@@ -394,7 +394,7 @@
   @keyframes chomp { 50% { transform: scale(1.4, 1.7); } }
   #dropzone { position: absolute; inset: 8px; border-radius: 22px; pointer-events: none; opacity: 0;
     border: 1.5px dashed color-mix(in srgb, var(--accent-a) 65%, transparent); transition: opacity .3s; }
-  #dropzone::after { content: "Suéltalo sobre mí"; position: absolute; left: 0; right: 0; bottom: 9px;
+  #dropzone::after { content: var(--t-drop, "Suéltalo sobre mí"); position: absolute; left: 0; right: 0; bottom: 9px;
     text-align: center; color: #9aa0a8; font-size: 12px; }
   .dropping #dropzone { opacity: 1; }
 
@@ -601,11 +601,28 @@
 </div>
 
 <script src="jarvis.js"></script>
+<script src="i18n.js"></script>
 <script>
 // Sin Electron (vista previa en un navegador) la página funciona igual, solo que sin eventos.
 const noop = () => {};
 const api = window.nimbo ?? new Proxy({}, { get: () => noop });
+// Idioma: main.js lo pasa en la URL (?lang=en). El texto en español es la clave; i18n.js trae
+// el inglés. t("Hola 👋 · {0}", quien) → traduce y pone los valores.
+const LANG = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "es";
+const LOCALE = LANG === "en" ? "en-US" : "es-CO";
+const t = translator(LANG);
 const root = document.getElementById("nimbo");
+// Lo que está escrito en el HTML (botones, títulos, texto de ayuda) se traduce al cargar.
+if (LANG === "en") {
+  document.documentElement.lang = "en";
+  for (const e of document.querySelectorAll("#content *")) {
+    if (!e.children.length && e.textContent.trim()) e.textContent = t(e.textContent.trim());
+    for (const a of ["title", "placeholder"]) if (e.hasAttribute(a)) e.setAttribute(a, t(e.getAttribute(a)));
+  }
+}
+// Los dos textos que pinta el CSS (content:) llegan como variables.
+root.style.setProperty("--t-ask", JSON.stringify(t("¿En qué te ayudo?")));
+root.style.setProperty("--t-drop", JSON.stringify(t("Suéltalo sobre mí")));
 const look = document.getElementById("look");
 const label = document.getElementById("label");
 const svg = document.querySelector("#char svg");
@@ -821,9 +838,9 @@ const SOUNDS = {
 setInterval(() => { if (audio?.state === "running" && performance.now() - lastSoundAt > 4000) audio.suspend(); }, 5000);
 
 // --- Eventos de Claude Code ---
-const TOOLS = { Bash: "Ejecuta", PowerShell: "Ejecuta", Read: "Lee", Write: "Escribe", Edit: "Edita",
-  MultiEdit: "Edita", Glob: "Busca", Grep: "Busca", WebSearch: "Busca en la web", WebFetch: "Abre",
-  Task: "Agente", Agent: "Agente", TodoWrite: "Tareas", NotebookEdit: "Notebook" };
+const TOOLS = { Bash: t("Ejecuta"), PowerShell: t("Ejecuta"), Read: t("Lee"), Write: t("Escribe"), Edit: t("Edita"),
+  MultiEdit: t("Edita"), Glob: t("Busca"), Grep: t("Busca"), WebSearch: t("Busca en la web"), WebFetch: t("Abre"),
+  Task: t("Agente"), Agent: t("Agente"), TodoWrite: t("Tareas"), NotebookEdit: "Notebook" };
 const base = (p) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
 
 function toolLabel(tool, input = {}) {
@@ -912,14 +929,14 @@ function codeView(step) {
   let i = 0;
   const add = (cls, text) => { const l = el("div", `ln ${cls}`, text || " "); if (cls === "add") l.style.setProperty("--i", i++); view.append(l); };
   if (tool === "Edit" || tool === "MultiEdit") {
-    tab(base(input.file_path ?? ""), "edita");
+    tab(base(input.file_path ?? ""), t("edita"));
     const edits = tool === "Edit" ? [input] : (input.edits ?? []).slice(0, 2);
     for (const e of edits) {
       lines(e.old_string, 3).forEach((t) => add("del", "- " + t));
       lines(e.new_string, 4).forEach((t) => add("add", "+ " + t));
     }
   } else if (tool === "Write") {
-    tab(base(input.file_path ?? ""), "nuevo");
+    tab(base(input.file_path ?? ""), t("nuevo"));
     lines(input.content, 6).forEach((t) => add("add", "+ " + t));
   } else if (tool === "Bash" || tool === "PowerShell") {
     add("cmd", "$ " + lines(input.command, 2).join(" "));
@@ -940,7 +957,7 @@ function renderLive() {
   liveKey = key;
   const head = el("div", "lhead");
   head.append(el("span", `dot ${s.state}`), el("b", "", s.title), el("span", "sub", "Claude Code"),
-    el("span", "count", s.state === "finished" ? "listo" : `paso ${s.n}`));
+    el("span", "count", s.state === "finished" ? t("listo") : t("paso {0}", s.n)));
   const steps = el("div", "steps");
   for (const st of s.steps) {
     const row = el("div", `lstep ${st.status}`);
@@ -982,7 +999,7 @@ function renderSessions() {
     row.append(el("span", `dot ${s.state}`), el("b", "", s.title), el("span", "step", s.step), el("span", "ago", ago(s.t)));
     return row;
   });
-  const head = list.length === 1 ? "1 chat activo" : `${list.length} chats activos`;
+  const head = list.length === 1 ? t("1 chat activo") : t("{0} chats activos", list.length);
   sessionBox.replaceChildren(el("div", "head", head), ...rows);
 }
 
@@ -1010,7 +1027,7 @@ function appsList() {
   if (trelloData) out.push({ id: "trello", name: "Trello", color: "#579dff", count: trelloData.boards.reduce((n, b) => n + (b.pending || 0), 0) });
   if (github !== null) out.push({ id: "github", name: "GitHub", color: "#a371f7", count: github.length });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
-  out.push({ id: "pend", name: "Pendientes", color: "#ffd23f", count: pendingList.length });
+  out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
   return out.filter((a) => a.count > 0);
 }
 function renderApps() {
@@ -1031,12 +1048,12 @@ function renderApps() {
     return p;
   }));
 }
-const listColor = (name = "") => (/bloque/i.test(name) ? "red" : /revisi|review/i.test(name) ? "purple" : /proceso|progres|doing|haciendo/i.test(name) ? "blue" : "");
+const listColor = (name = "") => (/bloq|block/i.test(name) ? "red" : /revisi|review/i.test(name) ? "purple" : /proceso|progres|doing|haciendo/i.test(name) ? "blue" : "");
 function dueChip(iso) {
   if (!iso) return null;
   const ms = Date.parse(iso) - Date.now();
   if (!Number.isFinite(ms)) return null;
-  return el("span", `chip2 ${ms < 0 ? "red" : ms < 864e5 ? "amber" : ""}`, ms < 0 ? "vencida" : fmtDue(iso));
+  return el("span", `chip2 ${ms < 0 ? "red" : ms < 864e5 ? "amber" : ""}`, ms < 0 ? t("vencida") : fmtDue(iso));
 }
 function renderAppView() {
   const app = appsList().find((a) => a.id === openApp);
@@ -1054,8 +1071,8 @@ function renderAppView() {
   head.append(miniCloud(app.color), el("b", "", app.name));
   const rows = [];
   if (app.id === "trello") {
-    head.append(el("span", "sub", trelloData.boards.filter((b) => b.pending).map((b) => `${b.name} · ${b.pending}`).join(" · ") || "nada pendiente"));
-    const again = el("button", "", trelloBusy ? "Actualizando…" : "Actualizar");
+    head.append(el("span", "sub", trelloData.boards.filter((b) => b.pending).map((b) => `${b.name} · ${b.pending}`).join(" · ") || t("nada pendiente")));
+    const again = el("button", "", trelloBusy ? t("Actualizando…") : t("Actualizar"));
     again.type = "button";
     again.onclick = () => api.trelloRefresh();
     head.append(again);
@@ -1066,9 +1083,9 @@ function renderAppView() {
       r.append(el("span", `chip2 ${listColor(c.list)}`, c.list), el("span", "name", c.name), ...[dueChip(c.due)].filter(Boolean));
       rows.push(r);
     }
-    rows.push(el("div", "afoot", `Actualizado ${fmtDue(trelloData.at)}`));
+    rows.push(el("div", "afoot", t("Actualizado {0}", fmtDue(trelloData.at))));
   } else if (app.id === "github") {
-    head.append(el("span", "sub", `${github.length} sin leer`));
+    head.append(el("span", "sub", t("{0} sin leer", github.length)));
     for (const n of github.slice(0, 6)) {
       const r = el("div", "arow link");
       r.onclick = () => api.openGithub();
@@ -1078,35 +1095,35 @@ function renderAppView() {
   } else if (app.id === "wa") {
     const chats = waChats();
     const ignored = whatsapp.chats.filter((c) => c.ignore);
-    head.append(el("span", "sub", chats.length ? `${chats.length} ${chats.length === 1 ? "chat" : "chats"}` : `${waCount()} sin leer`));
-    const open = el("button", "open allow", "Abrir WhatsApp");
+    head.append(el("span", "sub", chats.length ? `${chats.length} ${chats.length === 1 ? "chat" : "chats"}` : t("{0} sin leer", waCount())));
+    const open = el("button", "open allow", t("Abrir WhatsApp"));
     open.type = "button";
     open.onclick = () => api.openWhatsapp();
     head.append(open);
     if (whatsapp.headline) rows.push(el("div", "afoot", whatsapp.headline));
-    const CHIP = { trabajo: ["blue", "Trabajo"], personal: ["green", "Personal"], grupo: ["purple", "Grupo"], otro: ["", "Nuevo"] };
+    const CHIP = { trabajo: ["blue", t("Trabajo")], personal: ["green", "Personal"], grupo: ["purple", t("Grupo")], otro: ["", t("Nuevo")] };
     for (const c of chats.slice(0, 7)) {
       const r = el("div", `arow${c.urgent ? " urgent" : ""}`);
-      const [color, text] = c.urgent ? ["red", "Urgente"] : CHIP[c.kind] ?? CHIP.otro;
+      const [color, text] = c.urgent ? ["red", t("Urgente")] : CHIP[c.kind] ?? CHIP.otro;
       const name = el("span", "name");
       name.append(el("b", "", c.n > 1 ? `${c.name} (${c.n})` : c.name), el("i", "", c.summary));
       name.title = c.summary;
       r.append(el("span", `chip2 ${color}`, text), name);
       rows.push(r);
     }
-    if (ignored.length) rows.push(el("div", "afoot", `Ignorados: ${ignored.map((c) => `${c.name} (${c.n})`).join(", ")}`.slice(0, 150)));
-    if (!whatsapp.read) rows.push(el("div", "afoot", "Para ver quién escribe y qué es urgente: clic derecho en Nimbo > Leer mensajes de WhatsApp."));
-    else if (!whatsapp.access) rows.push(el("div", "afoot", "Falta permiso: Configuración de Windows > Privacidad > Notificaciones."));
-    else if (!whatsapp.chats.length && whatsapp.count) rows.push(el("div", "afoot", "Sin vista previa: esos chats no dejaron notificación en Windows."));
+    if (ignored.length) rows.push(el("div", "afoot", t("Ignorados: {0}", ignored.map((c) => `${c.name} (${c.n})`).join(", ")).slice(0, 150)));
+    if (!whatsapp.read) rows.push(el("div", "afoot", t("Para ver quién escribe y qué es urgente: clic derecho en Nimbo > Leer mensajes de WhatsApp.")));
+    else if (!whatsapp.access) rows.push(el("div", "afoot", t("Falta permiso: Configuración de Windows > Privacidad > Notificaciones.")));
+    else if (!whatsapp.chats.length && whatsapp.count) rows.push(el("div", "afoot", t("Sin vista previa: esos chats no dejaron notificación en Windows.")));
   } else if (app.id === "pend") {
-    head.append(el("span", "sub", "tus recordatorios"));
+    head.append(el("span", "sub", t("tus recordatorios")));
     for (const p of pendingList.slice(0, 6)) {
       const r = el("div", "arow");
       const done = el("button", "done", "✓");
       done.type = "button";
-      done.title = "Marcar como hecho";
+      done.title = t("Marcar como hecho");
       done.onclick = () => api.reminderDone(p.id);
-      r.append(el("span", "name", p.text), ...[dueChip(p.due) ?? el("span", "chip2", "sin fecha")], done);
+      r.append(el("span", "name", p.text), ...[dueChip(p.due) ?? el("span", "chip2", t("sin fecha"))], done);
       rows.push(r);
     }
   }
@@ -1136,7 +1153,7 @@ function onWhatsapp(d, alert) {
     const last = waChats().at(-1);
     emote("hello", 1600);
     SOUNDS.hello();
-    setState(state, (last ? `WhatsApp · ${last.name}${last.summary ? ": " + last.summary : ""}` : `WhatsApp: ${waCount()} sin leer`).slice(0, 90), { labelFor: 5000 });
+    setState(state, (last ? `WhatsApp · ${last.name}${last.summary ? ": " + last.summary : ""}` : `WhatsApp: ${t("{0} sin leer", waCount())}`).slice(0, 90), { labelFor: 5000 });
   }
   renderApps();
   if (openApp === "wa") renderAppView();
@@ -1151,7 +1168,7 @@ api.onTrello((d) => {
     alertedCards.add(soon.url || soon.name);
     emote("hello", 1600);
     SOUNDS.needs();
-    setState(state, `Trello: "${soon.name}" vence ${fmtDue(soon.due)}`.slice(0, 90), { labelFor: 6000 });
+    setState(state, t("Trello: \"{0}\" vence {1}", soon.name, fmtDue(soon.due)).slice(0, 90), { labelFor: 6000 });
   }
   renderApps();
   if (openApp === "trello") renderAppView();
@@ -1177,12 +1194,12 @@ function handle(p) {
   const who = p.title || base(p.cwd ?? "") || "Claude";
   switch (p.hook_event_name) {
     case "SessionStart":
-      track(p, "idle", "empezó");
-      setState("idle", `Hola 👋 · ${who}`, { labelFor: 3500 });
+      track(p, "idle", t("empezó"));
+      setState("idle", t("Hola 👋 · {0}", who), { labelFor: 3500 });
       SOUNDS.hello();
       break;
     case "UserPromptSubmit": {
-      const asked = (p.prompt ?? "Pensando…").replace(/\s+/g, " ").slice(0, 70);
+      const asked = (p.prompt ?? t("Pensando…")).replace(/\s+/g, " ").slice(0, 70);
       track(p, "thinking", asked);
       setState("thinking", `${who} · ${asked}`);
       break;
@@ -1198,25 +1215,25 @@ function handle(p) {
       if (state !== "working") setState("working", label.textContent);
       break;
     case "PostToolUseFailure": {
-      const step = `⚠ Falló · ${toolLabel(p.tool_name, p.tool_input)}`;
+      const step = t("⚠ Falló · {0}", toolLabel(p.tool_name, p.tool_input));
       track(p, "working", step);
       setState("working", `${who} · ${step}`);
       break;
     }
     case "Notification":
       // Permisos pendientes o "esperando tu respuesta": las dos cosas te necesitan.
-      track(p, "needs", p.message ?? "te necesita");
-      setState("needs", `${who}: ${p.message ?? "te necesita"}`);
+      track(p, "needs", p.message ?? t("te necesita"));
+      setState("needs", `${who}: ${p.message ?? t("te necesita")}`);
       SOUNDS.needs();
       break;
     case "Stop":
-      track(p, "finished", "terminó");
-      setState("finished", `¡Listo! · ${who}`, { back: 5000 });
+      track(p, "finished", t("terminó"));
+      setState("finished", t("¡Listo! · {0}", who), { back: 5000 });
       SOUNDS.finish();
       break;
     case "StopFailure":
-      track(p, "error", "falló");
-      setState("error", `Algo falló en ${who} 😢`, { back: 8000, labelFor: 2500 });
+      track(p, "error", t("falló"));
+      setState("error", t("Algo falló en {0} 😢", who), { back: 8000, labelFor: 2500 });
       SOUNDS.error();
       break;
     case "SessionEnd":
@@ -1336,34 +1353,34 @@ function renderSetup(s) {
     return r;
   };
   const head = el("div", "ahead");
-  const close = el("button", "allow", "Listo");
+  const close = el("button", "allow", t("Listo"));
   close.type = "button";
   close.onclick = () => { api.setupDo("done"); closeSetup(); };
-  head.append(el("b", "", "Conexiones"), el("span", "sub", "lo que Nimbo puede ver"), close);
+  head.append(el("b", "", t("Conexiones")), el("span", "sub", t("lo que Nimbo puede ver")), close);
 
   const name = el("input");
   name.value = s.name;
-  name.placeholder = "Tu nombre";
+  name.placeholder = t("Tu nombre");
   name.maxLength = 30;
   name.onchange = () => api.setupDo("name", name.value);
 
-  const claude = !s.claude ? row(false, "Claude Code", "No lo encontré en este equipo.", btn("Cómo instalarlo", "open", "claude"))
-    : s.hooks === "on" ? row(true, "Claude Code", "Conectado: ve tus chats y te pasa los permisos.", btn("Desconectar", "hooks-off"))
-    : s.hooks === "stale" ? row(false, "Claude Code", "La conexión apunta a otra carpeta.", btn("Reconectar", "hooks-on", null, "allow"))
-    : s.hooks === "error" ? row(false, "Claude Code", "No pude leer `~/.claude/settings.json`: revisa que sea JSON válido.")
-    : row(false, "Claude Code", "Conéctalo para ver tus chats en vivo y aprobar permisos.", btn("Conectar", "hooks-on", null, "allow"));
-  const github = s.github === "on" ? row(true, "GitHub", "Conectado con tu sesión de gh.")
-    : s.github === "off" ? row(false, "GitHub", "Abre una terminal y escribe `gh auth login`.")
-    : row(null, "GitHub", "Opcional: avisa de tus notificaciones.", btn("Instalar GitHub CLI", "open", "gh"));
-  const trello = s.trello !== null ? row(true, "Trello", `Conectado: ${s.trello} ${s.trello === 1 ? "pendiente" : "pendientes"}.`, btn("Actualizar", "trello"))
-    : row(null, "Trello", "Opcional: activa el conector de Trello en claude.ai y pulsa Probar (tarda 1 min).", btn("claude.ai", "open", "connectors"), btn("Probar", "trello"));
-  const wa = s.whatsappRead ? row(true, "WhatsApp", "Resume quién te escribió y avisa lo urgente.", btn("Reglas", "whatsapp-rules"), btn("Apagar", "whatsapp", false))
-    : row(null, "WhatsApp", "Opcional: tu Claude resume tus notificaciones de WhatsApp.", btn("Activar", "whatsapp", true));
-  const auto = row(s.autostart ? true : null, "Iniciar con Windows", s.autostart ? "Nimbo arranca al prender el equipo." : "Que Nimbo arranque solo al prender el equipo.",
-    btn(s.autostart ? "Quitar" : "Activar", "autostart", !s.autostart));
+  const claude = !s.claude ? row(false, "Claude Code", t("No lo encontré en este equipo."), btn(t("Cómo instalarlo"), "open", "claude"))
+    : s.hooks === "on" ? row(true, "Claude Code", t("Conectado: ve tus chats y te pasa los permisos."), btn(t("Desconectar"), "hooks-off"))
+    : s.hooks === "stale" ? row(false, "Claude Code", t("La conexión apunta a otra carpeta."), btn(t("Reconectar"), "hooks-on", null, "allow"))
+    : s.hooks === "error" ? row(false, "Claude Code", t("No pude leer `~/.claude/settings.json`: revisa que sea JSON válido."))
+    : row(false, "Claude Code", t("Conéctalo para ver tus chats en vivo y aprobar permisos."), btn(t("Conectar"), "hooks-on", null, "allow"));
+  const github = s.github === "on" ? row(true, "GitHub", t("Conectado con tu sesión de gh."))
+    : s.github === "off" ? row(false, "GitHub", t("Abre una terminal y escribe `gh auth login`."))
+    : row(null, "GitHub", t("Opcional: avisa de tus notificaciones."), btn(t("Instalar GitHub CLI"), "open", "gh"));
+  const trello = s.trello !== null ? row(true, "Trello", t(s.trello === 1 ? "Conectado: {0} pendiente." : "Conectado: {0} pendientes.", s.trello), btn(t("Actualizar"), "trello"))
+    : row(null, "Trello", t("Opcional: activa el conector de Trello en claude.ai y pulsa Probar (tarda 1 min)."), btn("claude.ai", "open", "connectors"), btn(t("Probar"), "trello"));
+  const wa = s.whatsappRead ? row(true, "WhatsApp", t("Resume quién te escribió y avisa lo urgente."), btn(t("Reglas"), "whatsapp-rules"), btn(t("Apagar"), "whatsapp", false))
+    : row(null, "WhatsApp", t("Opcional: tu Claude resume tus notificaciones de WhatsApp."), btn(t("Activar"), "whatsapp", true));
+  const auto = row(s.autostart ? true : null, t("Iniciar con Windows"), s.autostart ? t("Nimbo arranca al prender el equipo.") : t("Que Nimbo arranque solo al prender el equipo."),
+    btn(s.autostart ? t("Quitar") : t("Activar"), "autostart", !s.autostart));
 
-  const rows = [head, claude, row(s.name ? true : null, "Tu nombre", "Para saludarte.", name), github, trello, wa, auto];
-  if (s.error) rows.push(el("div", "afoot", `No se pudo: ${s.error}`));
+  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, wa, auto];
+  if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));
   setupBox.replaceChildren(...rows);
 }
 async function openSetup() {
@@ -1415,7 +1432,7 @@ wrap.addEventListener("click", (e) => {
     return;
   }
   if (clicks === 2) { emote("love", 1500); SOUNDS.love(); }
-  if (clicks === 5) { emote("dizzy", 2600); SOUNDS.dizzy(); setState(state, "Ya, ya… 😵‍💫", { labelFor: 2200 }); }
+  if (clicks === 5) { emote("dizzy", 2600); SOUNDS.dizzy(); setState(state, t("Ya, ya… 😵‍💫"), { labelFor: 2200 }); }
   clickTimer = setTimeout(() => (clicks = 0), 900);
 });
 
@@ -1460,7 +1477,7 @@ api.onPermission((p) => {
   const input = p.tool_input ?? {};
   const field = FIELDS.find((k) => typeof input[k] === "string" && input[k].trim());
   // Se muestra el comando o archivo completo: aprobar "Bash" a ciegas no sirve de nada.
-  card.querySelector(".what").textContent = `${p.title || base(p.cwd ?? "")} quiere usar ${p.tool_name ?? "una herramienta"}`;
+  card.querySelector(".what").textContent = t("{0} quiere usar {1}", p.title || base(p.cwd ?? ""), p.tool_name ?? t("una herramienta"));
   hidePanel();
   // Completo y sin recortar a ciegas: el campo principal y, debajo, el resto de lo que manda
   // (p. ej. el contenido de un Write o el cambio de un Edit). Si es largo, la caja hace scroll.
@@ -1474,10 +1491,10 @@ api.onPermission((p) => {
     .flatMap((x) => x.rules ?? []).map((r) => (r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName));
   const always = document.getElementById("always");
   always.classList.toggle("hidden", !rules.length);
-  always.title = `Permitir siempre: ${rules.join(", ")}`;
+  always.title = t("Permitir siempre: {0}", rules.join(", "));
   // Lo que "Siempre" dejaría aprobado para el futuro, a la vista (no solo en un tooltip).
   const rulesLine = document.getElementById("alwaysRules");
-  rulesLine.textContent = `"Siempre" aprobaría: ${rules.join(", ")}`;
+  rulesLine.textContent = t("\"Siempre\" aprobaría: {0}", rules.join(", "));
   rulesLine.classList.toggle("hidden", !rules.length);
   setState("needs");
   card.classList.remove("hidden");
@@ -1488,7 +1505,7 @@ card.addEventListener("click", (e) => {
   if (d === undefined) return;
   api.decide(d, cardRid);
   card.classList.add("hidden");
-  const text = { allow: "Aprobado ✓", always: "Aprobado para siempre ✓", deny: "Denegado ✋", "": "Te pregunta en la terminal" }[d];
+  const text = { allow: t("Aprobado ✓"), always: t("Aprobado para siempre ✓"), deny: t("Denegado ✋"), "": t("Te pregunta en la terminal") }[d];
   setState(d === "allow" || d === "always" ? "working" : "idle", text, { labelFor: 2500 });
 });
 api.onPermissionDone(() => card.classList.add("hidden"));
@@ -1505,15 +1522,15 @@ api.onReminders((l) => {
   if (openApp === "pend") renderAppView();
 });
 api.onReminder((r) => { remindQueue.push(r); showReminder(); });
-// "hoy 3:00 p. m.", "mañana 9:00 a. m.", "vie 3 oct, 9:00 a. m." o "sin fecha"
+// "hoy 3:00 p. m.", "mañana 9:00 a. m.", "vie 3 oct, 9:00 a. m." o t("sin fecha")
 function fmtDue(iso) {
-  if (!iso) return "sin fecha";
+  if (!iso) return t("sin fecha");
   const d = new Date(iso);
-  const hour = d.toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" });
+  const hour = d.toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit" });
   const day = (offset) => { const t = new Date(); t.setDate(t.getDate() + offset); return t.toDateString(); };
-  if (d.toDateString() === day(0)) return `hoy ${hour}`;
-  if (d.toDateString() === day(1)) return `mañana ${hour}`;
-  return `${d.toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" })}, ${hour}`;
+  if (d.toDateString() === day(0)) return t("hoy {0}", hour);
+  if (d.toDateString() === day(1)) return t("mañana {0}", hour);
+  return `${d.toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short" })}, ${hour}`;
 }
 function showReminder() {
   const r = remindQueue[0];
@@ -1535,7 +1552,7 @@ remindCard.addEventListener("click", (e) => {
   else api.reminderSnooze(id, 10);
   remindQueue.shift();
   remindCard.classList.add("hidden");
-  setState(state, action === "done" ? "✓ Hecho" : "⏰ Te aviso en 10 min", { labelFor: 2200 });
+  setState(state, action === "done" ? t("✓ Hecho") : t("⏰ Te aviso en 10 min"), { labelFor: 2200 });
   setTimeout(() => { settle(); showReminder(); }, 2300);
 });
 
@@ -1591,7 +1608,7 @@ function addFile(file) {
 function addImage(file) {
   if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) return;
   if (file.size > MAX_IMAGE) {
-    answer.textContent = `"${file.name}" pesa más de 5 MB.`;
+    answer.textContent = t("\"{0}\" pesa más de 5 MB.", file.name);
     answer.classList.remove("wait");
     answerBox.classList.remove("hidden");
     return;
@@ -1607,13 +1624,13 @@ function renderThumbs() {
   const imgs = images.map((img, i) => {
     const e = document.createElement("img");
     e.src = img.url;
-    e.title = "Quitar";
+    e.title = t("Quitar");
     e.onclick = () => { images.splice(i, 1); renderThumbs(); };
     return e;
   });
   const chips = files.map((f, i) => {
     const c = el("div", "chip");
-    c.title = `${f.path}\n(clic para quitar)`;
+    c.title = `${f.path}\n${t("(clic para quitar)")}`;
     c.append("📄", el("span", "", f.name));
     c.onclick = () => { files.splice(i, 1); renderThumbs(); };
     return c;
@@ -1705,14 +1722,14 @@ function swallow(dropped, x, y) {
       endDrop();
       dropped.forEach(addFile);
       if (chat.classList.contains("hidden")) toggleChat(true);
-      setState(state, dropped.length === 1 ? `Me tragué "${dropped[0].name}" 📎` : `Me tragué ${dropped.length} archivos 📎`, { labelFor: 2500 });
+      setState(state, dropped.length === 1 ? t("Me tragué \"{0}\" 📎", dropped[0].name) : t("Me tragué {0} archivos 📎", dropped.length), { labelFor: 2500 });
     }, 900);
   });
 }
 
 chat.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const text = msg.value.trim() || (images.length ? "¿Qué ves en esta imagen?" : files.length ? "Revisa estos archivos." : "");
+  const text = msg.value.trim() || (images.length ? t("¿Qué ves en esta imagen?") : files.length ? t("Revisa estos archivos.") : "");
   if (!text || asking) return;
   asking = true;
   lastActivity = Date.now();
@@ -1753,7 +1770,7 @@ function progressEnd() {
 }
 
 async function askAndShow(message) {
-  answer.replaceChildren(el("div", "", "Pensando…"));
+  answer.replaceChildren(el("div", "", t("Pensando…")));
   answer.classList.add("wait");
   answerBox.classList.remove("hidden");
   progressStart(message.files?.length || message.images?.length ? 25_000 : 15_000);
@@ -1761,7 +1778,7 @@ async function askAndShow(message) {
   progressEnd();
   if (r?.added?.length) setTimeout(() => setState(state, `⏰ Anotado: ${r.added[0].text}`, { labelFor: 3500 }), 300);
   answer.classList.remove("wait");
-  answer.replaceChildren(el("div", "reply", r?.text ?? "No pude hablar con Claude."));
+  answer.replaceChildren(el("div", "reply", r?.text ?? t("No pude hablar con Claude.")));
   for (const d of r?.dispatch ?? []) answer.append(proposal(d));
   answer.scrollTop = 0;
   return r;
@@ -1777,11 +1794,11 @@ function el(tag, cls, text) {
 function proposal(d) {
   const box = el("div", "prop");
   const head = el("div", "what", `→ ${d.project}${d.title ? " · " + d.title : ""}`);
-  if (d.active) head.append(el("span", "warn", "  ⚠ abierto en la app: ahí no verás esto hasta reabrirlo"));
+  if (d.active) head.append(el("span", "warn", t("  ⚠ abierto en la app: ahí no verás esto hasta reabrirlo")));
   const prompt = el("textarea");
   prompt.value = d.prompt;
-  const send = el("button", "allow", "Enviar");
-  const drop = el("button", "", "Descartar");
+  const send = el("button", "allow", t("Enviar"));
+  const drop = el("button", "", t("Descartar"));
   const btns = el("div", "btns");
   btns.append(send, drop);
   box.append(head, prompt, btns);
@@ -1794,15 +1811,15 @@ function proposal(d) {
     box.classList.add("hidden");
     answer.querySelector(".reply")?.classList.add("hidden");
     if (!answer.querySelector(".prop:not(.hidden)")) answerBox.classList.add("hidden");
-    setState("working", `→ ${d.project} trabajando…`);
+    setState("working", t("→ {0} trabajando…", d.project));
 
     progressStart(60_000);
     const res = await api.dispatch(d.session, text);
     progressEnd();
-    box.replaceChildren(el("div", "done", `✓ ${res?.project ?? d.project}: ${res?.text ?? "(sin respuesta)"}`));
+    box.replaceChildren(el("div", "done", `✓ ${res?.project ?? d.project}: ${res?.text ?? t("(sin respuesta)")}`));
     box.classList.remove("hidden");
     answerBox.classList.remove("hidden");
-    setState("finished", `¡Listo! · ${d.project}`, { back: 5000 });
+    setState("finished", t("¡Listo! · {0}", d.project), { back: 5000 });
     SOUNDS.finish();
   };
   return box;
@@ -1893,7 +1910,7 @@ setTimeout(() => root.classList.remove("enter"), 60);
 setState("idle");
 setTimeout(() => {
   const h = new Date().getHours();
-  const hi = h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
+  const hi = h < 12 ? t("Buenos días") : h < 19 ? t("Buenas tardes") : t("Buenas noches");
   emote("hello", 1600);
   SOUNDS.greet();
   setState("idle", NAME ? `${hi}, ${NAME} 👋` : `${hi} 👋`, { labelFor: 3500 });

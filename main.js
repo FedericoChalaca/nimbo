@@ -9,6 +9,7 @@ const http = require("http");
 const path = require("path");
 const { createOrchestrator, sessionTitle, claudeFound } = require("./orchestrator");
 const hooks = require("./install-hooks");
+const { translator } = require("./i18n");
 const { createReminders } = require("./reminders");
 const { createTrello } = require("./trello");
 const { createWhatsapp } = require("./whatsapp");
@@ -81,13 +82,14 @@ function createWindow() {
   win.setAlwaysOnTop(true, "screen-saver");
   // Los clics atraviesan la ventana salvo sobre la nube y las cajas (ver más abajo).
   win.setIgnoreMouseEvents(true);
-  win.loadURL("nimbo://app/index.html");
+  win.loadURL(pageUrl());
   // Soltar un archivo en la ventana no debe abrirlo como página: lo maneja index.html.
   win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("did-finish-load", () => {
     win.webContents.send("theme", prefs.theme);
     win.webContents.send("anchor", prefs.pos);
+    if (mini) win.webContents.send("mini", true); // tras recargar (cambio de idioma)
     win.webContents.send("name", String(prefs.name ?? ""));
     // Primera vez: se abre solo el panel de conexiones para dejar todo andando.
     if (!prefs.onboarded) setTimeout(() => { if (!mini && !win.isDestroyed()) win.webContents.send("setup-open"); }, 4500);
@@ -175,6 +177,11 @@ try {
 } catch {}
 let corner = prefs.corner;
 const savePrefs = () => fs.writeFileSync(prefsFile, JSON.stringify({ ...prefs, corner }));
+// Idioma: el elegido en el menú (prefs.lang) o, si no, el de Windows. Los textos están en
+// español en el código; i18n.js trae el inglés.
+const lang = () => (["es", "en"].includes(prefs.lang) ? prefs.lang : app.getLocale().toLowerCase().startsWith("es") ? "es" : "en");
+const t = (s, ...a) => translator(lang())(s, ...a);
+const pageUrl = () => `nimbo://app/index.html?lang=${lang()}`;
 const MINI_W = 100;
 const MINI_H = 60;
 const MARGIN = 8;
@@ -204,7 +211,7 @@ ipcMain.on("toggle-mini", () => setMini(!mini));
 
 // --- Chat + orquestador: usa tu Claude Code, sin API key aparte ---
 const CHAT_DIR = path.join(app.getPath("userData"), "chat");
-const orchestrator = createOrchestrator(CHAT_DIR, { vault: prefs.vault });
+const orchestrator = createOrchestrator(CHAT_DIR, { vault: prefs.vault, lang });
 // --- Recordatorios: el orquestador los crea/cierra desde el chat; aquí se guardan y se avisan ---
 const reminders = createReminders(path.join(app.getPath("userData"), "reminders.json"));
 const remindersChanged = () => win?.webContents.send("reminders", reminders.pending());
@@ -216,7 +223,7 @@ ipcMain.on("reminder-snooze", (_e, id, min) => { reminders.snooze(String(id), Ma
 function checkReminders() {
   for (const r of reminders.takeDue()) {
     win?.webContents.send("reminder", r);
-    if (Notification.isSupported()) new Notification({ title: "Nimbo · recordatorio", body: r.text, silent: mini }).show();
+    if (Notification.isSupported()) new Notification({ title: t("Nimbo · recordatorio"), body: r.text, silent: mini }).show();
   }
 }
 
@@ -252,12 +259,13 @@ ipcMain.on("open-url", (_e, url) => {
 let whatsapp = null; // { running, access, count, chats, headline }
 const wa = createWhatsapp({
   rulesFile: path.join(app.getPath("userData"), "whatsapp-reglas.txt"),
+  lang,
   onChange(state, alert) {
     whatsapp = state;
     if (!win || win.isDestroyed()) return;
     win.webContents.send("whatsapp", state, alert);
     // Lo urgente también sale como notificación de Windows: se ve en mini o jugando.
-    if (alert && Notification.isSupported()) new Notification({ title: `WhatsApp urgente · ${alert.name}`, body: alert.summary }).show();
+    if (alert && Notification.isSupported()) new Notification({ title: t("WhatsApp urgente · {0}", alert.name), body: alert.summary }).show();
   },
 });
 let waChild = null;
@@ -342,21 +350,21 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
 
 ipcMain.on("menu", () => {
   Menu.buildFromTemplate([
-    { label: "Conexiones y ajustes…", click: () => win.webContents.send("setup-open") },
+    { label: t("Conexiones y ajustes…"), click: () => win.webContents.send("setup-open") },
     { type: "separator" },
     {
-      label: `Modo mini  (${MINI_SHORTCUT.replace("Control", "Ctrl")})`,
+      label: t("Modo mini  ({0})", MINI_SHORTCUT.replace("Control", "Ctrl")),
       type: "checkbox",
       checked: mini,
       click: () => setMini(!mini),
     },
     {
-      label: "Esquina del modo mini",
+      label: t("Esquina del modo mini"),
       submenu: [
-        ["top-left", "Arriba a la izquierda"],
-        ["top-right", "Arriba a la derecha"],
-        ["bottom-left", "Abajo a la izquierda"],
-        ["bottom-right", "Abajo a la derecha"],
+        ["top-left", t("Arriba a la izquierda")],
+        ["top-right", t("Arriba a la derecha")],
+        ["bottom-left", t("Abajo a la izquierda")],
+        ["bottom-right", t("Abajo a la derecha")],
       ].map(([id, label]) => ({
         label,
         type: "radio",
@@ -369,10 +377,10 @@ ipcMain.on("menu", () => {
       })),
     },
     {
-      label: "Apariencia",
+      label: t("Apariencia"),
       submenu: [
         ["jarvis", "JARVIS"],
-        ["cloud", "Nube"],
+        ["cloud", t("Nube")],
       ].map(([id, label]) => ({
         label,
         type: "radio",
@@ -384,9 +392,27 @@ ipcMain.on("menu", () => {
         },
       })),
     },
-    { label: "Actualizar Trello", click: () => refreshTrello() },
     {
-      label: "Leer mensajes de WhatsApp (los resume tu Claude)",
+      label: "Idioma / Language",
+      submenu: [
+        ["es", "Español"],
+        ["en", "English"],
+      ].map(([id, label]) => ({
+        label,
+        type: "radio",
+        checked: lang() === id,
+        click: () => {
+          prefs.lang = id;
+          savePrefs();
+          win.loadURL(pageUrl()); // la página se recarga en el idioma nuevo
+          watchWhatsapp();
+          setTimeout(pollGithub, 3000);
+        },
+      })),
+    },
+    { label: t("Actualizar Trello"), click: () => refreshTrello() },
+    {
+      label: t("Leer mensajes de WhatsApp (los resume tu Claude)"),
       type: "checkbox",
       checked: prefs.whatsappRead === true,
       click: (item) => {
@@ -395,11 +421,11 @@ ipcMain.on("menu", () => {
         watchWhatsapp();
       },
     },
-    { label: "Reglas de WhatsApp…", enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
-    { label: "Nueva conversación", click: () => orchestrator.reset() },
+    { label: t("Reglas de WhatsApp…"), enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
+    { label: t("Nueva conversación"), click: () => orchestrator.reset() },
     { type: "separator" },
     {
-      label: "Silenciar sonidos",
+      label: t("Silenciar sonidos"),
       type: "checkbox",
       checked: muted,
       click: (item) => {
@@ -408,7 +434,7 @@ ipcMain.on("menu", () => {
       },
     },
     { type: "separator" },
-    { label: "Salir", click: () => app.quit() },
+    { label: t("Salir"), click: () => app.quit() },
   ]).popup({ window: win });
 });
 

@@ -46,7 +46,7 @@ onmessage = async ({ data }) => {
   try {
     const transcriber = await load();
     if (data.type === "load") return postMessage({ type: "ready" });
-    const out = await transcriber(data.audio, { language: "spanish", task: "transcribe" });
+    const out = await transcriber(data.audio, { language: data.language === "english" ? "english" : "spanish", task: "transcribe" });
     postMessage({ type: "text", id: data.id, text: out.text.trim() });
   } catch (e) {
     asr = null; // si falló la carga, el próximo intento vuelve a probar

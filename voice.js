@@ -19,12 +19,12 @@
   worker.onmessage = ({ data }) => {
     // Solo mientras descarga de verdad: con el modelo en caché también llegan avisos al 100%.
     if (data.type === "progress" && data.file?.endsWith(".onnx")) {
-      const downloading = label.textContent.startsWith("Descargando el oído");
+      const downloading = label.textContent.startsWith(t("Descargando el oído"));
       // Desde la caché el archivo llega al 100 % en un momento; si tras 1,5 s sigue a medias,
       // es una descarga de verdad y vale la pena avisar.
       firstSeen[data.file] ??= Date.now();
       if (data.progress < 100 && Date.now() - firstSeen[data.file] > 1500) {
-        label.textContent = `Descargando el oído de Nimbo… ${Math.round(data.progress)}%`;
+        label.textContent = t("Descargando el oído de Nimbo… {0}%", Math.round(data.progress));
         label.classList.add("show");
       } else if (downloading) {
         label.classList.remove("show");
@@ -34,13 +34,13 @@
     const resolve = waiting.get(data.id);
     waiting.delete(data.id);
     resolve(data.type === "text" ? data.text : "");
-    if (data.type === "error") setState("error", `Oído: ${data.error}`.slice(0, 80), { back: 6000 });
+    if (data.type === "error") setState("error", t("Oído: {0}", data.error).slice(0, 80), { back: 6000 });
   };
   function transcribe(audio) {
     const id = nextId++;
     return new Promise((resolve) => {
       waiting.set(id, resolve);
-      worker.postMessage({ id, audio }, [audio.buffer]);
+      worker.postMessage({ id, audio, language: LANG === "en" ? "english" : "spanish" }, [audio.buffer]);
     });
   }
 
@@ -117,7 +117,7 @@
     micBtn.classList.add("live");
     try {
       await openMic();
-      setState("listening", "Te escucho… (clic en 🎤 para terminar)");
+      setState("listening", t("Te escucho… (clic en 🎤 para terminar)"));
       const audio = await listenOnce();
       if (audio) {
         setState("thinking", "Transcribiendo…");
@@ -127,7 +127,7 @@
       setState("idle");
     } catch (e) {
       const denied = e?.name === "NotAllowedError" || e?.name === "NotFoundError";
-      setState("error", denied ? "No tengo micrófono: revisa Privacidad → Micrófono en Windows" : `Micrófono: ${e?.message ?? e}`.slice(0, 80), { back: 6000 });
+      setState("error", denied ? t("No tengo micrófono: revisa Privacidad → Micrófono en Windows") : t("Micrófono: {0}", e?.message ?? e).slice(0, 80), { back: 6000 });
     } finally {
       dictating = false;
       micBtn.classList.remove("live");
