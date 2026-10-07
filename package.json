@@ -1,6 +1,6 @@
 {
   "name": "nimbo",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Un compañero flotante para Claude Code en Windows: ve qué hacen tus chats, aprueba permisos y habla con tu Claude",
   "main": "main.js",
   "private": true,
@@ -52,7 +52,9 @@
       "!**/transformers.web.*",
       "!**/dist/transformers.js",
       "!build{,/**}",
-      "!examples{,/**}"
+      "!examples{,/**}",
+      "!.github{,/**}",
+      "!PRIVACY.md"
     ],
     "win": {
       "target": [

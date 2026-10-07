@@ -192,7 +192,9 @@ Keep in mind that the text of each reply is sent to that service.
 | Click | Opens or closes the chat. |
 | Click the green button | Opens the WhatsApp summary. |
 | 🖥 in the chat | Takes a screenshot of the screen where your cursor is and attaches it. Click the thumbnail to remove it. |
-| Right-click | Menu: connections, language, look, mini mode, WhatsApp, mute, quit. |
+| Right-click | Menu: connections, language, look, mini mode, WhatsApp, voice, mute, quit. |
+| ⋮ at the right end of the island | The same menu, without right-clicking. It shows up when you hover. |
+| Nimbo's icon next to the clock | The same menu again. Windows may keep the icon behind the little arrow (^) on the taskbar. |
 | Drag the bar | Moves it along the top edge. |
 | Drop a file on it | It "eats" the file and attaches it to the chat. |
 | `Ctrl+Alt+N` | Mini mode. |
@@ -208,6 +210,20 @@ Nimbo sits between you and Claude Code's permission prompts, so this matters:
 - Nimbo stores no passwords, tokens, or API keys. GitHub uses your `gh` session; Trello uses your Claude connector.
 
 Found a security problem? Please open an issue.
+
+## Code signing
+
+The installer is **not code-signed yet**. That is the only reason Windows shows "Windows protected your PC" when you open it: Windows does not know the publisher. Signing needs a certificate from a recognized authority, and we are applying for one for open-source projects.
+
+In the meantime, two things let you trust what you download:
+
+- The installer attached to each release is built by [GitHub Actions](.github/workflows/build.yml) straight from this repository, with no manual steps.
+- You can skip the installer and [run from source](#run-from-source).
+
+Code signing policy:
+
+- Authors, reviewers and approvers: [@FedericoChalaca](https://github.com/FedericoChalaca). Changes from anyone else are reviewed before they are merged.
+- Privacy: see [PRIVACY.md](PRIVACY.md) for every case in which Nimbo connects to the network.
 
 ## Run from source
 

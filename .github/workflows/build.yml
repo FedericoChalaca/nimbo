@@ -1,0 +1,38 @@
+# Arma el instalador de Windows desde el código de este repositorio, sin pasos manuales.
+# Así cualquiera puede comprobar que el instalador de una versión sale de su código, y es el
+# requisito para firmarlo (ver "Firma del instalador" en el README).
+#
+# Builds the Windows installer straight from this repository, with no manual steps.
+name: build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write # solo para adjuntar el instalador a la versión
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx electron-builder --win --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nimbo-Setup
+          path: dist/Nimbo-Setup.exe
+          if-no-files-found: error
+      - name: Adjuntar el instalador a la versión
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$env:TAG" dist/Nimbo-Setup.exe --clobber

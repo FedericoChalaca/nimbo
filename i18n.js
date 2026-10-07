@@ -169,6 +169,7 @@ const NIMBO_EN = {
   "Reglas de WhatsApp…": "WhatsApp rules…",
   "Nueva conversación": "New conversation",
   "Silenciar sonidos": "Mute sounds",
+  "Opciones de Nimbo": "Nimbo options",
   "Leer las respuestas en voz alta": "Read replies aloud",
   "Voz": "Voice",
   "Lee sus respuestas en voz alta.": "Reads its replies aloud.",

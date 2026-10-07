@@ -222,6 +222,18 @@ La fila "Apariencia" de Conexiones cambia de tema (`setup-do theme`): sirve tamb
 ventana la recorta y pierde las curvas (pasó al agrandar el personaje). Personaje 120×70 (`#char`), barra de 68 px (`BAR_H` en JS y `#bar`/`#content` en CSS: van
 juntos). El modelo ocupa ~60 % de su caja: por eso la caja es más alta que la barra.
 
+**Opciones sin clic derecho.** `buildMenu()` arma el menú en el momento; sale con clic derecho, con el botón ⋮
+del extremo derecho de la barra (`#menuBtn`, visible al pasar el mouse) y con el icono de la bandeja (`createTray`,
+`assets/icon.png`; Windows 11 lo deja en el desbordamiento, la flechita). `NIMBO_DEBUG=1` imprime dónde quedó.
+
+**Firma del instalador.** Sin firmar, Windows muestra SmartScreen; no hay atajo. Camino elegido: SignPath
+Foundation (gratis para código abierto; el certificado sale a nombre de ellos). Requisitos ya cubiertos: licencia
+MIT, compilación automática (`.github/workflows/build.yml`: al publicar una versión arma el instalador y lo
+adjunta), nombre y versión en el ejecutable, `PRIVACY.md` y la sección "Firma del instalador" del README. Falta
+lo que solo puede hacer el autor: activar la verificación en dos pasos en GitHub y enviar la solicitud. Al
+aprobarla se agrega el paso de firma al workflow y la frase de atribución que ellos exigen. Azure Artifact
+Signing no sirve: para personas solo está en EE. UU. y Canadá.
+
 **Modo mini** (Ctrl+Alt+N o menú): 100×60 en la esquina elegida (se guarda), sin sonidos ni
 tarjetas; tocarlo lo devuelve. **Temas**: JARVIS (por defecto) o Nube, en el menú.
 

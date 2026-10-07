@@ -1,6 +1,6 @@
 // Nimbo: ventana transparente arriba de la pantalla + servidor local que recibe
 // los hooks de Claude Code y se los pasa al personaje.
-const { app, BrowserWindow, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer } = require("electron");
+const { app, BrowserWindow, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer, Tray, nativeImage } = require("electron");
 const { execFile } = require("child_process");
 const { pathToFileURL } = require("url");
 const crypto = require("crypto");
@@ -62,6 +62,7 @@ const sameMac = (a, b) => {
 };
 
 let win;
+let tray; // se guarda aquí para que no lo recoja el recolector de basura
 let muted = false;
 
 function createWindow() {
@@ -415,8 +416,10 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
   return { ...(await setupStatus()), error };
 });
 
-ipcMain.on("menu", () => {
-  Menu.buildFromTemplate([
+// El menú de opciones. Sale con clic derecho sobre Nimbo, con el botón ⋮ de la isla y con el
+// icono de Nimbo junto al reloj (por si a alguien no le funciona el clic derecho).
+function buildMenu() {
+  return Menu.buildFromTemplate([
     { label: t("Conexiones y ajustes…"), click: () => win.webContents.send("setup-open") },
     { type: "separator" },
     {
@@ -505,8 +508,19 @@ ipcMain.on("menu", () => {
     },
     { type: "separator" },
     { label: t("Salir"), click: () => app.quit() },
-  ]).popup({ window: win });
-});
+  ]);
+}
+ipcMain.on("menu", () => buildMenu().popup({ window: win }));
+function createTray() {
+  const icon = nativeImage.createFromPath(path.join(__dirname, "assets", "icon.png"));
+  if (icon.isEmpty()) return; // sin icono no hay bandeja; el resto de Nimbo sigue igual
+  tray = new Tray(icon.resize({ width: 32, height: 32 }));
+  tray.setToolTip("Nimbo");
+  const open = () => tray.popUpContextMenu(buildMenu()); // se arma en el momento: las marcas reflejan el estado actual
+  tray.on("click", open);
+  tray.on("right-click", open);
+  if (process.env.NIMBO_DEBUG) console.error("bandeja:", JSON.stringify(tray.getBounds()));
+}
 
 // --- Permisos: una tarjeta a la vez ---
 let pending = null; // { finish(decision) }
@@ -586,6 +600,7 @@ app.setAppUserModelId("Nimbo");
 app.whenReady().then(() => {
   serveAppFiles();
   createWindow();
+  createTray();
   globalShortcut.register(MINI_SHORTCUT, () => setMini(!mini));
   setTimeout(pollGithub, 8000);
   watchWhatsapp();

@@ -87,6 +87,11 @@
   .areply span { flex: 1; min-width: 0; user-select: text; }
   .areply button { flex: none; padding: 3px 10px; font-size: 11px; }
   #pips { display: flex; gap: 5px; flex: none; }
+  /* Opciones sin clic derecho: tres puntitos en el borde de la barra, visibles al pasar el mouse */
+  #menuBtn { position: absolute; right: 1px; top: 50%; translate: 0 -50%; width: 13px; height: 26px; padding: 0; border-radius: 6px;
+    background: transparent; color: #7c818a; font-size: 13px; line-height: 26px; opacity: 0; transition: opacity .2s, color .2s; }
+  .hovering #menuBtn, .open #menuBtn { opacity: 1; }
+  #menuBtn:hover { color: #fff; background: rgba(255, 255, 255, .1); }
   #pips:empty { display: none; }
   .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--c, #888);
     animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both; }
@@ -573,6 +578,7 @@
         <div id="ticker"><span id="label"></span></div>
         <button id="waBtn" class="hidden" type="button" title="Resumen de WhatsApp"></button>
         <div id="pips"></div>
+        <button id="menuBtn" type="button" title="Opciones de Nimbo">⋮</button>
         <div id="progress"><i></i></div>
       </div>
       <div id="content">
@@ -635,7 +641,7 @@ const root = document.getElementById("nimbo");
 // Lo que está escrito en el HTML (botones, títulos, texto de ayuda) se traduce al cargar.
 if (LANG === "en") {
   document.documentElement.lang = "en";
-  for (const e of document.querySelectorAll("#content *")) {
+  for (const e of document.querySelectorAll("#bar *, #content *")) {
     if (!e.children.length && e.textContent.trim()) e.textContent = t(e.textContent.trim());
     for (const a of ["title", "placeholder"]) if (e.hasAttribute(a)) e.setAttribute(a, t(e.getAttribute(a)));
   }
@@ -1518,6 +1524,7 @@ const emoting = () => /emote-/.test(root.className);
 let clicks = 0;
 let clickTimer;
 wrap.addEventListener("click", (e) => {
+  if (e.target.closest("#menuBtn")) return api.menu();
   if (e.target.closest("#waBtn")) return openWaSummary();
   // composedPath y no closest(): una píldora se redibuja en su propio clic, y para cuando el
   // evento llega aquí el botón ya no está en la página (closest daba null y se abría el chat).

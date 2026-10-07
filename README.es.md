@@ -192,7 +192,9 @@ Ten en cuenta que el texto de cada respuesta se envía a ese servicio.
 | Un clic | Abre o cierra el chat. |
 | Clic en el botón verde | Abre el resumen de WhatsApp. |
 | 🖥 en el chat | Toma un pantallazo de la pantalla donde está el cursor y lo adjunta. Toca la miniatura para quitarlo. |
-| Clic derecho | Menú: conexiones, idioma, apariencia, modo mini, WhatsApp, silenciar, salir. |
+| Clic derecho | Menú: conexiones, idioma, apariencia, modo mini, WhatsApp, voz, silenciar, salir. |
+| ⋮ en el extremo derecho de la isla | El mismo menú, sin clic derecho. Aparece al pasar el mouse. |
+| Icono de Nimbo junto al reloj | El mismo menú otra vez. Windows puede dejarlo detrás de la flechita (^) de la barra de tareas. |
 | Arrastrar la barra | Lo mueve por el borde de arriba. |
 | Soltar un archivo encima | Se lo "come" y lo adjunta al chat. |
 | `Ctrl+Alt+N` | Modo mini. |
@@ -208,6 +210,20 @@ Nimbo se sienta entre tú y los permisos de Claude Code, así que esto importa:
 - Nimbo no guarda contraseñas, tokens ni API keys. GitHub usa tu sesión de `gh`; Trello, el conector de tu Claude.
 
 Si encuentras un problema de seguridad, abre un issue.
+
+## Firma del instalador
+
+El instalador **todavía no está firmado**. Esa es la única razón por la que Windows muestra "Windows protegió su PC" al abrirlo: no conoce al autor. Firmarlo requiere un certificado de una autoridad reconocida, y estamos solicitando uno para proyectos de código abierto.
+
+Mientras tanto, hay dos cosas que te permiten confiar en lo que descargas:
+
+- El instalador de cada versión lo arma [GitHub Actions](.github/workflows/build.yml) directamente desde este repositorio, sin pasos manuales.
+- Puedes saltarte el instalador y [correrlo desde el código](#correrlo-desde-el-código).
+
+Política de firma de código:
+
+- Autores, revisores y aprobadores: [@FedericoChalaca](https://github.com/FedericoChalaca). Los cambios de cualquier otra persona se revisan antes de aceptarlos.
+- Privacidad: en [PRIVACY.md](PRIVACY.md) está cada caso en el que Nimbo se conecta a la red.
 
 ## Correrlo desde el código
 
