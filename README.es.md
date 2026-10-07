@@ -223,7 +223,7 @@ Si encuentras un problema de seguridad, abre un issue.
 
 ## Firma del instalador
 
-El instalador **todavía no está firmado**. Esa es la única razón por la que Windows muestra "Windows protegió su PC" al abrirlo: no conoce al autor. Firmarlo requiere un certificado de una autoridad reconocida, y estamos solicitando uno para proyectos de código abierto.
+El instalador **todavía no está firmado**. Esa es la única razón por la que Windows muestra "Windows protegió su PC" al abrirlo: no conoce al autor. Firmarlo requiere un certificado de una autoridad reconocida, y ya lo solicitamos a la [SignPath Foundation](https://signpath.org), que firma gratis proyectos de código abierto.
 
 Mientras tanto, hay dos cosas que te permiten confiar en lo que descargas:
 

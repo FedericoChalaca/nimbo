@@ -223,7 +223,7 @@ Found a security problem? Please open an issue.
 
 ## Code signing
 
-The installer is **not code-signed yet**. That is the only reason Windows shows "Windows protected your PC" when you open it: Windows does not know the publisher. Signing needs a certificate from a recognized authority, and we are applying for one for open-source projects.
+The installer is **not code-signed yet**. That is the only reason Windows shows "Windows protected your PC" when you open it: Windows does not know the publisher. Signing needs a certificate from a recognized authority, and we have applied to the [SignPath Foundation](https://signpath.org), which provides free code signing for open-source projects.
 
 In the meantime, two things let you trust what you download:
 
