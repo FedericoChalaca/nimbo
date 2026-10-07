@@ -14,6 +14,7 @@ const { createReminders } = require("./reminders");
 const { createTrello } = require("./trello");
 const { createWhatsapp } = require("./whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
+const { readPlan, planSpeech } = require("./plan");
 
 const PORT = 47823;
 const W = 440;
@@ -92,6 +93,7 @@ function createWindow() {
     win.webContents.send("theme", prefs.theme);
     win.webContents.send("anchor", prefs.pos);
     if (mini) win.webContents.send("mini", true); // tras recargar (cambio de idioma)
+    if (plan) win.webContents.send("plan", planView(false)); // idem: la página recargada vuelve a tener el plan
     win.webContents.send("name", String(prefs.name ?? ""));
     // Primera vez: se abre solo el panel de conexiones para dejar todo andando.
     if (!prefs.onboarded) setTimeout(() => { if (!mini && !win.isDestroyed()) win.webContents.send("setup-open"); }, 4500);
@@ -176,7 +178,9 @@ const prefsFile = path.join(app.getPath("userData"), "prefs.json");
 // whatsappRead: leer y resumir notificaciones de WhatsApp (apagado hasta que lo actives).
 let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "", whatsappRead: false, waModel: "", onboarded: false,
   // Voz: "speak" es el interruptor; "ttsUrl", el servicio de texto a voz (ver tts.js). Sin dirección no hay voz.
-  speak: false, ttsUrl: "" };
+  speak: false, ttsUrl: "",
+  // Plan del día (ver plan.js): dónde está, y la fecha del último plan que ya te mostró.
+  planRepo: "", planBranch: "", planFile: "", planSeen: "" };
 try {
   prefs = { ...prefs, ...JSON.parse(fs.readFileSync(prefsFile, "utf8")) };
 } catch {}
@@ -209,7 +213,10 @@ function placeWindow() {
 function setMini(on) {
   mini = on;
   if (mini) pending?.finish("");
-  else if (prefs.whatsappRead === true) wa.poke(); // lo que llegó mientras jugabas
+  else {
+    if (prefs.whatsappRead === true) wa.poke(); // lo que llegó mientras jugabas
+    checkPlan();
+  }
   win.webContents.send("mini", mini);
   placeWindow();
 }
@@ -217,7 +224,26 @@ ipcMain.on("toggle-mini", () => setMini(!mini));
 
 // --- Chat + orquestador: usa tu Claude Code, sin API key aparte ---
 const CHAT_DIR = path.join(app.getPath("userData"), "chat");
-const orchestrator = createOrchestrator(CHAT_DIR, { vault: prefs.vault, lang });
+const orchestrator = createOrchestrator(CHAT_DIR, { vault: prefs.vault, lang, plan: () => plan });
+
+// --- Plan del día: se lee al arrancar y cada 30 min; si trae fecha nueva, la isla lo anuncia ---
+let plan = null; // el último plan leído (ya validado) o null
+const planView = (fresh) => (plan ? { ...plan, say: planSpeech(plan, t), fresh } : null);
+async function checkPlan() {
+  if (!prefs.planRepo) return;
+  plan = await readPlan(prefs);
+  if (!win || win.isDestroyed()) return;
+  // "Nuevo" = un plan con fecha que aún no te mostró. En modo mini no se anuncia (ni se da por
+  // visto): se anuncia al salir de mini.
+  const fresh = !!plan && plan.fecha !== prefs.planSeen && !mini;
+  if (fresh) { prefs.planSeen = plan.fecha; savePrefs(); }
+  win.webContents.send("plan", planView(fresh));
+}
+// A pedido ("dame el plan de hoy"): lo trae de nuevo por si salió uno más reciente.
+ipcMain.handle("plan", async () => {
+  if (prefs.planRepo) plan = await readPlan(prefs);
+  return planView(false);
+});
 // --- Recordatorios: el orquestador los crea/cierra desde el chat; aquí se guardan y se avisan ---
 const reminders = createReminders(path.join(app.getPath("userData"), "reminders.json"));
 const remindersChanged = () => win?.webContents.send("reminders", reminders.pending());
@@ -603,6 +629,8 @@ app.whenReady().then(() => {
   createTray();
   globalShortcut.register(MINI_SHORTCUT, () => setMini(!mini));
   setTimeout(pollGithub, 8000);
+  setTimeout(checkPlan, 7000); // después del saludo
+  setInterval(checkPlan, 30 * 60_000);
   watchWhatsapp();
   setTimeout(refreshTrello, 90_000); // después de arrancar, para no competir con el inicio
   setInterval(refreshTrello, 30 * 60_000);

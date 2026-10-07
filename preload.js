@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   copy: (text) => ipcRenderer.send("copy", text),
   tts: (text) => ipcRenderer.invoke("tts", text),
   screenshot: () => ipcRenderer.invoke("screenshot"),
+  plan: () => ipcRenderer.invoke("plan"),
+  onPlan: (fn) => ipcRenderer.on("plan", (_e, p) => fn(p)),
   onVoice: (fn) => ipcRenderer.on("voice", (_e, on) => fn(on)),
   trello: () => ipcRenderer.invoke("trello"),
   onTrello: (fn) => ipcRenderer.on("trello", (_e, d) => fn(d)),

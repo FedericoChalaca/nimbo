@@ -89,6 +89,22 @@ const NIMBO_EN = {
   "sin fecha": "no date",
   "hoy {0}": "today {0}",
   "mañana {0}": "tomorrow {0}",
+  // — Plan del día —
+  "Plan": "Plan",
+  "Plan de hoy": "Today's plan",
+  "Plan de hoy.": "Today's plan.",
+  "Hoy ninguno puede avanzar solo.": "None can move forward on its own today.",
+  "Un proyecto puede avanzar solo.": "One project can move forward on its own.",
+  "{0} proyectos pueden avanzar solos.": "{0} projects can move forward on their own.",
+  "Tiene una propuesta para ti: {0}.": "It has a proposal for you: {0}.",
+  "Tienen una propuesta para ti: {0}.": "They have a proposal for you: {0}.",
+  "{0} solos · {1} con propuesta para ti": "{0} on their own · {1} with a proposal for you",
+  "Para ti": "For you",
+  "Solo": "On its own",
+  "Escuchar": "Listen",
+  "{0} sin propuesta hoy": "{0} with no proposal today",
+  "hoy": "today",
+  "No tengo el plan de hoy: no está configurado, no hay conexión o todavía no ha salido.": "I do not have today's plan: it is not set up, there is no connection, or it has not come out yet.",
   // — Trello, GitHub, WhatsApp —
   "nada pendiente": "nothing pending",
   "Actualizar": "Refresh",
@@ -195,7 +211,7 @@ if (typeof module !== "undefined" && require.main === module) {
   const fs = require("fs");
   const path = require("path");
   const missing = [];
-  for (const file of ["index.html", "main.js", "voice.js", "orchestrator.js"]) {
+  for (const file of ["index.html", "main.js", "voice.js", "orchestrator.js", "plan.js"]) {
     const code = fs.readFileSync(path.join(__dirname, file), "utf8");
     // t("clave"…  y también  t(cond ? "clave uno" : "clave dos"…
     for (const m of code.matchAll(/\bt\((?:[^"()]*\? )?"((?:\\.|[^"\\])*)"(?: : "((?:\\.|[^"\\])*)")?/g)) {

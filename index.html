@@ -1065,6 +1065,7 @@ const miniCloud = (color) => {
 function appsList() {
   const out = [{ id: "chats", name: "Chats", color: "#d97757", count: liveSessions().length }];
   if (trelloData) out.push({ id: "trello", name: "Trello", color: "#579dff", count: trelloData.boards.reduce((n, b) => n + (b.pending || 0), 0) });
+  if (dayPlan) out.push({ id: "plan", name: t("Plan"), color: "#2dd4bf", count: dayPlan.solos + dayPlan.teNecesitan });
   if (github !== null) out.push({ id: "github", name: "GitHub", color: "#a371f7", count: github.length });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
@@ -1130,6 +1131,26 @@ function renderAppView() {
       rows.push(r);
     }
     rows.push(el("div", "afoot", t("Actualizado {0}", fmtDue(trelloData.at))));
+  } else if (app.id === "plan") {
+    head.append(el("span", "sub", `${fmtPlanDate(dayPlan.fecha)} · ${t("{0} solos · {1} con propuesta para ti", dayPlan.solos, dayPlan.teNecesitan)}`));
+    const hear = el("button", "", t("Escuchar"));
+    hear.type = "button";
+    hear.onclick = () => speak(dayPlan.say);
+    head.append(hear);
+    if (dayPlan.resumen) rows.push(el("div", "afoot", dayPlan.resumen));
+    // Primero lo que te necesita a ti; después lo que puede avanzar solo.
+    const withProposal = dayPlan.proyectos.filter((p) => p.propuesta).sort((a, b) => (b.propuesta.tipo === "te_necesita") - (a.propuesta.tipo === "te_necesita"));
+    for (const p of withProposal.slice(0, 8)) {
+      const r = el("div", "arow");
+      const need = p.propuesta.tipo === "te_necesita";
+      const name = el("span", "name");
+      name.append(el("b", "", p.nombre), el("i", "", p.propuesta.titulo));
+      name.title = [p.propuesta.titulo, p.propuesta.motivo, p.propuesta.detalle].filter(Boolean).join("\n");
+      r.append(el("span", `chip2 ${need ? "amber" : "green"}`, need ? t("Para ti") : t("Solo")), name);
+      rows.push(r);
+    }
+    const idle = dayPlan.proyectos.length - withProposal.length;
+    if (idle > 0) rows.push(el("div", "afoot", t("{0} sin propuesta hoy", idle)));
   } else if (app.id === "github") {
     head.append(el("span", "sub", t("{0} sin leer", github.length)));
     for (const n of github.slice(0, 6)) {
@@ -1281,6 +1302,36 @@ api.onTrello((d) => {
 
 // GitHub: main.js consulta `gh` cada 5 min; si llega una notificación nueva, Nimbo avisa.
 let github = null; // null = todavía no se sabe
+// Plan del día (plan.js en main): llega al arrancar, cada 30 min y cuando lo pides.
+let dayPlan = null; // { fecha, resumen, proyectos, solos, teNecesitan, say }
+const fmtPlanDate = (iso) => (iso === new Date().toLocaleDateString("sv") ? t("hoy") : new Date(iso + "T12:00").toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short" }));
+function onPlan(p) {
+  dayPlan = p;
+  renderApps();
+  if (openApp === "plan") renderAppView();
+  if (p?.fresh && !mini) announcePlan();
+}
+// Lo muestra en la isla y lo dice (con la voz del tema, si está activada).
+function announcePlan() {
+  emote("hello", 1600);
+  SOUNDS.hello();
+  setState(state, `${t("Plan de hoy")} · ${t("{0} solos · {1} con propuesta para ti", dayPlan.solos, dayPlan.teNecesitan)}`, { labelFor: 9000 });
+  speak(dayPlan.say);
+}
+// "dame el plan de hoy" en el chat: se responde aquí mismo, al instante y sin gastar Claude.
+const PLAN_ASK = /^\W*(dame|dime|mu[eé]strame|cu[aá]l es|show me|give me|what(?:'s| is))?\s*(el |mi |the |my |today'?s )?plan( de hoy| del d[ií]a| for today| of the day)?\W*$/i;
+async function answerPlan() {
+  answer.replaceChildren(el("div", "", t("Pensando…")));
+  answerBox.classList.remove("hidden");
+  // Si ya lo tiene, lo da al instante; solo espera a traerlo cuando todavía no hay ninguno.
+  const p = dayPlan ?? (await api.plan().catch(() => null));
+  if (p) dayPlan = p;
+  const text = p ? p.say : t("No tengo el plan de hoy: no está configurado, no hay conexión o todavía no ha salido.");
+  answer.replaceChildren(el("div", "reply", text));
+  speak(text);
+  if (p) { appsBox.classList.remove("hidden"); openApp = "plan"; renderApps(); renderAppView(); }
+}
+api.onPlan(onPlan);
 api.onGithub((list) => {
   const before = github;
   github = Array.isArray(list) ? list.slice(0, 50) : [];
@@ -1870,7 +1921,8 @@ chat.addEventListener("submit", async (e) => {
   renderThumbs();
   msg.value = "";
   msg.placeholder = t("Escríbele a Claude… (suelta archivos sobre mí)");
-  await askAndShow({ text, images: sent, files: paths });
+  if (!sent.length && !paths.length && PLAN_ASK.test(text) && /plan/i.test(text)) await answerPlan();
+  else await askAndShow({ text, images: sent, files: paths });
   asking = false;
 });
 
@@ -1909,24 +1961,59 @@ function stopSpeaking() {
   speakTurn++; // lo que venga en camino de una respuesta anterior ya no suena
   if (!speaking) return;
   speaking.audio.pause();
+  quiet();
+}
+// Deja de sonar lo actual sin cancelar lo que sigue en cola (fin natural de un audio).
+function quiet() {
+  if (!speaking) return;
   URL.revokeObjectURL(speaking.url);
   speaking = null;
   Jarvis.setLevel(0);
+}
+/** Reproduce un mp3 y avisa cuando termina (o falla). */
+function playSpeech(bytes) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+    const audio = new Audio(url);
+    speaking = { audio, url };
+    const done = () => { if (speaking?.audio === audio) quiet(); resolve(); };
+    audio.onended = done;
+    audio.onerror = done;
+    audio.onpause = done; // la cortó stopSpeaking()
+    audio.onplaying = () => Jarvis.setLevel(0.45); // la esfera crece mientras habla
+    audio.play().catch(done);
+  });
+}
+// Un texto largo tarda varios segundos en llegar entero (unos 8 s para 300 letras). Se parte en
+// frases y se dicen en orden, pidiendo cada una mientras suena la anterior: así empieza a los 2 o 3 s.
+// Cada parte se pide una sola vez; si una no llega, ahí se calla.
+function speechParts(text) {
+  if (text.length <= 140) return [text];
+  const parts = [];
+  for (const sentence of text.split(/(?<=[.!?…])\s+/)) {
+    const last = parts.length - 1;
+    // Se juntan frases hasta ~110 letras; a partir de la cuarta parte, todo va junto.
+    if (last >= 0 && (parts[last].length < 60 || parts[last].length + sentence.length <= 110 || parts.length === 4)) parts[last] += " " + sentence;
+    else parts.push(sentence);
+  }
+  return parts;
 }
 async function speak(text) {
   stopSpeaking();
   const turn = speakTurn;
   if (!text || mini) return;
-  const bytes = await api.tts(text).catch(() => null);
-  if (!bytes || turn !== speakTurn) return;
-  const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
-  const audio = new Audio(url);
-  speaking = { audio, url };
-  const done = () => { if (speaking?.audio === audio) stopSpeaking(); };
-  audio.onended = done;
-  audio.onerror = done;
-  audio.onplaying = () => Jarvis.setLevel(0.45); // la esfera crece mientras habla
-  audio.play().catch(done);
+  const parts = speechParts(String(text));
+  const request = (i) => (i < parts.length ? api.tts(parts[i]).catch(() => null) : null);
+  // De a una petición: la parte siguiente se pide cuando empieza a sonar la actual. Pedirlas
+  // todas juntas hizo que el proveedor de voz rechazara llamadas por un rato.
+  let coming = request(0);
+  for (let i = 0; i < parts.length; i++) {
+    const bytes = await coming;
+    if (!bytes || turn !== speakTurn) return;
+    coming = request(i + 1);
+    await playSpeech(bytes);
+    if (turn !== speakTurn) return;
+  }
 }
 api.onVoice((on) => { if (!on) stopSpeaking(); });
 

@@ -161,6 +161,16 @@ It stops talking when a new answer arrives, when you start dictating, when you s
 
 Keep in mind that the text of each reply is sent to that service.
 
+### 9. Daily plan (optional)
+
+If another tool of yours leaves a daily plan as a JSON file in a branch of a git repository on your PC, Nimbo can show it, say it aloud the first time you open it each day, and give it to you when you type "what's the plan for today". It only reads (`git fetch` and `git show`), with the git you already have. Tell it where the plan is in `%APPDATA%\nimbo\prefs.json`:
+
+```json
+{ "planRepo": "D:\\my-repo", "planBranch": "daily-plan", "planFile": "plan.json" }
+```
+
+The file format is described at the top of [plan.js](plan.js).
+
 ### If something does not work
 
 | Problem | What to check |

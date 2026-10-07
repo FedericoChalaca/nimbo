@@ -161,6 +161,16 @@ Se calla cuando llega otra respuesta, cuando empiezas a dictar, cuando cambias d
 
 Ten en cuenta que el texto de cada respuesta se envía a ese servicio.
 
+### 9. Plan del día (opcional)
+
+Si otra herramienta tuya deja cada día un plan como archivo JSON en una rama de un repositorio git de tu PC, Nimbo puede mostrarlo, decirlo en voz alta la primera vez que lo abres cada día y dártelo cuando escribes "dame el plan de hoy". Solo lee (`git fetch` y `git show`), con el git que ya tienes. Dile dónde está el plan en `%APPDATA%\nimbo\prefs.json`:
+
+```json
+{ "planRepo": "D:\\mi-repo", "planBranch": "plan-diario", "planFile": "plan.json" }
+```
+
+El formato del archivo está explicado al inicio de [plan.js](plan.js).
+
 ### Si algo no funciona
 
 | Problema | Qué revisar |

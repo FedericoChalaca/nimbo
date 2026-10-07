@@ -26,6 +26,7 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 | `hook.js` | Lo ejecuta Claude Code en cada evento: firma y reenvía el JSON a Nimbo. |
 | `install-hooks.js` | Instala/quita los 10 hooks (PermissionRequest con timeout 75 s, el resto 5 s). |
 | `i18n.js` | Traducciones al inglés y `translator(lang)`; lo usan la página y el proceso principal. |
+| `plan.js` | Plan del día: lo lee de una rama git (solo lectura), lo valida y arma lo que se dice (`node plan.js` = autoprueba). |
 | `tts.js` | Voz: limpia y recorta el texto y pide el mp3 al servicio de `prefs.ttsUrl` (`node tts.js` = autoprueba). |
 | `reminders.js` | Recordatorios en JSON (`node reminders.js` = autoprueba). |
 | `trello.js` | Tarjetas pendientes vía el conector de Trello de tu `claude` (solo lectura). |
@@ -193,6 +194,23 @@ Animación: se inclina según la velocidad (`--lean`), estela (`#island::after`)
 soltar. El final del arrastre tiene varias redes (pointerup/mouseup en `document`, move con `buttons === 0`,
 `lostpointercapture`, `blur` y un corte a los 30 s en main → `drag-abort`): con una sola se quedaba pegado.
 
+**Plan del día** (`plan.js`): `readPlan` hace `git fetch` + `git show origin/<rama>:<archivo>` en el repo de
+`prefs.planRepo/planBranch/planFile` (solo lectura; rama y archivo validados para que no puedan ser opciones de
+git; `GIT_TERMINAL_PROMPT=0`). Si no hay red sirve lo último traído. `cleanPlan` valida y recorta: el plan es un
+DATO de otra herramienta. `main.js` lo revisa 7 s después de arrancar, cada 30 min y al salir de mini; si la fecha
+es distinta de `prefs.planSeen`, lo anuncia (`fresh`): etiqueta + voz, una vez por plan. Píldora "Plan" con
+primero lo que tiene propuesta para el usuario. "dame el plan de hoy" (`PLAN_ASK`) se responde en la página al
+instante con el plan en memoria, sin llamar a Claude; el chat recibe el plan en el system prompt
+(`planForPrompt`) para preguntas de seguimiento. Se dice "Plan de hoy." + el resumen TAL CUAL (el resumen y la
+lista a veces no coinciden en las cuentas: el 2026-10-07 el resumen decía 5 y había 3 propuestas `te_necesita`).
+
+**Voz en textos largos.** `speechParts` parte lo que pasa de 140 letras en frases de ~110 y las dice en orden,
+pidiendo cada una mientras suena la anterior (nunca todas a la vez: el proveedor respondió 401 un rato tras
+varias llamadas simultáneas): el servicio tarda ~25 ms por letra (8 s para 300), así empieza a los 2 o 3 s. Cada
+parte se pide una vez; si una falla, ahí se calla. Ojo con la cuota del proveedor: cada letra dicha cuenta (el
+plan diario son ~220 letras). Cuando la cuota se acaba el servicio responde 502 y Nimbo sigue en silencio.
+Para probar el orden de las partes sin gastar cuota, un servicio de mentira que devuelva un WAV.
+
 **Ver la pantalla** (botón 🖥 del chat → IPC `screenshot` en `main.js`): UN pantallazo de la pantalla donde
 está el cursor (`desktopCapturer`, reducido a 1568 px de lado, JPEG ~80 KB, ~1,3 s). Vuelve a la página como
 una imagen más (`images`, con `screen: true`) y viaja por el mismo camino que una imagen pegada; no se manda
@@ -286,7 +304,7 @@ la página sin `?lang` (español).
 - Pendiente conocido: el script va en línea en `index.html`, así que el CSP lleva `'unsafe-inline'`.
 
 ## Estado en disco
-`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
+`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
 caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
 
 ## Lecciones (cosas que ya fallaron)
