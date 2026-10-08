@@ -1389,6 +1389,11 @@ function onMedia(m) {
   renderApps();
   if (openApp === "spotify") renderAppView();
 }
+// Volvió el permiso de Spotify (Premium): se avisa y, si el panel de conexiones está abierto, se refresca.
+api.onSpotify((ok) => {
+  setState(state, ok ? t("Spotify conectado ♪") : t("No se pudo conectar Spotify."), { labelFor: 4500 });
+  if (!setupBox.classList.contains("hidden")) api.setup().then(renderSetup);
+});
 api.media().then(onMedia);
 api.onMedia(onMedia);
 const MUSIC_ASK =/^\W*(?:spotify[:,]?\s+(.+)|(?:pon(?:me)?|reproduce|toca|busca(?:me)?|play|search|find)\s+(.+?)\s+(?:en|on|in)\s+spotify|(?:reproduce|play)\s+(.+))$/i;
@@ -1413,15 +1418,18 @@ async function answerMusic(query) {
     return;
   }
   if (!r.tracks.length) { answer.replaceChildren(el("div", "reply", t("No encontré \"{0}\" en Spotify.", query))); return; }
-  answer.replaceChildren(el("div", "afoot", t("Spotify · toca una para abrirla")), ...r.tracks.map((s) => {
+  answer.replaceChildren(el("div", "afoot", r.plays ? t("Spotify · toca una para escucharla") : t("Spotify · toca una para abrirla")), ...r.tracks.map((s) => {
     const row = el("div", "arow link");
     const name = el("span", "name");
     name.append(el("b", "", s.title), el("i", "", s.artist));
     name.title = `${s.title} · ${s.artist}`;
     row.append(el("span", "chip2 green", "♪"), name);
-    row.onclick = () => {
-      api.spotifyPlay(s.uri);
-      setState(state, `♪ ${s.title}`.slice(0, 60), { labelFor: 4000 });
+    row.onclick = async () => {
+      const p = await api.spotifyPlay(s.uri).catch(() => null);
+      // Con Premium suena; sin eso (o si algo falla) Spotify abre la página de la canción.
+      const said = p?.ok || p?.opened ? `♪ ${s.title}` : p?.error === "premium" ? t("Spotify pide Premium para elegir la canción; la abrí allá.")
+        : p?.error === "device" ? t("Abrí Spotify: cuando cargue, toca la canción otra vez.") : t("No pude ponerla a sonar; la abrí en Spotify.");
+      setState(state, said.slice(0, 70), { labelFor: 4500 });
       // Debajo queda la tarjeta de lo que suena, con sus botones.
       appsBox.classList.remove("hidden"); openApp = "spotify"; renderApps(); renderAppView();
     };
@@ -1638,7 +1646,15 @@ function renderSetup(s) {
   const voiceRow = s.voice === null ? row(null, t("Voz"), t("Opcional: pon en prefs.json la dirección de un servicio de voz (`ttsUrl`)."))
     : s.voice ? row(true, t("Voz"), t("Lee sus respuestas en voz alta."), btn(t("Apagar"), "speak", false))
     : row(null, t("Voz"), t("Que Nimbo lea sus respuestas en voz alta."), btn(t("Activar"), "speak", true));
-  const spotify = row(null, "Spotify", t("Opcional: activa el conector de Spotify en claude.ai y escribe en el chat \"spotify\" y una canción."), btn("claude.ai", "open", "connectors"));
+  // Spotify: lo que suena no necesita nada. Con Premium y tu propia app de Spotify, elegir una canción la pone a sonar.
+  const spotifyId = el("input");
+  spotifyId.placeholder = "Client ID";
+  spotifyId.maxLength = 32;
+  spotifyId.spellcheck = false;
+  spotifyId.onchange = () => act("spotify-id", spotifyId.value);
+  const spotify = s.spotify === true ? row(true, "Spotify", t("Conectado con Premium: eliges una canción y suena."), btn(t("Desconectar"), "spotify-logout"))
+    : s.spotify === false ? row(false, "Spotify", t("Falta tu permiso: se abre Spotify en el navegador y aceptas."), btn(t("Quitar"), "spotify-id", ""), btn(t("Conectar"), "spotify-login", null, "allow"))
+    : row(null, "Spotify", t("Lo que suena sale solo. Con Premium, elegir una canción la pone a sonar: pega el Client ID de tu app de Spotify."), spotifyId, btn(t("Guía"), "open", "spotify-guide"));
   const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, spotify, wa, look, voiceRow, auto];
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));
   setupBox.replaceChildren(...rows);

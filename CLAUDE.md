@@ -31,6 +31,7 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 | `reminders.js` | Recordatorios en JSON (`node reminders.js` = autoprueba). |
 | `trello.js` | Tarjetas pendientes vía el conector de Trello de tu `claude` (solo lectura). |
 | `spotify.js` | Buscar canciones vía el conector de Spotify de tu `claude` (solo búsqueda). |
+| `spotify-api.js` | Spotify con Premium (opcional): Web API con PKCE para buscar al instante y poner a sonar la canción elegida. |
 | `media.js` + `media-watch.ps1` | Lo que suena en Spotify y sus botones, con los controles multimedia de Windows. |
 | `whatsapp.js` + `wa-watch.ps1` | WhatsApp de escritorio en solo lectura (`node whatsapp.js` = autoprueba). |
 
@@ -145,6 +146,18 @@ Spotify solo muestra la página de la canción. Arrancar una canción concreta s
 que exige Premium, una app de desarrollador por usuario (máximo 5 personas) y guardar un token: decisión del autor.
 La búsqueda real tarda ~25 s. Las herramientas del conector hoy: `search`, `get_currently_playing`,
 `generate_playlist`, `save_to_library`, `remove_from_library`.
+**Spotify con Premium** (`spotify-api.js`, `node spotify-api.js` = autoprueba sin red, con un Spotify de mentira): opcional,
+para que la canción elegida SUENE y la búsqueda sea instantánea. Web API con PKCE (sin client secret). El Client ID es
+de la app de developer.spotify.com de CADA usuario (`prefs.spotifyClientId`, nunca en el código: Spotify limita cada
+app a 5 personas y exige Premium al dueño). Dirección de vuelta fija: `http://127.0.0.1:47823/spotify`, una ruta GET
+del servidor de hooks que solo vale con una entrada en curso y su `state` (un solo uso, 5 min). Permisos:
+`user-modify-playback-state user-read-playback-state`. Única excepción a "Nimbo no guarda tokens": el token de
+renovación va en `%APPDATA%\nimbo\spotify.bin` cifrado con `safeStorage` (DPAPI); sin cifrado no se guarda; el de
+acceso vive en memoria. `invalid_grant` al renovar = se borra y el panel vuelve a pedir "Conectar". Con sesión,
+`spotify-search` usa la API (`plays: true`) y `spotify-play` hace `PUT /me/player/play`; con 404 (ningún equipo
+activo) elige uno con `pickDevice` (este equipo → el activo → un computador) y reintenta; si no suena, abre el URI.
+Límites de la API desde 2026: búsqueda máximo 10 resultados. Panel: `setup-do` `spotify-id` / `spotify-login` (no
+espera: al volver el navegador main manda `spotify` a la página) / `spotify-logout`.
 **Lo que suena** (`media.js` + `media-watch.ps1`, `node media.js` = autoprueba; `node media.js ver` mira 9 s en vivo):
 controles multimedia de Windows (SMTC, sesión cuyo id contiene "spotify"), sin cuenta ni claves. El script mira cada
 2 s y emite `media:{title, artist, album, playing, art}` solo cuando cambia; recibe `toggle`/`next`/`prev` por stdin
@@ -325,11 +338,12 @@ la página sin `?lang` (español).
 - Ventana: `contextIsolation`, `sandbox`, sin `nodeIntegration`; navegación y `window.open` bloqueados.
   En la página no se usa `innerHTML`: todo texto externo entra con `textContent`/`el()`.
 - Permisos del navegador: solo micrófono (audio); cámara y lo demás, denegados.
-- Nimbo no guarda claves ni tokens de nadie: GitHub vía `gh`, Trello vía el conector de `claude`.
+- Nimbo no guarda claves ni tokens de nadie: GitHub vía `gh`, Trello vía el conector de `claude`. Única excepción,
+  opcional y cifrada por Windows: el token de renovación de Spotify Premium (`spotify.bin`).
 - Pendiente conocido: el script va en línea en `index.html`, así que el CSP lleva `'unsafe-inline'`.
 
 ## Estado en disco
-`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
+`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
 caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
 
 ## Lecciones (cosas que ya fallaron)

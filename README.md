@@ -179,7 +179,24 @@ The file format is described at the top of [plan.js](plan.js).
 
 1. Open [claude.ai → Settings → Connectors](https://claude.ai/settings/connectors), find **Spotify**, click **Connect**, and authorize your account. Use the same Claude account you use in Claude Code.
 2. In Nimbo's chat, type (or dictate) `spotify` and what you want: `spotify bohemian rhapsody`. `play …` and `play … on spotify` also work.
-3. The list appears after 20–30 seconds. Click a song and Spotify opens its page; you press play there (Spotify does not let another app start a song without its paid API).
+3. The list appears after 20–30 seconds. Click a song and Spotify opens its page; you press play there.
+
+**Make the song you pick actually play (requires Spotify Premium).** Spotify only lets another app start a song through its API, and that API requires Premium and that each person registers their own "app" (free, 5 minutes). It also makes the search instant. No password and no "client secret" are involved.
+
+1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) with your Spotify account and click **Create app**.
+2. Fill in the form:
+   - **App name:** `Nimbo` (or anything). **App description:** any text.
+   - **Redirect URIs:** `http://127.0.0.1:47823/spotify`, then click **Add**. It must be exactly that.
+   - **Which API/SDKs are you planning to use?** check **Web API**.
+   - Accept the terms and click **Save**.
+3. In the app you just created, copy the **Client ID** (32 letters and numbers). The "Client secret" is not needed: do not copy it anywhere.
+4. In Nimbo: right-click → **Connections** → **Spotify** row → paste the Client ID and press Enter. The row changes and shows **Connect**.
+5. Click **Connect**: Spotify opens in your browser, you click **Agree**, and the tab says it is connected.
+6. Done: `spotify bohemian rhapsody` answers instantly, and clicking a song plays it in your Spotify.
+
+What is stored: the Client ID in `prefs.json` and a refresh token in `%APPDATA%\nimbo\spotify.bin`, encrypted by Windows (only your user on that PC can read it). Nimbo only asks for permission to see and control playback: nothing about your playlists, library, or profile. To remove it, click **Disconnect** in Connections and, if you like, **Remove access** at [spotify.com/account/apps](https://www.spotify.com/account/apps/).
+
+If the Spotify app was closed, the first song only opens it: once it loads, click the song again.
 
 ### If something does not work
 
@@ -227,7 +244,7 @@ Nimbo sits between you and Claude Code's permission prompts, so this matters:
 - The permission card shows the full command or change. Read before you allow.
 - Nimbo's own chat can only read files. To change something in a project it proposes a prompt and sends it only when you click.
 - The Trello and WhatsApp summaries run with no tools: text written by someone else cannot make a model execute anything.
-- Nimbo stores no passwords, tokens, or API keys. GitHub uses your `gh` session; Trello uses your Claude connector.
+- Nimbo stores no passwords, tokens, or API keys. GitHub uses your `gh` session; Trello uses your Claude connector. The one exception is optional: if you connect Spotify with Premium, its refresh token is kept, encrypted by Windows.
 
 Found a security problem? Please open an issue.
 

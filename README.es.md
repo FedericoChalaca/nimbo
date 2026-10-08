@@ -179,7 +179,24 @@ El formato del archivo está explicado al inicio de [plan.js](plan.js).
 
 1. Abre [claude.ai → Ajustes → Conectores](https://claude.ai/settings/connectors), busca **Spotify**, pulsa **Conectar** y autoriza tu cuenta. Usa la misma cuenta de Claude que usas en Claude Code.
 2. En el chat de Nimbo escribe (o dicta) `spotify` y lo que buscas: `spotify bohemian rhapsody`. También sirven `reproduce …` y `pon … en spotify`.
-3. A los 20–30 segundos sale la lista. Toca una canción y Spotify abre su página; el play se lo das allá (Spotify no deja que otra app arranque una canción sin su API de pago).
+3. A los 20–30 segundos sale la lista. Toca una canción y Spotify abre su página; el play se lo das allá.
+
+**Que la canción elegida suene (necesita Spotify Premium).** Spotify solo deja que otra app arranque una canción por su API, y esa API exige Premium y que cada persona registre su propia "app" (gratis, 5 minutos). Con esto la búsqueda además es instantánea. No se usa contraseña ni "client secret".
+
+1. Entra a [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) con tu cuenta de Spotify y pulsa **Create app**.
+2. Llena el formulario:
+   - **App name:** `Nimbo` (o el que quieras). **App description:** cualquier texto.
+   - **Redirect URIs:** `http://127.0.0.1:47823/spotify` y pulsa **Add**. Tiene que quedar exactamente así.
+   - **Which API/SDKs are you planning to use?** marca **Web API**.
+   - Acepta los términos y pulsa **Save**.
+3. En la app que se creó, copia el **Client ID** (32 letras y números). El "Client secret" no hace falta: no lo copies a ningún lado.
+4. En Nimbo: clic derecho → **Conexiones** → fila **Spotify** → pega el Client ID y pulsa Enter. La fila cambia y aparece **Conectar**.
+5. Pulsa **Conectar**: se abre Spotify en tu navegador, pulsas **Aceptar** y la pestaña dice que quedó conectado.
+6. Listo: `spotify bohemian rhapsody` responde al instante y al tocar una canción suena en tu Spotify.
+
+Qué queda guardado: el Client ID en `prefs.json` y un token de renovación en `%APPDATA%\nimbo\spotify.bin`, cifrado por Windows (solo tu usuario en ese equipo puede leerlo). Nimbo solo pide permiso para ver y controlar la reproducción: nada de tus listas, tu biblioteca ni tu perfil. Para quitarlo, pulsa **Desconectar** en Conexiones y, si quieres, **Remove access** en [spotify.com/account/apps](https://www.spotify.com/account/apps/).
+
+Si la app de Spotify estaba cerrada, la primera canción solo la abre: cuando cargue, tócala otra vez.
 
 ### Si algo no funciona
 
@@ -227,7 +244,7 @@ Nimbo se sienta entre tú y los permisos de Claude Code, así que esto importa:
 - La tarjeta de permiso muestra el comando o el cambio completo. Lee antes de permitir.
 - El chat de Nimbo solo puede leer archivos. Para cambiar algo en un proyecto, te propone un prompt y lo envía únicamente cuando haces clic.
 - Los resúmenes de Trello y WhatsApp corren sin herramientas: un texto ajeno no puede hacer que un modelo ejecute nada.
-- Nimbo no guarda contraseñas, tokens ni API keys. GitHub usa tu sesión de `gh`; Trello, el conector de tu Claude.
+- Nimbo no guarda contraseñas, tokens ni API keys. GitHub usa tu sesión de `gh`; Trello, el conector de tu Claude. La única excepción es opcional: si conectas Spotify con Premium, queda su token de renovación, cifrado por Windows.
 
 Si encuentras un problema de seguridad, abre un issue.
 

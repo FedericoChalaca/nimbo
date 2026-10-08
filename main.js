@@ -1,6 +1,6 @@
 // Nimbo: ventana transparente arriba de la pantalla + servidor local que recibe
 // los hooks de Claude Code y se los pasa al personaje.
-const { app, BrowserWindow, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer, Tray, nativeImage } = require("electron");
+const { app, BrowserWindow, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer, Tray, nativeImage, safeStorage } = require("electron");
 const { execFile } = require("child_process");
 const { pathToFileURL } = require("url");
 const crypto = require("crypto");
@@ -14,6 +14,7 @@ const { createReminders } = require("./reminders");
 const { createTrello } = require("./trello");
 const { searchSpotify, TRACK_URI } = require("./spotify");
 const { watchMedia } = require("./media");
+const { createSpotifyApi, CLIENT_ID } = require("./spotify-api");
 const { createWhatsapp } = require("./whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
 const { readPlan, planSpeech } = require("./plan");
@@ -181,6 +182,8 @@ const prefsFile = path.join(app.getPath("userData"), "prefs.json");
 let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "", whatsappRead: false, waModel: "", onboarded: false,
   // Voz: "speak" es el interruptor; "ttsUrl", el servicio de texto a voz (ver tts.js). Sin dirección no hay voz.
   speak: false, ttsUrl: "",
+  // Spotify con Premium (opcional): el Client ID de TU app de developer.spotify.com (ver spotify-api.js).
+  spotifyClientId: "",
   // Plan del día (ver plan.js): dónde está, y la fecha del último plan que ya te mostró.
   planRepo: "", planBranch: "", planFile: "", planSeen: "" };
 try {
@@ -329,8 +332,38 @@ async function refreshTrello() {
 ipcMain.on("trello-refresh", () => refreshTrello());
 
 // --- Spotify: busca tu claude (conector de claude.ai); la canción elegida se abre en tu app ---
-ipcMain.handle("spotify-search", (_e, query) => searchSpotify(query));
-ipcMain.on("spotify-play", (_e, uri) => { if (TRACK_URI.test(String(uri))) shell.openExternal(String(uri)); });
+// Con Premium y tu propia app de Spotify (opcional, spotify-api.js): la búsqueda es instantánea y la
+// canción elegida suena. Lo único guardado es el token de renovación, cifrado por Windows (DPAPI,
+// `safeStorage`): solo tu usuario de Windows en este equipo puede leerlo. Sin cifrado no se guarda.
+const spotifyTokenFile = path.join(app.getPath("userData"), "spotify.bin");
+let spotifyToken; // undefined = todavía no se leyó del disco
+const spotifyApi = createSpotifyApi({
+  clientId: () => prefs.spotifyClientId,
+  redirect: `http://127.0.0.1:${PORT}/spotify`,
+  load() {
+    if (spotifyToken === undefined) {
+      try { spotifyToken = safeStorage.decryptString(fs.readFileSync(spotifyTokenFile)); } catch { spotifyToken = ""; }
+    }
+    return spotifyToken;
+  },
+  save(value) {
+    spotifyToken = "";
+    try {
+      if (value && safeStorage.isEncryptionAvailable()) { fs.writeFileSync(spotifyTokenFile, safeStorage.encryptString(value)); spotifyToken = value; }
+      else fs.rmSync(spotifyTokenFile, { force: true });
+    } catch {}
+  },
+  open: (url) => shell.openExternal(url),
+});
+// "plays" le dice a la página que la canción elegida va a sonar (y no solo abrirse).
+ipcMain.handle("spotify-search", async (_e, query) => (spotifyApi.connected() ? { ...(await spotifyApi.search(query)), plays: true } : searchSpotify(query)));
+// Con Premium la canción suena; sin eso (o si Spotify está cerrado) se abre su página en la app.
+ipcMain.handle("spotify-play", async (_e, uri) => {
+  if (!TRACK_URI.test(String(uri))) return { error: "fail" };
+  const r = spotifyApi.connected() ? await spotifyApi.play(String(uri)) : { opened: true };
+  if (!r.ok) shell.openExternal(String(uri));
+  return r;
+});
 // Lo que suena y sus botones: controles multimedia de Windows (media.js), sin cuenta ni claves.
 let media = null;
 const player = watchMedia((m) => { media = m; if (win && !win.isDestroyed()) win.webContents.send("media", m); });
@@ -355,7 +388,7 @@ function hookCommand() {
   return `"${cmd.replace(/\\/g, "/")}"`;
 }
 // Páginas que el panel puede abrir: una lista fija, la página nunca manda la URL.
-const LINKS = { claude: "https://claude.com/claude-code", gh: "https://cli.github.com", connectors: "https://claude.ai/settings/connectors" };
+const LINKS = { claude: "https://claude.com/claude-code", gh: "https://cli.github.com", connectors: "https://claude.ai/settings/connectors", spotifyDev: "https://developer.spotify.com/dashboard" };
 const loginItem = () => (app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] });
 const ghStatus = () => new Promise((resolve) => {
   execFile("gh", ["auth", "status"], { windowsHide: true, timeout: 10_000 }, (err) => resolve(!err ? "on" : err.code === "ENOENT" ? "missing" : "off"));
@@ -370,6 +403,7 @@ async function setupStatus() {
     hooks: hookState,
     github: await ghStatus(),
     trello: t ? t.boards.reduce((n, b) => n + (b.pending || 0), 0) : null,
+    spotify: !spotifyApi.configured() ? null : spotifyApi.connected(), // null = sin Client ID · false = falta entrar
     theme: prefs.theme,
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
     whatsappRead: prefs.whatsappRead === true,
@@ -441,9 +475,24 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
       case "speak": setSpeak(value === true); break;
       case "whatsapp-rules": shell.openPath(wa.rulesFile); break;
       case "trello": await refreshTrello(); break;
+      case "spotify-id": {
+        const id = String(value ?? "").trim().toLowerCase();
+        if (id && !CLIENT_ID.test(id)) throw new Error(t("Ese no parece un Client ID de Spotify (son 32 letras y números)."));
+        if (id !== prefs.spotifyClientId) spotifyApi.logout();
+        prefs.spotifyClientId = id;
+        savePrefs();
+        break;
+      }
+      case "spotify-login":
+        if (!safeStorage.isEncryptionAvailable()) throw new Error(t("Windows no puede cifrar el token en este equipo."));
+        // No se espera: el permiso se da en el navegador y puede tardar. Al volver se avisa a la página.
+        spotifyApi.login().then((ok) => { if (win && !win.isDestroyed()) win.webContents.send("spotify", ok); });
+        break;
+      case "spotify-logout": spotifyApi.logout(); break;
       case "open":
         // "guide" = la guía de conexiones del README, en el idioma de la interfaz.
-        if (value === "guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#conectar-todo" : "README.md#connect-everything"}`);
+        if (value === "spotify-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#10-spotify-opcional" : "README.md#10-spotify-optional"}`);
+        else if (value === "guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#conectar-todo" : "README.md#connect-everything"}`);
         else if (Object.hasOwn(LINKS, value)) shell.openExternal(LINKS[value]);
         break;
       case "done": prefs.onboarded = true; savePrefs(); break;
@@ -595,6 +644,14 @@ function askPermission(payload, nonce, res) {
 const seenNonces = new Set();
 http
   .createServer((req, res) => {
+    // La vuelta del permiso de Spotify (spotify-api.js): solo vale con una entrada en curso y su `state`.
+    if (req.method === "GET" && req.url.startsWith("/spotify?") && req.headers.host === `127.0.0.1:${PORT}`) {
+      spotifyApi.callback(new URLSearchParams(req.url.slice(9))).then((ok) => {
+        res.writeHead(ok ? 200 : 400, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        res.end(`<!doctype html><meta charset="utf-8"><title>Nimbo</title><body style="font:16px Segoe UI,sans-serif;background:#0b0c0e;color:#eceef2;display:grid;place-items:center;height:100vh;margin:0"><p>${ok ? t("Spotify quedó conectado con Nimbo. Ya puedes cerrar esta pestaña.") : t("No se pudo conectar Spotify. Vuelve a Nimbo e inténtalo de nuevo.")}</p>`);
+      });
+      return;
+    }
     if (req.method !== "POST" || !["/hook", "/permission"].includes(req.url) || req.headers.host !== `127.0.0.1:${PORT}`) {
       res.writeHead(404).end();
       return;
