@@ -30,6 +30,8 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 | `tts.js` | Voz: limpia y recorta el texto y pide el mp3 al servicio de `prefs.ttsUrl` (`node tts.js` = autoprueba). |
 | `reminders.js` | Recordatorios en JSON (`node reminders.js` = autoprueba). |
 | `trello.js` | Tarjetas pendientes vía el conector de Trello de tu `claude` (solo lectura). |
+| `spotify.js` | Buscar canciones vía el conector de Spotify de tu `claude` (solo búsqueda). |
+| `media.js` + `media-watch.ps1` | Lo que suena en Spotify y sus botones, con los controles multimedia de Windows. |
 | `whatsapp.js` + `wa-watch.ps1` | WhatsApp de escritorio en solo lectura (`node whatsapp.js` = autoprueba). |
 
 ## Flujos
@@ -127,6 +129,29 @@ conector de Trello de claude.ai) las tarjetas pendientes, con `--tools ""` (sin 
 `--allowedTools` solo de LECTURA y las de escritura en `--disallowedTools`. Tarda ~50 s: corre 90 s después
 de arrancar y cada 30 min (o menú "Actualizar Trello"); caché en `%APPDATA%\nimbo\trello.json`. Avisa si
 una tarjeta vence en < 24 h.
+**Conectores de más = tokens de más.** Cada `claude -p` carga las herramientas de TODOS los conectores del
+usuario: con 9 conectores eran 355.000 tokens por llamada (y Haiku respondía "Prompt is too long"). Por eso
+`connectors()` (`orchestrator.js`, lee `claude mcp list`, ~4 s, sin modelo, caché 10 min) da los prefijos
+`mcp__…` y Trello y Spotify pasan los que no usan en `--disallowedTools`: quedan 25.000 tokens.
+**Spotify** (`spotify.js`, `node spotify.js` = autoprueba; `node spotify.js "queen"` busca de verdad): sin claves.
+En el chat, "spotify <canción>", "reproduce <canción>" o "pon <canción> en spotify" (`MUSIC_ASK`) no van al
+orquestador: `searchSpotify` le pide la búsqueda a tu `claude` (Haiku, `--tools ""`, solo `search`
+del conector de Spotify de claude.ai; crear listas y tocar la biblioteca van en `--disallowedTools`). Si el
+conector no está en `claude mcp list`, responde `connected: false` al instante, sin llamar al modelo. La lista
+sale en la caja de respuesta; tocar una canción manda su URI a `spotify-play`, que solo abre
+`spotify:track:<22 letras>` (`TRACK_URI`; `cleanTracks` normaliza enlaces e ids y descarta lo demás). El conector
+no tiene "reproducir" y abrir el URI NO hace que suene (probado el 2026-10-07, también con `:play` y `?autoplay=true`):
+Spotify solo muestra la página de la canción. Arrancar una canción concreta solo se puede con la Web API de Spotify,
+que exige Premium, una app de desarrollador por usuario (máximo 5 personas) y guardar un token: decisión del autor.
+La búsqueda real tarda ~25 s. Las herramientas del conector hoy: `search`, `get_currently_playing`,
+`generate_playlist`, `save_to_library`, `remove_from_library`.
+**Lo que suena** (`media.js` + `media-watch.ps1`, `node media.js` = autoprueba; `node media.js ver` mira 9 s en vivo):
+controles multimedia de Windows (SMTC, sesión cuyo id contiene "spotify"), sin cuenta ni claves. El script mira cada
+2 s y emite `media:{title, artist, album, playing, art}` solo cuando cambia; recibe `toggle`/`next`/`prev` por stdin
+(tras una orden mira cada 250 ms durante 2 s: el botón se confirma en ~1 s; la página además lo voltea al instante).
+La carátula (PNG 300 px, ~130 KB) va como data: URI; `cleanMedia` solo acepta PNG/JPEG en base64. Píldora "Spotify"
+(♪ / ❚❚) y tarjeta con carátula y botones. Trampas de PowerShell 5.1: `[Console]::In.ReadLineAsync()` BLOQUEA (se lee
+el flujo crudo con StreamReader) y el flujo de la carátula hay que convertirlo por reflexión (`AsStreamForRead`).
 **WhatsApp** (`whatsapp.js` + `wa-watch.ps1`), solo lectura, dos niveles:
 1. Siempre: el TÍTULO de la ventana de WhatsApp de escritorio (`(3) WhatsApp` → 3 chats sin leer).
 2. Opcional (`prefs.whatsappRead`, menú "Leer mensajes de WhatsApp", apagado por defecto): las

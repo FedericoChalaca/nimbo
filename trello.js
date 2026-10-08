@@ -4,7 +4,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { runClaude } = require("./orchestrator");
+const { runClaude, connectors } = require("./orchestrator");
 
 const READ_TOOLS = ["trelloReadBoard", "trelloReadCard", "trelloReadList", "trelloReadInbox", "trelloReadMember", "trelloSearch"]
   .map((t) => `mcp__claude_ai_Trello__${t}`);
@@ -41,13 +41,15 @@ function createTrello(cacheFile) {
     /** Consulta Trello a través de Claude (20–60 s). Si falla, conserva lo último que tenía. */
     refresh() {
       running ??= (async () => {
+        const cwd = path.join(os.tmpdir(), "nimbo-trello");
+        fs.mkdirSync(cwd, { recursive: true });
         const args = ["-p", "--output-format", "json", "--json-schema", SCHEMA,
           // Sin herramientas propias (ni leer archivos ni navegar): solo el conector de Trello en
           // lectura. El nombre de una tarjeta lo puede escribir otra persona; no debe poder nada.
           "--tools", "", "--permission-mode", "default", "--no-session-persistence",
-          "--allowedTools", ...READ_TOOLS, "--disallowedTools", ...WRITE_TOOLS];
-        const cwd = path.join(os.tmpdir(), "nimbo-trello");
-        fs.mkdirSync(cwd, { recursive: true });
+          "--allowedTools", ...READ_TOOLS,
+          // Los demás conectores fuera: cargarlos todos costaba 355.000 tokens por consulta.
+          "--disallowedTools", ...WRITE_TOOLS, ...(await connectors(cwd)).filter((n) => n !== "mcp__claude_ai_Trello")];
         // (La variable evita que cada consulta deje un "chat" con título en ~/.claude/projects.)
         const r = await runClaude(args, { cwd, input: PROMPT, env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });
         let out = r.structured_output;

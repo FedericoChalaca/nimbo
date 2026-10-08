@@ -171,6 +171,16 @@ If another tool of yours leaves a daily plan as a JSON file in a branch of a git
 
 The file format is described at the top of [plan.js](plan.js).
 
+### 10. Spotify (optional)
+
+**Now playing, with no setup.** With the Spotify app open on your PC, hover to see the **Spotify** pill: cover art, song, artist, and previous, pause and next buttons. It uses the Windows media controls (the same ones your keyboard's music keys use): no account, keys or Premium needed.
+
+**Search for songs.** Nimbo stores no keys: your Claude runs the search with the official Spotify connector, which is only allowed to search.
+
+1. Open [claude.ai → Settings → Connectors](https://claude.ai/settings/connectors), find **Spotify**, click **Connect**, and authorize your account. Use the same Claude account you use in Claude Code.
+2. In Nimbo's chat, type (or dictate) `spotify` and what you want: `spotify bohemian rhapsody`. `play …` and `play … on spotify` also work.
+3. The list appears after 20–30 seconds. Click a song and Spotify opens its page; you press play there (Spotify does not let another app start a song without its paid API).
+
 ### If something does not work
 
 | Problem | What to check |
@@ -198,7 +208,7 @@ The file format is described at the top of [plan.js](plan.js).
 
 | Action | Result |
 |---|---|
-| Hover | Pills appear (Chats, Trello, GitHub, WhatsApp, Reminders). Click one to see its detail. |
+| Hover | Pills appear (Chats, Trello, GitHub, Spotify, WhatsApp, Reminders). Click one to see its detail. |
 | Click | Opens or closes the chat. |
 | Click the green button | Opens the WhatsApp summary. |
 | 🖥 in the chat | Takes a screenshot of the screen where your cursor is and attaches it. Click the thumbnail to remove it. |

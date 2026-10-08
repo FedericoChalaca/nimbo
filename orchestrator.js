@@ -1,6 +1,6 @@
 // Orquestador: Nimbo conoce tus chats de Claude Code, decide a cuál le toca cada
 // pedido y le redacta un prompt. Nunca envía nada sin que confirmes en la tarjeta.
-const { spawn } = require("child_process");
+const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -47,6 +47,26 @@ function runClaude(args, { cwd, input, env }) {
       resolve(result ?? { error: (err || t("No pude hablar con Claude.")).trim().slice(0, 600) });
     });
     child.stdin.end(input);
+  });
+}
+
+/**
+ * Los conectores (servidores MCP) que carga el `claude` del usuario, con el prefijo de sus
+ * herramientas ("claude.ai Trello" → "mcp__claude_ai_Trello"). Sirve para pasarle a `-p` los que
+ * NO se usan en `--disallowedTools`: sin eso cada llamada carga las herramientas de todos
+ * (medido el 2026-10-07 con 9 conectores: 355.000 tokens por llamada; dejando uno, 25.000, y
+ * solo así cabe en Haiku). No gasta modelo (~4 s); se recuerda 10 min.
+ */
+let connectorCache = { at: 0, names: [] };
+function connectors(cwd) {
+  return new Promise((resolve) => {
+    if (!CLAUDE_EXE) return resolve([]);
+    if (Date.now() - connectorCache.at < 10 * 60_000) return resolve(connectorCache.names);
+    execFile(CLAUDE_EXE, ["mcp", "list"], { cwd, windowsHide: true, timeout: 30_000 }, (_err, out) => {
+      const names = [...String(out ?? "").matchAll(/^(\S.*?): \S/gm)].map((m) => `mcp__${m[1].replace(/[^a-zA-Z0-9_-]/g, "_")}`);
+      if (names.length) connectorCache = { at: Date.now(), names };
+      resolve(names);
+    });
   });
 }
 
@@ -288,4 +308,4 @@ function createOrchestrator(chatDir, { vault, lang, plan } = {}) {
   };
 }
 
-module.exports = { createOrchestrator, listSessions, sessionTitle, runClaude, claudeFound: () => CLAUDE_EXE !== "" };
+module.exports = { createOrchestrator, listSessions, sessionTitle, runClaude, connectors, claudeFound: () => CLAUDE_EXE !== "" };

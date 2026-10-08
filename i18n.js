@@ -105,6 +105,18 @@ const NIMBO_EN = {
   "{0} sin propuesta hoy": "{0} with no proposal today",
   "hoy": "today",
   "No tengo el plan de hoy: no está configurado, no hay conexión o todavía no ha salido.": "I do not have today's plan: it is not set up, there is no connection, or it has not come out yet.",
+  // — Spotify —
+  "Buscando en Spotify…": "Searching Spotify…",
+  "Buscar": "Search",
+  "Anterior": "Previous",
+  "Pausar": "Pause",
+  "Reproducir": "Play",
+  "Siguiente": "Next",
+  "Activa el conector de Spotify en claude.ai y vuelve a intentar.": "Turn on the Spotify connector in claude.ai and try again.",
+  "No pude buscar en Spotify.": "I could not search Spotify.",
+  "No encontré \"{0}\" en Spotify.": "I could not find \"{0}\" on Spotify.",
+  "Spotify · toca una para abrirla": "Spotify · click one to open it",
+  "Opcional: activa el conector de Spotify en claude.ai y escribe en el chat \"spotify\" y una canción.": "Optional: turn on the Spotify connector in claude.ai and type \"spotify\" and a song in the chat.",
   // — Trello, GitHub, WhatsApp —
   "nada pendiente": "nothing pending",
   "Actualizar": "Refresh",

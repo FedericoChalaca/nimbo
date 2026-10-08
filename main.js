@@ -12,6 +12,8 @@ const hooks = require("./install-hooks");
 const { translator } = require("./i18n");
 const { createReminders } = require("./reminders");
 const { createTrello } = require("./trello");
+const { searchSpotify, TRACK_URI } = require("./spotify");
+const { watchMedia } = require("./media");
 const { createWhatsapp } = require("./whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
 const { readPlan, planSpeech } = require("./plan");
@@ -325,6 +327,16 @@ async function refreshTrello() {
   if (data) win?.webContents.send("trello", data);
 }
 ipcMain.on("trello-refresh", () => refreshTrello());
+
+// --- Spotify: busca tu claude (conector de claude.ai); la canción elegida se abre en tu app ---
+ipcMain.handle("spotify-search", (_e, query) => searchSpotify(query));
+ipcMain.on("spotify-play", (_e, uri) => { if (TRACK_URI.test(String(uri))) shell.openExternal(String(uri)); });
+// Lo que suena y sus botones: controles multimedia de Windows (media.js), sin cuenta ni claves.
+let media = null;
+const player = watchMedia((m) => { media = m; if (win && !win.isDestroyed()) win.webContents.send("media", m); });
+app.on("before-quit", () => player.stop());
+ipcMain.handle("media", () => media);
+ipcMain.on("media-do", (_e, order) => player.send(String(order)));
 
 // La ventana normalmente no roba el foco; solo lo toma mientras el chat está abierto.
 ipcMain.on("chat-open", (_e, open) => {

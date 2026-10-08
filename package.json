@@ -8,7 +8,7 @@
     "start": "electron .",
     "install-hooks": "node install-hooks.js",
     "uninstall-hooks": "node install-hooks.js --uninstall",
-    "test": "node reminders.js && node whatsapp.js && node i18n.js && node tts.js && node plan.js && node examples/tts-service/api/tts.js",
+    "test": "node reminders.js && node whatsapp.js && node i18n.js && node tts.js && node plan.js && node spotify.js && node media.js && node examples/tts-service/api/tts.js",
     "promo": "electron promo/promo-main.js",
     "dist": "electron-builder --win",
     "promo:gif": "electron promo/gif-main.js"

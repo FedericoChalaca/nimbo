@@ -171,6 +171,16 @@ Si otra herramienta tuya deja cada día un plan como archivo JSON en una rama de
 
 El formato del archivo está explicado al inicio de [plan.js](plan.js).
 
+### 10. Spotify (opcional)
+
+**Lo que suena, sin configurar nada.** Con la app de Spotify abierta en tu PC, al pasar el mouse sale la píldora **Spotify**: carátula, canción, artista y botones de anterior, pausa y siguiente. Usa los controles multimedia de Windows (los mismos de las teclas de música): no pide cuenta, claves ni Premium.
+
+**Buscar canciones.** Nimbo no guarda ninguna clave: la búsqueda la hace tu Claude con el conector oficial de Spotify, al que solo se le deja buscar.
+
+1. Abre [claude.ai → Ajustes → Conectores](https://claude.ai/settings/connectors), busca **Spotify**, pulsa **Conectar** y autoriza tu cuenta. Usa la misma cuenta de Claude que usas en Claude Code.
+2. En el chat de Nimbo escribe (o dicta) `spotify` y lo que buscas: `spotify bohemian rhapsody`. También sirven `reproduce …` y `pon … en spotify`.
+3. A los 20–30 segundos sale la lista. Toca una canción y Spotify abre su página; el play se lo das allá (Spotify no deja que otra app arranque una canción sin su API de pago).
+
 ### Si algo no funciona
 
 | Problema | Qué revisar |
@@ -198,7 +208,7 @@ El formato del archivo está explicado al inicio de [plan.js](plan.js).
 
 | Acción | Qué pasa |
 |---|---|
-| Pasar el mouse | Aparecen las píldoras (Chats, Trello, GitHub, WhatsApp, Pendientes). Toca una para ver su detalle. |
+| Pasar el mouse | Aparecen las píldoras (Chats, Trello, GitHub, Spotify, WhatsApp, Pendientes). Toca una para ver su detalle. |
 | Un clic | Abre o cierra el chat. |
 | Clic en el botón verde | Abre el resumen de WhatsApp. |
 | 🖥 en el chat | Toma un pantallazo de la pantalla donde está el cursor y lo adjunta. Toca la miniatura para quitarlo. |

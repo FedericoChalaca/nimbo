@@ -453,6 +453,19 @@
   .chip2.amber { background: rgba(255, 176, 32, .16); color: #ffcc70; }
   .arow .done { margin-left: 2px; padding: 2px 8px; font-size: 11px; }
   .afoot { margin-top: 6px; color: #6b717a; font-size: 11px; }
+  /* Spotify: lo que suena, con su carátula y sus botones */
+  .now { display: flex; align-items: center; gap: 12px; padding: 2px; }
+  .now img, .now .noart { width: 64px; height: 64px; flex: none; border-radius: 10px; object-fit: cover; background: #24262b; box-shadow: 0 6px 16px rgba(0, 0, 0, .45); }
+  .now .meta { flex: 1; min-width: 0; }
+  .now .meta b, .now .meta i { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .now .meta b { color: #f2f3f5; font-weight: 600; font-size: 13.5px; }
+  .now .meta i { margin-top: 2px; font-style: normal; color: #a4a9b2; font-size: 12px; }
+  .now .ctl { display: flex; align-items: center; gap: 4px; flex: none; }
+  .now .ctl button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: transparent; }
+  .now .ctl button:hover { background: #2a2c31; }
+  .now .ctl .play { width: 38px; height: 38px; background: var(--c); color: #04130a; }
+  .now .ctl .play:hover { background: color-mix(in srgb, var(--c) 85%, #fff); }
+  .now .ctl svg { width: 18px; height: 18px; fill: currentColor; }
   /* Conexiones y ajustes */
   #setup { padding: 12px 14px 12px; }
   .crow { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-top: 1px solid rgba(255, 255, 255, .06); }
@@ -1050,6 +1063,7 @@ const appsBox = document.getElementById("apps");
 const appView = document.getElementById("appview");
 let trelloData = null;
 let trelloBusy = false;
+let media = null; // lo que suena en Spotify: { title, artist, album, playing, art } (media.js)
 let openApp = null; // la app cuya tarjeta está abierta
 let lastApps = "";
 const alertedCards = new Set();
@@ -1067,6 +1081,7 @@ function appsList() {
   if (trelloData) out.push({ id: "trello", name: "Trello", color: "#579dff", count: trelloData.boards.reduce((n, b) => n + (b.pending || 0), 0) });
   if (dayPlan) out.push({ id: "plan", name: t("Plan"), color: "#2dd4bf", count: dayPlan.solos + dayPlan.teNecesitan });
   if (github !== null) out.push({ id: "github", name: "GitHub", color: "#a371f7", count: github.length });
+  if (media) out.push({ id: "spotify", name: "Spotify", color: "#1db954", count: 1, badge: media.playing ? "♪" : "❚❚" });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
   return out.filter((a) => a.count > 0);
@@ -1077,14 +1092,14 @@ function renderApps() {
   appsBox.classList.toggle("hidden", !list.length);
   // Sin cambios no se redibuja: llega con cada evento de un chat y reemplazar los botones
   // se comería el clic que estuviera en curso.
-  const key = list.map((a) => a.id + a.count + a.color).join() + openApp;
+  const key = list.map((a) => a.id + a.count + a.color + (a.badge ?? "")).join() + openApp;
   if (key === lastApps) return;
   lastApps = key;
   appsBox.replaceChildren(...list.map((a) => {
     const p = el("button", `pill${openApp === a.id ? " on" : ""}`);
     p.type = "button";
     p.style.setProperty("--c", a.color);
-    p.append(miniCloud(a.color), el("span", "", a.name), el("b", "", String(a.count)));
+    p.append(miniCloud(a.color), el("span", "", a.name), el("b", "", a.badge ?? String(a.count)));
     p.onclick = () => {
       if (openApp === "wa") waViewed();
       openApp = openApp === a.id ? null : a.id;
@@ -1151,6 +1166,41 @@ function renderAppView() {
     }
     const idle = dayPlan.proyectos.length - withProposal.length;
     if (idle > 0) rows.push(el("div", "afoot", t("{0} sin propuesta hoy", idle)));
+  } else if (app.id === "spotify") {
+    head.append(el("span", "sub", media.album));
+    const find = el("button", "", t("Buscar"));
+    find.type = "button";
+    find.onclick = () => { if (chat.classList.contains("hidden")) toggleChat(true); msg.value = "spotify "; msg.focus(); };
+    head.append(find);
+    const now = el("div", "now");
+    // La carátula solo puede ser un data: de imagen (lo valida media.js); el CSP no deja cargar nada de fuera.
+    const art = media.art ? Object.assign(el("img"), { src: media.art, alt: "" }) : el("div", "noart");
+    const meta = el("div", "meta");
+    meta.append(el("b", "", media.title), el("i", "", media.artist));
+    meta.title = `${media.title} · ${media.artist}`;
+    const ctl = el("div", "ctl");
+    const key = (cls, label, d, order) => {
+      const b = el("button", cls);
+      b.type = "button";
+      b.title = label;
+      const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svgEl.setAttribute("viewBox", "0 0 24 24");
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", d);
+      svgEl.append(p);
+      b.append(svgEl);
+      b.onclick = () => {
+        api.mediaDo(order);
+        // El botón responde ya; Windows confirma el estado real en menos de un segundo.
+        if (order === "toggle") { media = { ...media, playing: !media.playing }; renderApps(); renderAppView(); }
+      };
+      return b;
+    };
+    ctl.append(key("", t("Anterior"), "M6 6h2v12H6zM9.5 12l8.5 6V6z", "prev"),
+      media.playing ? key("play", t("Pausar"), "M6 5h4v14H6zM14 5h4v14h-4z", "toggle") : key("play", t("Reproducir"), "M8 5v14l11-7z", "toggle"),
+      key("", t("Siguiente"), "M16 6h2v12h-2zM6 18l8.5-6L6 6z", "next"));
+    now.append(art, meta, ctl);
+    rows.push(now);
   } else if (app.id === "github") {
     head.append(el("span", "sub", t("{0} sin leer", github.length)));
     for (const n of github.slice(0, 6)) {
@@ -1332,6 +1382,53 @@ async function answerPlan() {
   if (p) { appsBox.classList.remove("hidden"); openApp = "plan"; renderApps(); renderAppView(); }
 }
 api.onPlan(onPlan);
+// Música: "spotify <canción>", "reproduce <canción>" o "pon <canción> en spotify" en el chat. Busca
+// tu claude con el conector de Spotify (sin claves); la que elijas se abre en tu app de Spotify.
+function onMedia(m) {
+  media = m;
+  renderApps();
+  if (openApp === "spotify") renderAppView();
+}
+api.media().then(onMedia);
+api.onMedia(onMedia);
+const MUSIC_ASK =/^\W*(?:spotify[:,]?\s+(.+)|(?:pon(?:me)?|reproduce|toca|busca(?:me)?|play|search|find)\s+(.+?)\s+(?:en|on|in)\s+spotify|(?:reproduce|play)\s+(.+))$/i;
+const musicQuery = (text) => {
+  const m = MUSIC_ASK.exec(text);
+  return (m?.[1] ?? m?.[2] ?? m?.[3] ?? "").replace(/^(la canci[oó]n|the song)\s+/i, "").replace(/[\s.!?¡¿]+$/, "");
+};
+async function answerMusic(query) {
+  stopSpeaking();
+  answer.replaceChildren(el("div", "", t("Buscando en Spotify…")));
+  answer.classList.add("wait");
+  answerBox.classList.remove("hidden");
+  progressStart(20_000);
+  const r = await api.spotifySearch(query).catch(() => null);
+  progressEnd();
+  answer.classList.remove("wait");
+  if (!r || r.error || !r.connected) {
+    const link = el("button", "", "claude.ai");
+    link.type = "button";
+    link.onclick = () => api.setupDo("open", "connectors");
+    answer.replaceChildren(el("div", "reply", r?.connected === false ? t("Activa el conector de Spotify en claude.ai y vuelve a intentar.") : t("No pude buscar en Spotify.")), ...(r?.connected === false ? [link] : []));
+    return;
+  }
+  if (!r.tracks.length) { answer.replaceChildren(el("div", "reply", t("No encontré \"{0}\" en Spotify.", query))); return; }
+  answer.replaceChildren(el("div", "afoot", t("Spotify · toca una para abrirla")), ...r.tracks.map((s) => {
+    const row = el("div", "arow link");
+    const name = el("span", "name");
+    name.append(el("b", "", s.title), el("i", "", s.artist));
+    name.title = `${s.title} · ${s.artist}`;
+    row.append(el("span", "chip2 green", "♪"), name);
+    row.onclick = () => {
+      api.spotifyPlay(s.uri);
+      setState(state, `♪ ${s.title}`.slice(0, 60), { labelFor: 4000 });
+      // Debajo queda la tarjeta de lo que suena, con sus botones.
+      appsBox.classList.remove("hidden"); openApp = "spotify"; renderApps(); renderAppView();
+    };
+    return row;
+  }));
+  answer.scrollTop = 0;
+}
 api.onGithub((list) => {
   const before = github;
   github = Array.isArray(list) ? list.slice(0, 50) : [];
@@ -1541,7 +1638,8 @@ function renderSetup(s) {
   const voiceRow = s.voice === null ? row(null, t("Voz"), t("Opcional: pon en prefs.json la dirección de un servicio de voz (`ttsUrl`)."))
     : s.voice ? row(true, t("Voz"), t("Lee sus respuestas en voz alta."), btn(t("Apagar"), "speak", false))
     : row(null, t("Voz"), t("Que Nimbo lea sus respuestas en voz alta."), btn(t("Activar"), "speak", true));
-  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, wa, look, voiceRow, auto];
+  const spotify = row(null, "Spotify", t("Opcional: activa el conector de Spotify en claude.ai y escribe en el chat \"spotify\" y una canción."), btn("claude.ai", "open", "connectors"));
+  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, spotify, wa, look, voiceRow, auto];
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));
   setupBox.replaceChildren(...rows);
 }
@@ -1922,6 +2020,7 @@ chat.addEventListener("submit", async (e) => {
   msg.value = "";
   msg.placeholder = t("Escríbele a Claude… (suelta archivos sobre mí)");
   if (!sent.length && !paths.length && PLAN_ASK.test(text) && /plan/i.test(text)) await answerPlan();
+  else if (!sent.length && !paths.length && musicQuery(text)) await answerMusic(musicQuery(text));
   else await askAndShow({ text, images: sent, files: paths });
   asking = false;
 });
