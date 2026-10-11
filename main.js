@@ -320,16 +320,36 @@ ipcMain.on("whatsapp-dismiss", () => wa.dismiss());
 // Copiar la respuesta sugerida: Nimbo no escribe en WhatsApp, tú la pegas si te sirve.
 ipcMain.on("copy", (_e, text) => clipboard.writeText(String(text ?? "").slice(0, 500)));
 
-// --- Trello: a través de tu claude (conector de claude.ai), solo lectura, cada 30 min ---
+// --- Trello: a través de tu claude (conector de claude.ai), solo lectura; tableros 1 vez al día, tarjetas al tocar un tablero ---
 const trello = createTrello(path.join(app.getPath("userData"), "trello.json"));
 ipcMain.handle("trello", () => trello.cached());
-async function refreshTrello() {
-  win?.webContents.send("trello-busy", true);
-  const data = await trello.refresh();
-  win?.webContents.send("trello-busy", false);
-  if (data) win?.webContents.send("trello", data);
+// Lo que corre ahora: la lista de tableros (sola) y las tarjetas de UN tablero (al tocarlo). La página recibe
+// qué consultas están en curso (`trello-busy`: lista de claves) y los datos nuevos al terminar cada una.
+const trelloActive = new Set();
+async function trelloJob(key, job) {
+  if (trelloActive.has(key)) return;
+  trelloActive.add(key);
+  win?.webContents.send("trello-busy", [...trelloActive]);
+  try { await job(); } finally {
+    trelloActive.delete(key);
+    win?.webContents.send("trello-busy", [...trelloActive]);
+    win?.webContents.send("trello", trello.cached());
+  }
 }
+const refreshTrello = () => trelloJob("boards", () => trello.refreshBoards());
 ipcMain.on("trello-refresh", () => refreshTrello());
+// La página solo puede pedir tableros de la lista que ya se conoce (nunca una dirección cualquiera).
+ipcMain.on("trello-board", (_e, url) => { if (trello.hasBoard(String(url))) trelloJob(String(url), () => trello.refreshBoard(String(url))); });
+// La lista de tableros corre sola una vez al día: si lo último que trajo tiene más de 20 h. "Actualizar"
+// (botón o menú) la corre cuando quieras. Si falla, no se reintenta sola antes de 6 h.
+const TRELLO_MAX_AGE = 20 * 3600_000;
+let trelloTried = 0;
+function refreshTrelloIfStale() {
+  const at = Date.parse(trello.cached()?.at ?? "");
+  if (Date.now() - (Number.isFinite(at) ? at : 0) < TRELLO_MAX_AGE || Date.now() - trelloTried < 6 * 3600_000) return;
+  trelloTried = Date.now();
+  refreshTrello();
+}
 
 // --- Spotify: busca tu claude (conector de claude.ai); la canción elegida se abre en tu app ---
 // Con Premium y tu propia app de Spotify (opcional, spotify-api.js): la búsqueda es instantánea y la
@@ -353,7 +373,9 @@ const spotifyApi = createSpotifyApi({
       else fs.rmSync(spotifyTokenFile, { force: true });
     } catch {}
   },
-  open: (url) => shell.openExternal(url),
+  // Se abre en el navegador por defecto, que puede no ser donde tienes tu sesión de Spotify (pasó: Edge por
+  // defecto, sesión en otro): el enlace también queda copiado para pegarlo en el navegador que uses.
+  open: (url) => { clipboard.writeText(url); shell.openExternal(url); },
 });
 // "plays" le dice a la página que la canción elegida va a sonar (y no solo abrirse).
 ipcMain.handle("spotify-search", async (_e, query) => (spotifyApi.connected() ? { ...(await spotifyApi.search(query)), plays: true } : searchSpotify(query)));
@@ -402,7 +424,7 @@ async function setupStatus() {
     claude: claudeFound(),
     hooks: hookState,
     github: await ghStatus(),
-    trello: t ? t.boards.reduce((n, b) => n + (b.pending || 0), 0) : null,
+    trello: t && t.boards.length ? t.boards.length : null,
     spotify: !spotifyApi.configured() ? null : spotifyApi.connected(), // null = sin Client ID · false = falta entrar
     theme: prefs.theme,
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
@@ -701,8 +723,8 @@ app.whenReady().then(() => {
   setTimeout(checkPlan, 7000); // después del saludo
   setInterval(checkPlan, 30 * 60_000);
   watchWhatsapp();
-  setTimeout(refreshTrello, 90_000); // después de arrancar, para no competir con el inicio
-  setInterval(refreshTrello, 30 * 60_000);
+  setTimeout(refreshTrelloIfStale, 90_000); // después de arrancar, para no competir con el inicio
+  setInterval(refreshTrelloIfStale, 3600_000); // por si el PC queda prendido varios días
   setInterval(checkReminders, 15_000);
   setTimeout(checkReminders, 5000); // los que vencieron con el PC apagado avisan al arrancar
   setInterval(pollGithub, 5 * 60_000);

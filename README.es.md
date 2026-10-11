@@ -70,11 +70,11 @@ gh auth login
 
 ### 4. Trello (opcional)
 
-Qué te da: una píldora azul con tus tarjetas pendientes, y un aviso cuando una vence en menos de 24 horas. Solo lectura: Nimbo no puede crear, mover ni borrar tarjetas.
+Qué te da: una píldora azul con tus tableros. Tócala, elige un tablero y ves sus tarjetas pendientes (las que vencen antes primero; las de listas de terminado como Hecho quedan ocultas), y un aviso cuando una pendiente de un tablero que abriste vence en menos de 24 horas. Solo lectura: Nimbo no puede crear, mover ni borrar tarjetas.
 
 1. Abre [claude.ai → Ajustes → Conectores](https://claude.ai/settings/connectors), busca **Trello**, pulsa **Conectar** y autoriza tu cuenta de Trello. Usa la misma cuenta de Claude que usas en Claude Code.
 2. En el panel Conexiones de Nimbo, pulsa **Probar**. La primera lectura tarda cerca de un minuto.
-3. La fila queda en verde con el número de pendientes. Se actualiza cada 30 minutos, o al momento con clic derecho → **Actualizar Trello**.
+3. La fila queda en verde con el número de tableros. La lista de tableros se actualiza una vez al día, o al momento con clic derecho → **Actualizar Trello**. Las tarjetas de un tablero se cargan al abrirlo (cerca de un minuto la primera vez; después quedan guardadas y **Actualizar** dentro del tablero las vuelve a pedir).
 
 Una tarjeta cuenta como pendiente si está abierta y tiene fecha de vencimiento sin completar, o está en una lista como Por hacer, En proceso, Bloqueado o Inbox.
 
@@ -191,10 +191,10 @@ El formato del archivo está explicado al inicio de [plan.js](plan.js).
    - Acepta los términos y pulsa **Save**.
 3. En la app que se creó, copia el **Client ID** (32 letras y números). El "Client secret" no hace falta: no lo copies a ningún lado.
 4. En Nimbo: clic derecho → **Conexiones** → fila **Spotify** → pega el Client ID y pulsa Enter. La fila cambia y aparece **Conectar**.
-5. Pulsa **Conectar**: se abre Spotify en tu navegador, pulsas **Aceptar** y la pestaña dice que quedó conectado.
+5. Pulsa **Conectar**: se abre Spotify en tu navegador, pulsas **Aceptar** y la pestaña dice que quedó conectado. Si se abre en un navegador donde no tienes tu sesión de Spotify, pega el enlace en el que sí usas: Nimbo lo deja copiado.
 6. Listo: `spotify bohemian rhapsody` responde al instante y al tocar una canción suena en tu Spotify.
 
-Qué queda guardado: el Client ID en `prefs.json` y un token de renovación en `%APPDATA%\nimbo\spotify.bin`, cifrado por Windows (solo tu usuario en ese equipo puede leerlo). Nimbo solo pide permiso para ver y controlar la reproducción: nada de tus listas, tu biblioteca ni tu perfil. Para quitarlo, pulsa **Desconectar** en Conexiones y, si quieres, **Remove access** en [spotify.com/account/apps](https://www.spotify.com/account/apps/).
+Qué queda guardado: el Client ID en `prefs.json` y un token de renovación en `%APPDATA%\nimbo\spotify.bin`, cifrado por Windows (solo tu usuario en ese equipo puede leerlo). Nimbo solo pide permiso para ver y controlar la reproducción; Spotify le suma siempre tu perfil público (nombre y foto), que Nimbo no lee. Nada de tus listas privadas ni tu biblioteca. Para quitarlo, pulsa **Desconectar** en Conexiones y, si quieres, **Remove access** en [spotify.com/account/apps](https://www.spotify.com/account/apps/).
 
 Si la app de Spotify estaba cerrada, la primera canción solo la abre: cuando cargue, tócala otra vez.
 

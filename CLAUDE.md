@@ -29,7 +29,7 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 | `plan.js` | Plan del día: lo lee de una rama git (solo lectura), lo valida y arma lo que se dice (`node plan.js` = autoprueba). |
 | `tts.js` | Voz: limpia y recorta el texto y pide el mp3 al servicio de `prefs.ttsUrl` (`node tts.js` = autoprueba). |
 | `reminders.js` | Recordatorios en JSON (`node reminders.js` = autoprueba). |
-| `trello.js` | Tarjetas pendientes vía el conector de Trello de tu `claude` (solo lectura). |
+| `trello.js` | Tableros y tarjetas de Trello vía el conector de tu `claude` (solo lectura, bajo demanda). |
 | `spotify.js` | Buscar canciones vía el conector de Spotify de tu `claude` (solo búsqueda). |
 | `spotify-api.js` | Spotify con Premium (opcional): Web API con PKCE para buscar al instante y poner a sonar la canción elegida. |
 | `media.js` + `media-watch.ps1` | Lo que suena en Spotify y sus botones, con los controles multimedia de Windows. |
@@ -125,11 +125,18 @@ Pendientes, y solo las que tienen algo (cuenta > 0). El detalle se abre al tocar
 mostrar todo junto al pasar el mouse: abrumaba. `renderApps` no redibuja si nada cambió (se comía clics).
 **Apps (píldoras)**: Trello, GitHub, WhatsApp y Pendientes, cada una con mini nube de su color
 (`<symbol id="mini">`, `miniCloud()`) y vista propia (`renderAppView`, `--c` = color de marca).
-**Trello** (`trello.js`, prueba manual `node trello.js`): no usa claves. Le pide a tu `claude` (que trae el
-conector de Trello de claude.ai) las tarjetas pendientes, con `--tools ""` (sin herramientas propias),
-`--allowedTools` solo de LECTURA y las de escritura en `--disallowedTools`. Tarda ~50 s: corre 90 s después
-de arrancar y cada 30 min (o menú "Actualizar Trello"); caché en `%APPDATA%\nimbo\trello.json`. Avisa si
-una tarjeta vence en < 24 h.
+**Trello** (`trello.js`, autoprueba `node trello.js`; con datos reales `node trello.js live [haiku|default]`, ojo: CUESTA, con
+`default` ~0,85 USD): no usa claves. Dos consultas a tu `claude` (conector de Trello de claude.ai; `--tools ""`, solo
+lectura, los demás conectores fuera): `refreshBoards()` = lista de tableros (Haiku, ~19 s, ~0,06 USD; sola una vez al
+día: `refreshTrelloIfStale` a los 90 s de arrancar y cada hora si lo último pasa de 20 h, sin reintento antes de 6 h) y
+`refreshBoard(url)` = TODAS las tarjetas abiertas de ese tablero (Haiku, ~53 s, ~0,11 USD, al tocarlo; la dirección debe
+estar en la lista conocida y cumplir `BOARD_URL`). El modelo solo copia: qué es pendiente lo decide el código
+(`isDoneList`: Hecho/Done/Completado/Probadas/Épicas/Guía…; `done` por tarjeta). Antes una sola consulta pedía "las 8
+pendientes" y el resultado cambiaba entre corridas (35, 52 y 15 tarjetas para el mismo tablero) y costaba ~1,30 USD con
+el modelo por defecto; Haiku elegía peor. Caché `%APPDATA%\nimbo\trello.json` `{at, boards, byBoard}` (el formato viejo se
+descarta). En la página: píldora con los tableros → lista → tablero (volver, Actualizar); `trello-busy` manda las claves
+en curso. El aviso de "vence en < 24 h" solo mira tableros ya abiertos. El video/GIF de `promo/` usa el formato viejo
+(`window.__trello`): al regenerarlos, actualizar ese dato.
 **Conectores de más = tokens de más.** Cada `claude -p` carga las herramientas de TODOS los conectores del
 usuario: con 9 conectores eran 355.000 tokens por llamada (y Haiku respondía "Prompt is too long"). Por eso
 `connectors()` (`orchestrator.js`, lee `claude mcp list`, ~4 s, sin modelo, caché 10 min) da los prefijos
@@ -151,12 +158,14 @@ para que la canción elegida SUENE y la búsqueda sea instantánea. Web API con 
 de la app de developer.spotify.com de CADA usuario (`prefs.spotifyClientId`, nunca en el código: Spotify limita cada
 app a 5 personas y exige Premium al dueño). Dirección de vuelta fija: `http://127.0.0.1:47823/spotify`, una ruta GET
 del servidor de hooks que solo vale con una entrada en curso y su `state` (un solo uso, 5 min). Permisos:
-`user-modify-playback-state user-read-playback-state`. Única excepción a "Nimbo no guarda tokens": el token de
+`user-modify-playback-state user-read-playback-state` (la pantalla de Spotify suma siempre el perfil público; Nimbo no lo lee).
+El enlace de permiso se abre en el navegador por defecto Y se copia: el usuario puede tener su sesión en otro navegador. Única excepción a "Nimbo no guarda tokens": el token de
 renovación va en `%APPDATA%\nimbo\spotify.bin` cifrado con `safeStorage` (DPAPI); sin cifrado no se guarda; el de
 acceso vive en memoria. `invalid_grant` al renovar = se borra y el panel vuelve a pedir "Conectar". Con sesión,
 `spotify-search` usa la API (`plays: true`) y `spotify-play` hace `PUT /me/player/play`; con 404 (ningún equipo
 activo) elige uno con `pickDevice` (este equipo → el activo → un computador) y reintenta; si no suena, abre el URI.
-Límites de la API desde 2026: búsqueda máximo 10 resultados. Panel: `setup-do` `spotify-id` / `spotify-login` (no
+Probado con Spotify real el 2026-10-11: búsqueda 0,4–0,9 s y la canción elegida suena; `spotify.bin` pesa 162 bytes y no
+tiene texto legible. Límites de la API desde 2026: búsqueda máximo 10 resultados. Panel: `setup-do` `spotify-id` / `spotify-login` (no
 espera: al volver el navegador main manda `spotify` a la página) / `spotify-logout`.
 **Lo que suena** (`media.js` + `media-watch.ps1`, `node media.js` = autoprueba; `node media.js ver` mira 9 s en vivo):
 controles multimedia de Windows (SMTC, sesión cuyo id contiene "spotify"), sin cuenta ni claves. El script mira cada

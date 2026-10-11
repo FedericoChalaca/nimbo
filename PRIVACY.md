@@ -10,7 +10,7 @@ It does connect to the network in the cases below. Each one uses a session or a 
 |---|---|---|
 | You use the chat, or it summarizes Trello or WhatsApp with Claude | Anthropic, through your own `claude` command | Your message, attached images or screenshots, and what Claude needs to answer |
 | GitHub is connected (`gh` installed and signed in) | GitHub, through your own `gh` session, every 5 minutes | A request for your unread notifications |
-| The Trello connector is enabled in your Claude | Trello, through your Claude, every 30 minutes | A read-only request for your open cards |
+| The Trello connector is enabled in your Claude | Trello, through your Claude: your board list once a day, and a board's cards when you open it | A read-only request for your boards, and for the open cards of the board you opened |
 | You search for a song in the chat (Spotify connector enabled in your Claude) | Spotify, through your Claude | The words you searched for |
 | You connect Spotify with Premium (optional, your own Spotify app) | Spotify, directly from your PC | The words you search for and the song you pick. A refresh token stays on your PC, encrypted by Windows |
 | You turn on "Read WhatsApp messages" | Local model (Ollama) if you have one: nothing leaves the PC. Otherwise Anthropic, through your `claude` | The text of WhatsApp notifications Windows already showed you |
@@ -36,7 +36,7 @@ Sí se conecta a la red en los casos de abajo. En cada uno usa una sesión o un 
 |---|---|---|
 | Usas el chat, o resume Trello o WhatsApp con Claude | Anthropic, con tu propio comando `claude` | Tu mensaje, las imágenes o pantallazos adjuntos y lo que Claude necesita para responder |
 | GitHub está conectado (`gh` instalado y con sesión) | GitHub, con tu propia sesión de `gh`, cada 5 minutos | La consulta de tus notificaciones sin leer |
-| El conector de Trello está activo en tu Claude | Trello, a través de tu Claude, cada 30 minutos | Una consulta de solo lectura de tus tarjetas abiertas |
+| El conector de Trello está activo en tu Claude | Trello, a través de tu Claude: tu lista de tableros una vez al día, y las tarjetas de un tablero cuando lo abres | Una consulta de solo lectura de tus tableros y de las tarjetas abiertas del tablero que abriste |
 | Buscas una canción en el chat (conector de Spotify activo en tu Claude) | Spotify, a través de tu Claude | Las palabras que buscaste |
 | Conectas Spotify con Premium (opcional, con tu propia app de Spotify) | Spotify, directo desde tu PC | Las palabras que buscas y la canción que eliges. Un token de renovación queda en tu PC, cifrado por Windows |
 | Activas "Leer mensajes de WhatsApp" | Un modelo local (Ollama) si lo tienes: nada sale del PC. Si no, Anthropic, con tu `claude` | El texto de las notificaciones de WhatsApp que Windows ya te mostró |

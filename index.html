@@ -441,6 +441,8 @@
   .ahead b { color: #f2f3f5; font-weight: 600; }
   .ahead .sub { color: #8f959e; }
   .ahead button { margin-left: auto; padding: 4px 10px; font-size: 11px; }
+  .arow .cnt { min-width: 26px; text-align: center; }
+  .alist { max-height: 236px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3d44 transparent; }
   .arow { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 9px; font-size: 12.5px; }
   .arow.link { cursor: pointer; }
   .arow.link:hover { background: rgba(255, 255, 255, .05); }
@@ -1061,8 +1063,9 @@ function renderSessions() {
 // el detalle de una se abre al tocarla, de a una. Así el panel nunca muestra todo a la vez.
 const appsBox = document.getElementById("apps");
 const appView = document.getElementById("appview");
-let trelloData = null;
-let trelloBusy = false;
+let trelloData = null; // { at, boards: [{name, url}], byBoard: { [url]: { at, cards: [{name, list, due, url, done}] } } }
+let trelloBusy = []; // consultas en curso: "boards" o la dirección de un tablero
+let trelloBoard = null; // el tablero abierto (su dirección) o null = la lista de tableros
 let media = null; // lo que suena en Spotify: { title, artist, album, playing, art } (media.js)
 let openApp = null; // la app cuya tarjeta está abierta
 let lastApps = "";
@@ -1078,7 +1081,7 @@ const miniCloud = (color) => {
 };
 function appsList() {
   const out = [{ id: "chats", name: "Chats", color: "#d97757", count: liveSessions().length }];
-  if (trelloData) out.push({ id: "trello", name: "Trello", color: "#579dff", count: trelloData.boards.reduce((n, b) => n + (b.pending || 0), 0) });
+  if (trelloData?.boards?.length) out.push({ id: "trello", name: "Trello", color: "#579dff", count: trelloData.boards.length });
   if (dayPlan) out.push({ id: "plan", name: t("Plan"), color: "#2dd4bf", count: dayPlan.solos + dayPlan.teNecesitan });
   if (github !== null) out.push({ id: "github", name: "GitHub", color: "#a371f7", count: github.length });
   if (media) out.push({ id: "spotify", name: "Spotify", color: "#1db954", count: 1, badge: media.playing ? "♪" : "❚❚" });
@@ -1133,19 +1136,48 @@ function renderAppView() {
   head.append(miniCloud(app.color), el("b", "", app.name));
   const rows = [];
   if (app.id === "trello") {
-    head.append(el("span", "sub", trelloData.boards.filter((b) => b.pending).map((b) => `${b.name} · ${b.pending}`).join(" · ") || t("nada pendiente")));
-    const again = el("button", "", trelloBusy ? t("Actualizando…") : t("Actualizar"));
-    again.type = "button";
-    again.onclick = () => api.trelloRefresh();
-    head.append(again);
-    for (const c of trelloData.cards) {
-      const r = el("div", "arow link");
-      r.title = `${c.board} · ${c.list}`;
-      r.onclick = () => c.url && api.openUrl(c.url);
-      r.append(el("span", `chip2 ${listColor(c.list)}`, c.list), el("span", "name", c.name), ...[dueChip(c.due)].filter(Boolean));
-      rows.push(r);
+    const busy = (k) => trelloBusy.includes(k);
+    const button = (text, fn) => { const b = el("button", "", text); b.type = "button"; b.onclick = fn; return b; };
+    const board = trelloData.boards.find((b) => b.url === trelloBoard);
+    if (!board) {
+      // 1) La lista de tableros. Tocar uno carga sus tarjetas (una consulta, ~1 min la primera vez).
+      trelloBoard = null;
+      head.append(el("span", "sub", t("{0} tableros", trelloData.boards.length)), button(busy("boards") ? t("Actualizando…") : t("Actualizar"), () => api.trelloRefresh()));
+      for (const b of trelloData.boards) {
+        const got = trelloData.byBoard?.[b.url];
+        const pending = got ? got.cards.filter((c) => !c.done).length : null;
+        const r = el("div", "arow link");
+        r.onclick = () => {
+          trelloBoard = b.url;
+          if (!trelloData.byBoard?.[b.url]) api.trelloBoard(b.url);
+          renderAppView();
+        };
+        r.append(el("span", `chip2 cnt ${pending === null ? "" : pending ? "blue" : "green"}`, pending === null ? "›" : String(pending)), el("span", "name", b.name));
+        rows.push(r);
+      }
+      rows.push(el("div", "afoot", t("Toca un tablero para ver sus pendientes.")));
+    } else {
+      // 2) Un tablero: sus tarjetas pendientes (las de listas de terminado quedan ocultas), las que vencen antes primero.
+      const got = trelloData.byBoard?.[board.url];
+      head.append(el("span", "sub", board.name), button("‹ " + t("Tableros"), () => { trelloBoard = null; renderAppView(); }),
+        button(busy(board.url) ? t("Actualizando…") : t("Actualizar"), () => api.trelloBoard(board.url)));
+      if (!got) rows.push(el("div", "afoot", busy(board.url) ? t("Cargando las tarjetas… tarda cerca de 1 minuto.") : t("No pude cargar este tablero.")));
+      else {
+        const due = (c) => (c.due ? Date.parse(c.due) : 8.64e15);
+        const pend = got.cards.filter((c) => !c.done).sort((a, b) => due(a) - due(b));
+        const list = el("div", "alist");
+        for (const c of pend) {
+          const r = el("div", "arow link");
+          r.title = c.list;
+          r.onclick = () => c.url && api.openUrl(c.url);
+          r.append(el("span", `chip2 ${listColor(c.list)}`, c.list), el("span", "name", c.name), ...[dueChip(c.due)].filter(Boolean));
+          list.append(r);
+        }
+        rows.push(pend.length ? list : el("div", "afoot", t("nada pendiente")));
+        const hidden = got.cards.length - pend.length;
+        rows.push(el("div", "afoot", [t("Actualizado {0}", fmtDue(got.at)), hidden ? t("{0} en listas de terminado (ocultas)", hidden) : ""].filter(Boolean).join(" · ")));
+      }
     }
-    rows.push(el("div", "afoot", t("Actualizado {0}", fmtDue(trelloData.at))));
   } else if (app.id === "plan") {
     head.append(el("span", "sub", `${fmtPlanDate(dayPlan.fecha)} · ${t("{0} solos · {1} con propuesta para ti", dayPlan.solos, dayPlan.teNecesitan)}`));
     const hear = el("button", "", t("Escuchar"));
@@ -1335,11 +1367,11 @@ function onWhatsapp(d, alert) {
   if (openApp === "wa") renderAppView();
 }
 api.trello().then((d) => { trelloData = d; });
-api.onTrelloBusy((b) => { trelloBusy = b; if (openApp === "trello") renderAppView(); });
+api.onTrelloBusy((b) => { trelloBusy = Array.isArray(b) ? b : []; if (openApp === "trello") renderAppView(); });
 api.onTrello((d) => {
   trelloData = d;
-  // Aviso si una tarjeta vence en menos de un día (una vez por tarjeta).
-  const soon = d.cards.find((c) => c.due && Date.parse(c.due) - Date.now() < 864e5 && !alertedCards.has(c.url || c.name));
+  // Aviso si una tarjeta pendiente de un tablero que abriste vence en menos de un día (una vez por tarjeta).
+  const soon = Object.values(d.byBoard ?? {}).flatMap((x) => x.cards).find((c) => !c.done && c.due && Date.parse(c.due) - Date.now() < 864e5 && !alertedCards.has(c.url || c.name));
   if (soon) {
     alertedCards.add(soon.url || soon.name);
     emote("hello", 1600);
@@ -1633,7 +1665,7 @@ function renderSetup(s) {
   const github = s.github === "on" ? row(true, "GitHub", t("Conectado con tu sesión de gh."))
     : s.github === "off" ? row(false, "GitHub", t("Abre una terminal y escribe `gh auth login`."))
     : row(null, "GitHub", t("Opcional: avisa de tus notificaciones."), btn(t("Instalar GitHub CLI"), "open", "gh"));
-  const trello = s.trello !== null ? row(true, "Trello", t(s.trello === 1 ? "Conectado: {0} pendiente." : "Conectado: {0} pendientes.", s.trello), btn(t("Actualizar"), "trello"))
+  const trello = s.trello !== null ? row(true, "Trello", t(s.trello === 1 ? "Conectado: {0} tablero." : "Conectado: {0} tableros.", s.trello), btn(t("Actualizar"), "trello"))
     : row(null, "Trello", t("Opcional: activa el conector de Trello en claude.ai y pulsa Probar (tarda 1 min)."), btn("claude.ai", "open", "connectors"), btn(t("Probar"), "trello"));
   const wa = s.whatsappRead ? row(true, "WhatsApp", s.whatsappBrain === "claude" ? t("Lo resume tu propio Claude. Con Ollama lo haría un modelo local, sin gastar tokens.")
       : t("Lo resume un modelo local ({0}): nada sale de tu equipo.", s.whatsappBrain), btn(t("Reglas"), "whatsapp-rules"), btn(t("Apagar"), "whatsapp", false))
@@ -1653,7 +1685,7 @@ function renderSetup(s) {
   spotifyId.spellcheck = false;
   spotifyId.onchange = () => act("spotify-id", spotifyId.value);
   const spotify = s.spotify === true ? row(true, "Spotify", t("Conectado con Premium: eliges una canción y suena."), btn(t("Desconectar"), "spotify-logout"))
-    : s.spotify === false ? row(false, "Spotify", t("Falta tu permiso: se abre Spotify en el navegador y aceptas."), btn(t("Quitar"), "spotify-id", ""), btn(t("Conectar"), "spotify-login", null, "allow"))
+    : s.spotify === false ? row(false, "Spotify", t("Falta tu permiso: se abre Spotify en el navegador y aceptas. Si se abre donde no tienes tu sesión, pega el enlace en tu navegador: queda copiado."), btn(t("Quitar"), "spotify-id", ""), btn(t("Conectar"), "spotify-login", null, "allow"))
     : row(null, "Spotify", t("Lo que suena sale solo. Con Premium, elegir una canción la pone a sonar: pega el Client ID de tu app de Spotify."), spotifyId, btn(t("Guía"), "open", "spotify-guide"));
   const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, spotify, wa, look, voiceRow, auto];
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));

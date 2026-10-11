@@ -70,11 +70,11 @@ gh auth login
 
 ### 4. Trello (optional)
 
-What you get: a blue pill with your pending cards, and a warning when one is due within 24 hours. Read-only: Nimbo cannot create, move, or delete cards.
+What you get: a blue pill with your boards. Click it, pick a board, and you see that board's pending cards (the ones due soonest first; cards in finished lists like Done are hidden), plus a warning when a pending card of a board you opened is due within 24 hours. Read-only: Nimbo cannot create, move, or delete cards.
 
 1. Open [claude.ai → Settings → Connectors](https://claude.ai/settings/connectors), find **Trello**, click **Connect**, and authorize your Trello account. Use the same Claude account you use in Claude Code.
 2. In Nimbo's Connections panel, click **Test**. The first read takes about a minute.
-3. The row turns green with the number of pending cards. It refreshes every 30 minutes, or right away with right-click → **Refresh Trello**.
+3. The row turns green with the number of boards. The list of boards refreshes once a day, or right away with right-click → **Refresh Trello**. A board's cards load when you open it (about a minute the first time, then they stay saved; **Refresh** inside the board reloads them).
 
 A card counts as pending if it is open and has an unfinished due date, or sits in a list such as To do, In progress, Blocked, or Inbox.
 
@@ -191,10 +191,10 @@ The file format is described at the top of [plan.js](plan.js).
    - Accept the terms and click **Save**.
 3. In the app you just created, copy the **Client ID** (32 letters and numbers). The "Client secret" is not needed: do not copy it anywhere.
 4. In Nimbo: right-click → **Connections** → **Spotify** row → paste the Client ID and press Enter. The row changes and shows **Connect**.
-5. Click **Connect**: Spotify opens in your browser, you click **Agree**, and the tab says it is connected.
+5. Click **Connect**: Spotify opens in your browser, you click **Agree**, and the tab says it is connected. If it opens in a browser where you are not signed in to Spotify, paste the link in the one you use: Nimbo leaves it copied.
 6. Done: `spotify bohemian rhapsody` answers instantly, and clicking a song plays it in your Spotify.
 
-What is stored: the Client ID in `prefs.json` and a refresh token in `%APPDATA%\nimbo\spotify.bin`, encrypted by Windows (only your user on that PC can read it). Nimbo only asks for permission to see and control playback: nothing about your playlists, library, or profile. To remove it, click **Disconnect** in Connections and, if you like, **Remove access** at [spotify.com/account/apps](https://www.spotify.com/account/apps/).
+What is stored: the Client ID in `prefs.json` and a refresh token in `%APPDATA%\nimbo\spotify.bin`, encrypted by Windows (only your user on that PC can read it). Nimbo only asks for permission to see and control playback; Spotify always adds your public profile (name and picture), which Nimbo does not read. Nothing about your private playlists or library. To remove it, click **Disconnect** in Connections and, if you like, **Remove access** at [spotify.com/account/apps](https://www.spotify.com/account/apps/).
 
 If the Spotify app was closed, the first song only opens it: once it loads, click the song again.
 
