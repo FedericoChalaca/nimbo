@@ -10,7 +10,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { runClaude, connectors } = require("./orchestrator");
+const { runClaude, connectors } = require("../main/orchestrator");
 
 const READ_TOOLS = ["trelloReadBoard", "trelloReadCard", "trelloReadList", "trelloReadInbox", "trelloReadMember", "trelloSearch"]
   .map((t) => `mcp__claude_ai_Trello__${t}`);

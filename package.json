@@ -2,16 +2,16 @@
   "name": "nimbo",
   "version": "0.7.0",
   "description": "Un compañero flotante para Claude Code en Windows: ve qué hacen tus chats, aprueba permisos y habla con tu Claude",
-  "main": "main.js",
+  "main": "src/main/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "install-hooks": "node install-hooks.js",
-    "uninstall-hooks": "node install-hooks.js --uninstall",
-    "test": "node reminders.js && node whatsapp.js && node i18n.js && node tts.js && node plan.js && node trello.js && node spotify.js && node spotify-api.js && node media.js && node examples/tts-service/api/tts.js",
-    "promo": "electron promo/promo-main.js",
+    "install-hooks": "node src/main/install-hooks.js",
+    "uninstall-hooks": "node src/main/install-hooks.js --uninstall",
+    "test": "node src/main/reminders.js && node src/integrations/whatsapp.js && node src/shared/i18n.js && node src/main/tts.js && node src/main/plan.js && node src/integrations/trello.js && node src/integrations/spotify.js && node src/integrations/spotify-api.js && node src/integrations/media.js && node examples/tts-service/api/tts.js",
+    "promo": "electron scripts/promo/promo-main.js",
     "dist": "electron-builder --win",
-    "promo:gif": "electron promo/gif-main.js"
+    "promo:gif": "electron scripts/promo/gif-main.js"
   },
   "devDependencies": {
     "electron": "^44.5.1",
@@ -39,7 +39,8 @@
     },
     "files": [
       "**/*",
-      "!promo{,/**}",
+      "!scripts{,/**}",
+      "!docs{,/**}",
       "!dist{,/**}",
       "!RESUMEN*",
       "!CLAUDE.md",

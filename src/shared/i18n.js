@@ -243,8 +243,8 @@ if (typeof module !== "undefined" && require.main === module) {
   const fs = require("fs");
   const path = require("path");
   const missing = [];
-  for (const file of ["index.html", "main.js", "voice.js", "orchestrator.js", "plan.js"]) {
-    const code = fs.readFileSync(path.join(__dirname, file), "utf8");
+  for (const file of ["src/renderer/app.js", "src/renderer/index.html", "src/main/main.js", "src/renderer/voice.js", "src/main/orchestrator.js", "src/main/plan.js"]) {
+    const code = fs.readFileSync(path.join(__dirname, "..", "..", file), "utf8");
     // t("clave"…  y también  t(cond ? "clave uno" : "clave dos"…
     for (const m of code.matchAll(/\bt\((?:[^"()]*\? )?"((?:\\.|[^"\\])*)"(?: : "((?:\\.|[^"\\])*)")?/g)) {
       for (const raw of [m[1], m[2]].filter(Boolean)) {

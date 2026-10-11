@@ -8,7 +8,7 @@ const { pathToFileURL } = require("url");
 const fs = require("fs");
 const path = require("path");
 
-const NIMBO = path.resolve(__dirname, "..");
+const NIMBO = path.resolve(__dirname, "..", "..");
 const OUT = process.argv[2] || path.join(__dirname, "nimbo-promo");
 const FRAMES = path.join(app.getPath("temp"), "nimbo-promo-frames"); // una muestra cada 1,5 s, para revisar
 const W = 1280, H = 720;
@@ -62,7 +62,7 @@ app.whenReady().then(() => {
       recording = false;
       enc.webContents.send("stop");
     });
-    win.loadURL("nimbo://app/index.html");
+    win.loadURL("nimbo://app/src/renderer/index.html");
   });
 
   ipcMain.once("video", (_e, type, buf) => {

@@ -20,7 +20,9 @@ const EVENTS = [
 ];
 // PermissionRequest espera a que decidas (60 s en Nimbo + margen).
 const TIMEOUTS = { PermissionRequest: 75 };
-const hookPath = path.join(__dirname, "hook.js").replace(/\\/g, "/");
+// hook.js vive en la raíz de Nimbo, no en src/: su ruta queda escrita en la configuración de Claude Code de
+// cada usuario, así que no se mueve.
+const hookPath = path.join(__dirname, "..", "..", "hook.js").replace(/\\/g, "/");
 // Con Node instalado. La app instalada pasa otro comando (un .cmd que usa su propio ejecutable).
 const NODE_COMMAND = `node "${hookPath}"`;
 const settingsPath = path.join(os.homedir(), ".claude", "settings.json");

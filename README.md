@@ -6,11 +6,11 @@ A floating companion for [Claude Code](https://claude.com/claude-code) on Window
 
 No API key: it uses the `claude` you already have installed and signed in.
 
-[![Watch the 10-second intro](promo/nimbo-intro.jpg)](promo/nimbo-intro.mp4)
+[![Watch the 10-second intro](docs/media/nimbo-intro.jpg)](docs/media/nimbo-intro.mp4)
 
 *▶ Click to watch the intro (10 s, Spanish captions). It is an AI-generated concept video; the real interface is the one below.*
 
-![Nimbo in action](promo/nimbo.gif)
+![Nimbo in action](docs/media/nimbo.gif)
 
 ## Install
 
@@ -169,7 +169,7 @@ If another tool of yours leaves a daily plan as a JSON file in a branch of a git
 { "planRepo": "D:\\my-repo", "planBranch": "daily-plan", "planFile": "plan.json" }
 ```
 
-The file format is described at the top of [plan.js](plan.js).
+The file format is described at the top of [plan.js](src/main/plan.js).
 
 ### 10. Spotify (optional)
 
@@ -286,7 +286,18 @@ Then connect Claude Code from the Connections panel (or `npm run install-hooks`)
 
 Other scripts: `npm test`, `npm run dist` (builds the installer), `npm run promo` (records the demo video), `npm run promo:gif` (regenerates the GIF above).
 
-Your settings live in `%APPDATA%\nimbo\`, never in the project folder. The interface texts live in `i18n.js` (Spanish in the code, English in that file). `CLAUDE.md` explains the architecture, the flows, and the lessons learned (in Spanish; useful for people and for Claude Code).
+Where things are:
+
+| Folder | What is in it |
+|---|---|
+| `src/main/` | The main process: window, hook server, chat with your Claude, reminders, daily plan, voice. |
+| `src/integrations/` | WhatsApp, Trello, Spotify, and what is playing. |
+| `src/renderer/` | The island itself: HTML, styles, and its code. |
+| `src/shared/` | Interface texts. |
+| `hook.js` | What Claude Code runs on each event. It stays at the top level because its path is written into your Claude Code settings. |
+| `scripts/promo/`, `docs/media/` | The generators of the demo video and GIF, and the files they produce. |
+
+Your settings live in `%APPDATA%\nimbo\`, never in the project folder. The interface texts live in `src/shared/i18n.js` (Spanish in the code, English in that file). `CLAUDE.md` explains the architecture, the flows, and the lessons learned (in Spanish; useful for people and for Claude Code).
 
 If your `claude.exe` is not where npm or the native installer puts it, set the `NIMBO_CLAUDE` environment variable to its path.
 

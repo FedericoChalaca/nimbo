@@ -13,7 +13,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { runClaude } = require("./orchestrator");
+const { runClaude } = require("../main/orchestrator");
 
 const DEFAULT_RULES = `# Reglas para clasificar tus mensajes de WhatsApp. Escríbelas con tus palabras y guarda.
 # Nimbo las lee cada vez que llega un mensaje (menú de Nimbo > "Reglas de WhatsApp").

@@ -7,8 +7,8 @@ const { GIFEncoder, quantize, applyPalette } = require("gifenc");
 const fs = require("fs");
 const path = require("path");
 
-const NIMBO = path.resolve(__dirname, "..");
-const OUT = path.join(__dirname, "nimbo.gif");
+const NIMBO = path.resolve(__dirname, "..", "..");
+const OUT = path.join(NIMBO, "docs", "media", "nimbo.gif");
 const ZOOM = 1.1;
 const W = Math.round(440 * ZOOM), H = Math.round(360 * ZOOM);
 const FPS = 10;
@@ -69,6 +69,6 @@ app.whenReady().then(() => {
     console.log("gif:", OUT, (gif.bytes().length / 1e6).toFixed(1) + " MB,", frames.length, "cuadros,", `${size.width}×${size.height}`);
     app.quit();
   });
-  win.loadURL("nimbo://app/index.html?lang=en"); // el README principal está en inglés
+  win.loadURL("nimbo://app/src/renderer/index.html?lang=en"); // el README principal está en inglés
 });
 setTimeout(() => { console.log("tiempo agotado"); app.exit(1); }, 120_000);

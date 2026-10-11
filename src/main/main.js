@@ -9,16 +9,18 @@ const http = require("http");
 const path = require("path");
 const { createOrchestrator, sessionTitle, claudeFound } = require("./orchestrator");
 const hooks = require("./install-hooks");
-const { translator } = require("./i18n");
+const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
-const { createTrello } = require("./trello");
-const { searchSpotify, TRACK_URI } = require("./spotify");
-const { watchMedia } = require("./media");
-const { createSpotifyApi, CLIENT_ID } = require("./spotify-api");
-const { createWhatsapp } = require("./whatsapp");
+const { createTrello } = require("../integrations/trello");
+const { searchSpotify, TRACK_URI } = require("../integrations/spotify");
+const { watchMedia } = require("../integrations/media");
+const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
+const { createWhatsapp } = require("../integrations/whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
 const { readPlan, planSpeech } = require("./plan");
 
+// La carpeta de Nimbo (donde están package.json, hook.js, node_modules y assets). Este archivo vive en src/main.
+const ROOT = path.resolve(__dirname, "..", "..");
 const PORT = 47823;
 const W = 440;
 const H = 480;
@@ -40,10 +42,11 @@ protocol.registerSchemesAsPrivileged([
 ]);
 function serveAppFiles() {
   protocol.handle("nimbo", async (req) => {
-    const file = path.resolve(__dirname, "." + decodeURIComponent(new URL(req.url).pathname));
+    const file = path.resolve(ROOT, "." + decodeURIComponent(new URL(req.url).pathname));
     // Solo archivos de la carpeta de Nimbo: nada de ../ para salir de ahí.
-    if (!file.startsWith(__dirname + path.sep)) return new Response("", { status: 403 });
-    const res = await net.fetch(pathToFileURL(file).href);
+    if (!file.startsWith(ROOT + path.sep)) return new Response("", { status: 403 });
+    const res = await net.fetch(pathToFileURL(file).href).catch(() => null);
+    if (!res) return new Response("", { status: 404 }); // el archivo no existe
     const headers = new Headers(res.headers);
     headers.set("Cross-Origin-Opener-Policy", "same-origin");
     headers.set("Cross-Origin-Embedder-Policy", "credentialless");
@@ -195,7 +198,7 @@ const savePrefs = () => fs.writeFileSync(prefsFile, JSON.stringify({ ...prefs, c
 // español en el código; i18n.js trae el inglés.
 const lang = () => (["es", "en"].includes(prefs.lang) ? prefs.lang : app.getLocale().toLowerCase().startsWith("es") ? "es" : "en");
 const t = (s, ...a) => translator(lang())(s, ...a);
-const pageUrl = () => `nimbo://app/index.html?lang=${lang()}`;
+const pageUrl = () => `nimbo://app/src/renderer/index.html?lang=${lang()}`;
 const MINI_W = 100;
 const MINI_H = 60;
 const MARGIN = 8;
@@ -405,7 +408,7 @@ ipcMain.on("chat-open", (_e, open) => {
 function hookCommand() {
   if (!app.isPackaged) return undefined;
   const cmd = path.join(app.getPath("userData"), "hook.cmd");
-  const text = `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${path.join(__dirname, "hook.js")}"\r\n`;
+  const text = `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${path.join(ROOT, "hook.js")}"\r\n`;
   if (fs.readFileSync(cmd, { encoding: "utf8", flag: "a+" }) !== text) fs.writeFileSync(cmd, text);
   return `"${cmd.replace(/\\/g, "/")}"`;
 }
@@ -621,7 +624,7 @@ function buildMenu() {
 }
 ipcMain.on("menu", () => buildMenu().popup({ window: win }));
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, "assets", "icon.png"));
+  const icon = nativeImage.createFromPath(path.join(ROOT, "assets", "icon.png"));
   if (icon.isEmpty()) return; // sin icono no hay bandeja; el resto de Nimbo sigue igual
   tray = new Tray(icon.resize({ width: 32, height: 32 }));
   tray.setToolTip("Nimbo");

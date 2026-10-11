@@ -4,7 +4,6 @@ RESUMEN-*.md
 *.lnk
 .claude/
 .env*
-promo/*.mp4
-promo/*.webm
+scripts/promo/*.mp4
+scripts/promo/*.webm
 dist/
-!promo/nimbo-intro.mp4

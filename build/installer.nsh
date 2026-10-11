@@ -4,7 +4,7 @@
 !macro customUnInstall
   ${ifNot} ${isUpdated}
     System::Call 'Kernel32::SetEnvironmentVariable(t "ELECTRON_RUN_AS_NODE", t "1")i'
-    nsExec::Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "$INSTDIR\resources\app\install-hooks.js" --uninstall'
+    nsExec::Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" "$INSTDIR\resources\app\src\main\install-hooks.js" --uninstall'
     System::Call 'Kernel32::SetEnvironmentVariable(t "ELECTRON_RUN_AS_NODE", t "")i'
   ${endIf}
 !macroend

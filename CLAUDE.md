@@ -13,12 +13,35 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
   `~/.claude/settings.json` con backup fechado `settings.json.bak-*`. Si se mueve la carpeta,
   hay que reinstalarlos (guardan la ruta de `hook.js`).
 
+## Carpetas
+```
+hook.js              lo ejecuta Claude Code. SE QUEDA EN LA RAÍZ: su ruta está escrita en ~/.claude/settings.json
+                     de cada usuario (y en hook.cmd); moverlo dejaría a todos desconectados.
+src/main/            proceso principal: main.js, preload.js, orchestrator.js, install-hooks.js, reminders.js, plan.js, tts.js
+src/integrations/    conexiones: whatsapp.js + wa-watch.ps1, trello.js, spotify.js, spotify-api.js, media.js + media-watch.ps1
+src/renderer/        la isla: index.html (solo el HTML), styles.css, app.js, jarvis.js, voice.js, stt-worker.js
+src/shared/          i18n.js (lo usan la página y el proceso principal)
+scripts/promo/       generadores del video y el GIF (no van en el instalador)
+docs/media/          el GIF y el video del README
+assets/ build/ examples/ .github/
+```
+- En el resto de este documento los archivos se nombran sin carpeta (`main.js`, `trello.js`…); la carpeta es la de arriba.
+  Las autopruebas se corren con su ruta: `node src/integrations/trello.js` (o todas con `npm test`).
+- `ROOT` (en `main.js`) es la carpeta de Nimbo. El protocolo `nimbo://app/` sirve desde `ROOT` (la página necesita
+  `node_modules` para Whisper), así que la página es `nimbo://app/src/renderer/index.html`. El origen sigue siendo
+  `nimbo://app`: la caché del modelo de voz no se pierde.
+- Lo que el código de la página era un `<script>` en línea ahora es `app.js`, UN solo archivo a propósito: partirlo en
+  varios `<script>` cambia el orden de carga (las funciones dejan de estar disponibles entre archivos y pueden llegar
+  eventos de `main` entre uno y otro). Si se parte, hacerlo por piezas que solo declaren cosas y probar cada una.
+- Reordenado el 2026-10-11 (0.7.0 → siguiente). Probado: autopruebas, app en desarrollo (página, dictado, hooks de punta
+  a punta, Spotify, Trello, plan) y la app EMPAQUETADA (`electron-builder --dir`, arrancada con `--user-data-dir` aparte).
+
 ## Archivos
 | Archivo | Qué hace |
 |---|---|
 | `main.js` | Proceso principal: ventana, protocolo `nimbo://`, servidor de hooks, permisos, menú, modo mini, zonas tocables, permiso de micrófono. |
 | `preload.js` | Puente IPC (`window.nimbo`). Todo lo que la página usa de `api.*` sale de aquí. |
-| `index.html` | Personaje (tema Nube en SVG), estados, chat, tarjeta de permisos, propuestas del orquestador, barra de desplazamiento propia. |
+| `index.html` + `styles.css` + `app.js` | La isla: el HTML (con el SVG del tema Nube), sus estilos y su código: estados, chat, tarjeta de permisos, propuestas del orquestador, vistas de cada píldora. Donde este documento dice "en `index.html`" para código, hoy es `app.js`. |
 | `jarvis.js` | Tema JARVIS: esfera de puntos conectados en canvas; `Jarvis.setState/setLevel/look/poke/setActive`. |
 | `orchestrator.js` | Chat y orquestador vía `claude.exe -p`; lista de chats leída de `~/.claude/projects`. |
 | `voice.js` | Dictado 🎤 (micrófono → Whisper → texto en el cuadro). |
@@ -135,7 +158,7 @@ estar en la lista conocida y cumplir `BOARD_URL`). El modelo solo copia: qué es
 pendientes" y el resultado cambiaba entre corridas (35, 52 y 15 tarjetas para el mismo tablero) y costaba ~1,30 USD con
 el modelo por defecto; Haiku elegía peor. Caché `%APPDATA%\nimbo\trello.json` `{at, boards, byBoard}` (el formato viejo se
 descarta). En la página: píldora con los tableros → lista → tablero (volver, Actualizar); `trello-busy` manda las claves
-en curso. El aviso de "vence en < 24 h" solo mira tableros ya abiertos. El video/GIF de `promo/` usa el formato viejo
+en curso. El aviso de "vence en < 24 h" solo mira tableros ya abiertos. El video/GIF de `scripts/promo/` usa el formato viejo
 (`window.__trello`): al regenerarlos, actualizar ese dato.
 **Conectores de más = tokens de más.** Cada `claude -p` carga las herramientas de TODOS los conectores del
 usuario: con 9 conectores eran 355.000 tokens por llamada (y Haiku respondía "Prompt is too long"). Por eso
@@ -317,7 +340,7 @@ Probado en real el 2026-10-05: instalar en silencio (`/S`), conectar, recibir ev
 de `%APPDATA%
 imbo` se conservan. El instalador se sube como asset del release de GitHub.
 
-**Video y GIF** (`promo/`): `npm run promo` (mp4 con textos) y `npm run promo:gif` (el GIF del README). Cargan el
+**Video y GIF** (`scripts/promo/`; el GIF sale en `docs/media/nimbo.gif`): `npm run promo` (mp4 con textos) y `npm run promo:gif` (el GIF del README). Cargan el
 `index.html` REAL en una ventana fuera de pantalla con una API falsa (`promo-preload.js`, un Proxy: lo que se
 agregue a `preload.js` no los rompe) y un guion. No muestran ventanas ni tocan `%APPDATA%\nimbo`.
 README en inglés (`README.md`) y español (`README.es.md`): al cambiar uno, cambiar el otro.
@@ -328,7 +351,7 @@ Language") o, si no hay, el de Windows. `main.js` se lo pasa a la página en la 
 recarga la página. El HTML fijo (botones, títulos) se traduce solo al cargar y los dos textos del CSS llegan
 como variables (`--t-ask`, `--t-drop`). También siguen el idioma: el dictado (Whisper), las respuestas del
 orquestador, los resúmenes de WhatsApp y sus reglas de ejemplo. Al agregar un texto: `t("en español")` + su
-línea en `i18n.js`; `node i18n.js` (parte de `npm test`) falla si falta alguna. Los videos de `promo/` cargan
+línea en `i18n.js`; `node i18n.js` (parte de `npm test`) falla si falta alguna. Los videos de `scripts/promo/` cargan
 la página sin `?lang` (español).
 
 ## Seguridad (no deshacer)
@@ -349,7 +372,8 @@ la página sin `?lang` (español).
 - Permisos del navegador: solo micrófono (audio); cámara y lo demás, denegados.
 - Nimbo no guarda claves ni tokens de nadie: GitHub vía `gh`, Trello vía el conector de `claude`. Única excepción,
   opcional y cifrada por Windows: el token de renovación de Spotify Premium (`spotify.bin`).
-- Pendiente conocido: el script va en línea en `index.html`, así que el CSP lleva `'unsafe-inline'`.
+- El CSP ya no permite JavaScript en línea (`script-src 'self' 'wasm-unsafe-eval' blob:`): el código de la página está en
+  `app.js`. Los estilos sí llevan `'unsafe-inline'` (el código pone variables CSS con `style`).
 
 ## Estado en disco
 `%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),

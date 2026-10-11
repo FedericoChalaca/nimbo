@@ -1,14 +1,14 @@
 // Transcripción de voz con Whisper, local (el audio nunca sale del PC).
 // Corre en un worker para que las animaciones no se traben mientras transcribe.
 // La primera vez descarga el modelo (~80 MB) de Hugging Face y queda en caché.
-import { pipeline, env } from "./node_modules/@huggingface/transformers/dist/transformers.min.js";
+import { pipeline, env } from "../../node_modules/@huggingface/transformers/dist/transformers.min.js";
 
 env.allowLocalModels = false;
 // El runtime WebAssembly sale de node_modules, no de un CDN. npm lo deja dentro de
 // transformers o en la raíz según qué más haya instalado: se usa el que exista.
 const RUNTIMES = [
-  "./node_modules/@huggingface/transformers/node_modules/onnxruntime-web/dist/",
-  "./node_modules/onnxruntime-web/dist/",
+  "../../node_modules/@huggingface/transformers/node_modules/onnxruntime-web/dist/",
+  "../../node_modules/onnxruntime-web/dist/",
 ].map((p) => new URL(p, import.meta.url).href);
 // Ojo: sin await suelto aquí arriba. Mientras el módulo espera, los mensajes que
 // llegan antes de definir onmessage se pierden y el dictado se queda colgado.

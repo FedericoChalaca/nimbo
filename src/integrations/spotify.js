@@ -5,7 +5,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { runClaude, connectors } = require("./orchestrator");
+const { runClaude, connectors } = require("../main/orchestrator");
 
 const READ_TOOLS = ["search"];
 const WRITE_TOOLS = ["generate_playlist", "save_to_library", "remove_from_library", "create_playlist", "add_to_library", "Remove_from_library"];
