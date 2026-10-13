@@ -151,7 +151,7 @@ mostrar todo junto al pasar el mouse: abrumaba. `renderApps` no redibuja si nada
 **Trello** (`trello.js`, autoprueba `node trello.js`; con datos reales `node trello.js live [haiku|default]`, ojo: CUESTA, con
 `default` ~0,85 USD): no usa claves. Dos consultas a tu `claude` (conector de Trello de claude.ai; `--tools ""`, solo
 lectura, los demás conectores fuera): `refreshBoards()` = lista de tableros (Haiku, ~19 s, ~0,06 USD; sola una vez al
-día: `refreshTrelloIfStale` a los 90 s de arrancar y cada hora si lo último pasa de 20 h, sin reintento antes de 6 h) y
+día: `refreshTrelloIfStale` a los 90 s de arrancar y y cada 15 min si lo último pasa de 20 h; si falla, 3 intentos seguidos y luego espera 6 h. El 2026-10-13 la consulta del arranque no dejó nada, probablemente sin red recién encendido el PC; y si `claude mcp list` no responde, trello.js NO llama (no podría excluir los demás conectores)) y
 `refreshBoard(url)` = TODAS las tarjetas abiertas de ese tablero (Haiku, ~53 s, ~0,11 USD, al tocarlo; la dirección debe
 estar en la lista conocida y cumplir `BOARD_URL`). El modelo solo copia: qué es pendiente lo decide el código
 (`isDoneList`: Hecho/Done/Completado/Probadas/Épicas/Guía…; `done` por tarjeta). Antes una sola consulta pedía "las 8

@@ -64,13 +64,17 @@ function createTrello(cacheFile, model = "haiku") {
   async function ask(prompt, schema) {
     const cwd = path.join(os.tmpdir(), "nimbo-trello");
     fs.mkdirSync(cwd, { recursive: true });
+    // Sin la lista de conectores (`claude mcp list` falló, p. ej. sin red al encender) no se llama: sin ella no se
+    // pueden excluir los demás y cada consulta cargaría las herramientas de todos (355.000 tokens).
+    const all = await connectors(cwd);
+    if (!all.includes("mcp__claude_ai_Trello")) return null;
     const args = ["-p", "--output-format", "json", "--json-schema", schema, ...(model ? ["--model", model] : []),
       // Sin herramientas propias (ni leer archivos ni navegar): solo el conector de Trello en
       // lectura. El nombre de una tarjeta lo puede escribir otra persona; no debe poder nada.
       "--tools", "", "--permission-mode", "default", "--no-session-persistence",
       "--allowedTools", ...READ_TOOLS,
       // Los demás conectores fuera: cargarlos todos costaba 355.000 tokens por consulta.
-      "--disallowedTools", ...WRITE_TOOLS, ...(await connectors(cwd)).filter((n) => n !== "mcp__claude_ai_Trello")];
+      "--disallowedTools", ...WRITE_TOOLS, ...all.filter((n) => n !== "mcp__claude_ai_Trello")];
     const t0 = Date.now();
     // (La variable evita que cada consulta deje un "chat" con título en ~/.claude/projects.)
     const r = await runClaude(args, { cwd, input: prompt, env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });

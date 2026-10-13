@@ -344,13 +344,20 @@ ipcMain.on("trello-refresh", () => refreshTrello());
 // La página solo puede pedir tableros de la lista que ya se conoce (nunca una dirección cualquiera).
 ipcMain.on("trello-board", (_e, url) => { if (trello.hasBoard(String(url))) trelloJob(String(url), () => trello.refreshBoard(String(url))); });
 // La lista de tableros corre sola una vez al día: si lo último que trajo tiene más de 20 h. "Actualizar"
-// (botón o menú) la corre cuando quieras. Si falla, no se reintenta sola antes de 6 h.
+// (botón o menú) la corre cuando quieras.
 const TRELLO_MAX_AGE = 20 * 3600_000;
+// Si falla (al encender Windows puede no haber red todavía: el 2026-10-13 la consulta del arranque no dejó nada),
+// reintenta cada 15 min hasta 3 veces seguidas; después espera 6 h. Cada intento fallido casi no cuesta.
 let trelloTried = 0;
+let trelloTries = 0;
 function refreshTrelloIfStale() {
   const at = Date.parse(trello.cached()?.at ?? "");
-  if (Date.now() - (Number.isFinite(at) ? at : 0) < TRELLO_MAX_AGE || Date.now() - trelloTried < 6 * 3600_000) return;
+  if (Date.now() - (Number.isFinite(at) ? at : 0) < TRELLO_MAX_AGE) { trelloTries = 0; return; }
+  const since = Date.now() - trelloTried;
+  if (since < 10 * 60_000 || (trelloTries >= 3 && since < 6 * 3600_000)) return;
+  if (since >= 6 * 3600_000) trelloTries = 0;
   trelloTried = Date.now();
+  trelloTries++;
   refreshTrello();
 }
 
@@ -727,7 +734,7 @@ app.whenReady().then(() => {
   setInterval(checkPlan, 30 * 60_000);
   watchWhatsapp();
   setTimeout(refreshTrelloIfStale, 90_000); // después de arrancar, para no competir con el inicio
-  setInterval(refreshTrelloIfStale, 3600_000); // por si el PC queda prendido varios días
+  setInterval(refreshTrelloIfStale, 15 * 60_000); // reintentos, y por si el PC queda prendido varios días
   setInterval(checkReminders, 15_000);
   setTimeout(checkReminders, 5000); // los que vencieron con el PC apagado avisan al arrancar
   setInterval(pollGithub, 5 * 60_000);
