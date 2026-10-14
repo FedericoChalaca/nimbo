@@ -624,10 +624,15 @@ function renderAppView() {
     const chats = waChats();
     const ignored = whatsapp.chats.filter((c) => c.ignore);
     head.append(el("span", "sub", chats.length ? `${chats.length} ${chats.length === 1 ? "chat" : "chats"}` : t("{0} sin leer", waCount())));
-    const open = el("button", "open allow", t("Abrir WhatsApp"));
-    open.type = "button";
-    open.onclick = () => { api.openWhatsapp(); if (whatsapp.read) { waOpenedAt = 0; api.whatsappDismiss(); } };
-    head.append(open);
+    if (whatsapp.read) {
+      // Antes había un "Abrir WhatsApp" (inútil: ya tienes la app). Ahora el botón de arriba vuelve a leer tus chats sin leer y los resume.
+      const check = el("button", "open allow", whatsapp.busy ? t("Resumiendo…") : t("Revisar chats"));
+      check.type = "button";
+      check.disabled = whatsapp.busy === true;
+      check.title = t("Vuelve a leer tus chats sin leer y los resume");
+      check.onclick = () => api.whatsappRefresh();
+      head.append(check);
+    }
     if (whatsapp.headline) rows.push(el("div", "afoot", whatsapp.headline));
     const CHIP = { trabajo: ["blue", t("Trabajo")], personal: ["green", "Personal"], grupo: ["purple", t("Grupo")], otro: ["", t("Nuevo")] };
     for (const c of chats.slice(0, 7)) {
@@ -658,15 +663,11 @@ function renderAppView() {
       // Quién resumió (o que está en eso) y un botón para pedirlo de nuevo.
       const foot = el("div", "afoot row", whatsapp.busy ? t("Resumiendo…") : !whatsapp.brain ? t("Aún sin resumir.")
         : whatsapp.brain === "claude" ? t("Resumido por tu Claude.") : t("Resumido en tu equipo por {0}.", whatsapp.brain));
-      const again = el("button", "", t("Resumir ahora"));
-      again.type = "button";
-      again.disabled = whatsapp.busy === true;
-      again.onclick = () => api.whatsappRefresh();
       const seenBtn = el("button", "allow", t("Visto"));
       seenBtn.type = "button";
       seenBtn.title = t("Ya lo leí: cerrar y no volver a mostrarlo");
       seenBtn.onclick = () => { waOpenedAt = 0; api.whatsappDismiss(); openApp = null; renderApps(); renderAppView(); };
-      foot.append(again, seenBtn);
+      foot.append(seenBtn);
       rows.push(foot);
     }
   } else if (app.id === "pend") {

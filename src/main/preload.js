@@ -25,7 +25,6 @@ contextBridge.exposeInMainWorld("nimbo", {
   dragEnd: () => ipcRenderer.send("drag-end"),
   onDragAbort: (fn) => ipcRenderer.on("drag-abort", () => fn()),
   onWhatsapp: (fn) => ipcRenderer.on("whatsapp", (_e, d, alert) => fn(d, alert)),
-  openWhatsapp: () => ipcRenderer.send("open-whatsapp"),
   whatsappRefresh: () => ipcRenderer.send("whatsapp-refresh"),
   whatsappDismiss: () => ipcRenderer.send("whatsapp-dismiss"),
   copy: (text) => ipcRenderer.send("copy", text),

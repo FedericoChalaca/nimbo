@@ -534,7 +534,6 @@ function watchWhatsapp() {
 app.on("before-quit", () => waChild?.kill());
 // Tras una suspensión, el lector de notificaciones de Windows puede quedar sin respuesta: se vuelve a lanzar.
 app.whenReady().then(() => powerMonitor.on("resume", () => setTimeout(watchWhatsapp, 3000)));
-ipcMain.on("open-whatsapp", () => shell.openExternal("whatsapp://"));
 ipcMain.on("whatsapp-refresh", () => wa.refresh());
 ipcMain.on("whatsapp-dismiss", () => wa.dismiss());
 // Copiar la respuesta sugerida: Nimbo no escribe en WhatsApp, tú la pegas si te sirve.
