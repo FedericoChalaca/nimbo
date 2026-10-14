@@ -123,8 +123,13 @@
             "x64"
           ]
         }
-      ],
-      "artifactName": "Nimbo-linux-${arch}.${ext}"
+      ]
+    },
+    "appImage": {
+      "artifactName": "Nimbo-linux-x64.AppImage"
+    },
+    "deb": {
+      "artifactName": "Nimbo-linux-x64.deb"
     }
   }
 }

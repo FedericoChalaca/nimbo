@@ -55,8 +55,12 @@ function stop() {
   try {
     const page = await waitFor(async () => (await (await fetch(`http://127.0.0.1:${PORT}/json`)).json()).find((p) => p.type === "page" && p.url.includes("index.html")), 90_000, "que cargue la ventana de Nimbo");
     console.log("ok  la ventana cargó:", page.url.replace(/\?.*/, ""));
-    const state = await waitFor(() => evaluate(page.webSocketDebuggerUrl, `(async () => ({ api: typeof api, setState: typeof setState, renderApps: typeof renderApps, mailBtn: !!document.getElementById("mailBtn"), aiSelect: !!document.getElementById("ai") }))()`), 30_000, "que la página defina sus funciones");
-    for (const [k, v] of Object.entries(state)) if (!v || v === "undefined") throw new Error(`la página no tiene: ${k}`);
+    // La página puede seguir cargando cuando aparece en la lista: se espera hasta que TODO esté definido.
+    let state = {};
+    await waitFor(async () => {
+      state = await evaluate(page.webSocketDebuggerUrl, `(async () => ({ api: typeof api, setState: typeof setState, renderApps: typeof renderApps, mailBtn: !!document.getElementById("mailBtn"), aiSelect: !!document.getElementById("ai") }))()`);
+      return Object.values(state).every((v) => v && v !== "undefined");
+    }, 45_000, "que la página defina sus funciones");
     console.log("ok  la página está completa");
     const setup = await evaluate(page.webSocketDebuggerUrl, `api.setup()`);
     if (setup.platform !== process.platform) throw new Error(`la plataforma de Nimbo (${setup.platform}) no es ${process.platform}`);
