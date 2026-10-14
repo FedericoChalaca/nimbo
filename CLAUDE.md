@@ -80,6 +80,7 @@ assets/ build/ examples/ .github/
 | `trello.js` | Tableros y tarjetas de Trello vía el conector de tu `claude` (solo lectura, bajo demanda). |
 | `spotify.js` | Buscar canciones vía el conector de Spotify de tu `claude` (solo búsqueda). |
 | `spotify-api.js` | Spotify con Premium (opcional): Web API con PKCE para buscar al instante y poner a sonar la canción elegida. |
+| `musicbar.js` | Barra flotante de música (ventana propia) que aparece mientras suena Spotify. |
 | `media.js` + `media-watch.ps1` | Lo que suena en Spotify y sus botones, con los controles multimedia de Windows. |
 | `whatsapp.js` + `wa-watch.ps1` | WhatsApp de escritorio en solo lectura (`node whatsapp.js` = autoprueba). |
 
@@ -185,6 +186,16 @@ el modelo por defecto; Haiku elegía peor. Caché `%APPDATA%\nimbo\trello.json` 
 descarta). En la página: píldora con los tableros → lista → tablero (volver, Actualizar); `trello-busy` manda las claves
 en curso. El aviso de "vence en < 24 h" solo mira tableros ya abiertos. El video/GIF de `scripts/promo/` usa el formato viejo
 (`window.__trello`): al regenerarlos, actualizar ese dato.
+**Barra flotante de música** (`src/main/musicbar.js` + `player-preload.js` + `src/renderer/player.{html,css,js}`; `node src/main/musicbar.js` = autoprueba
+sin Electron): una SEGUNDA ventana (sin marco, transparente, siempre arriba en nivel "floating", `showInactive` para no robar el foco)
+que sale mientras `media` (lo que suena, media.js) no sea null, `prefs.musicBar` esté activo y no haya modo mini; en pausa se queda; la ✕
+la esconde hasta que cambie la canción (`trackKey`). Se mueve agarrándola (`-webkit-app-region: drag`; botones y búsqueda son `no-drag`) y
+al soltar guarda `prefs.musicBarPos` (`fitInto` la devuelve a una pantalla que exista). Crece al buscar: la página mide su tarjeta y
+manda `bar-size` (el alto se limita a 72–400 y sube si no cabe abajo). Su puente (`window.bar`) solo tiene música, buscar y tamaño: NO
+tiene `window.nimbo`; reutiliza los IPC `media`, `media-do`, `spotify-search` y `spotify-play` (con Premium busca al instante y la canción
+suena; sin Premium busca por el conector y abre la página). OJO: `media.js` arranca ANTES de que la app esté lista, por eso `sync()`
+no hace nada hasta `app.isReady()` y `whenReady` lo llama. Probado en la app real: aparece con la canción y la carátula, pausa/reanuda,
+busca (6 resultados), reproduce y la ventana crece de 74 a 308 px y vuelve. SIN probar con mouse real: arrastrarla y que recuerde el sitio.
 **Telegram** (`src/integrations/telegram.js`, `node src/integrations/telegram.js` = autoprueba con un Telegram de mentira): hablar con
 Nimbo desde el celular, SIN servidor ni puerto: `getUpdates` con espera larga de 25 s (saliente). El dueño crea un bot con @BotFather,
 pega el token en Conexiones (`setup-do telegram-token`: se valida con `getMe` y se guarda cifrado con `safeStorage` en
@@ -423,7 +434,7 @@ la página sin `?lang` (español).
   `app.js`. Los estilos sí llevan `'unsafe-inline'` (el código pone variables CSS con `style`).
 
 ## Estado en disco
-`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `interviewModel`, `chatModel`, `telegramChat`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
+`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `interviewModel`, `chatModel`, `telegramChat`, `musicBar`, `musicBarPos`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
 caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
 
 ## Lecciones (cosas que ya fallaron)

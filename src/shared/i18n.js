@@ -105,6 +105,13 @@ const NIMBO_EN = {
   "{0} sin propuesta hoy": "{0} with no proposal today",
   "hoy": "today",
   "No tengo el plan de hoy: no está configurado, no hay conexión o todavía no ha salido.": "I do not have today's plan: it is not set up, there is no connection, or it has not come out yet.",
+  // — Barra de música flotante —
+  "Barra de música flotante": "Floating music bar",
+  "Buscar canción…": "Search for a song…",
+  "Cerrar": "Close",
+  "Buscando…": "Searching…",
+  "Sin resultados": "No results",
+  "Se abrirá en Spotify.": "It will open in Spotify.",
   // — Telegram —
   "Soy Nimbo. Escríbeme como en el chat de la isla. /plan te da el plan de hoy.": "I am Nimbo. Write to me like in the island's chat. /plan gives you today's plan.",
   "Tengo {0} encargo(s) para otros chats; no se envían desde Telegram, confírmalos en Nimbo:": "I have {0} task(s) for other chats; they are not sent from Telegram, confirm them in Nimbo:",
@@ -267,7 +274,7 @@ if (typeof module !== "undefined" && require.main === module) {
   const fs = require("fs");
   const path = require("path");
   const missing = [];
-  for (const file of ["src/renderer/app.js", "src/renderer/index.html", "src/main/main.js", "src/renderer/voice.js", "src/main/orchestrator.js", "src/main/plan.js"]) {
+  for (const file of ["src/renderer/app.js", "src/renderer/player.js", "src/renderer/index.html", "src/main/main.js", "src/renderer/voice.js", "src/main/orchestrator.js", "src/main/plan.js"]) {
     const code = fs.readFileSync(path.join(__dirname, "..", "..", file), "utf8");
     // t("clave"…  y también  t(cond ? "clave uno" : "clave dos"…
     for (const m of code.matchAll(/\bt\((?:[^"()]*\? )?"((?:\\.|[^"\\])*)"(?: : "((?:\\.|[^"\\])*)")?/g)) {

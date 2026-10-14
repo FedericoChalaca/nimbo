@@ -15,6 +15,7 @@ const { createTrello } = require("../integrations/trello");
 const { searchSpotify, TRACK_URI } = require("../integrations/spotify");
 const { watchMedia } = require("../integrations/media");
 const { askInterview } = require("./interview");
+const { createMusicBar } = require("./musicbar");
 const { createTelegram } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
 const { createWhatsapp } = require("../integrations/whatsapp");
@@ -191,6 +192,8 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
   spotifyClientId: "",
   // Entrenador de entrevistas: modelo de tu claude ("" = haiku, el más barato; "sonnet" para un entrenador más exigente).
   interviewModel: "",
+  // Barra flotante de música (musicbar.js): aparece cuando Spotify tiene algo cargado; se mueve y su sitio se guarda.
+  musicBar: true, musicBarPos: null,
   // Modelo del chat de Nimbo, en la isla y en Telegram ("" = el de tu claude; "sonnet" o "haiku" gastan mucho menos).
   chatModel: "",
   // Telegram (opcional): la cuenta vinculada (0 = ninguna). El token del bot NO va aquí: va cifrado en telegram.bin.
@@ -234,6 +237,7 @@ function setMini(on) {
     checkPlan();
   }
   win.webContents.send("mini", mini);
+  musicBar.sync(); // en modo mini (jugando) la barra se esconde
   placeWindow();
 }
 ipcMain.on("toggle-mini", () => setMini(!mini));
@@ -447,8 +451,16 @@ ipcMain.handle("spotify-play", async (_e, uri) => {
 });
 // Lo que suena y sus botones: controles multimedia de Windows (media.js), sin cuenta ni claves.
 let media = null;
-const player = watchMedia((m) => { media = m; if (win && !win.isDestroyed()) win.webContents.send("media", m); });
-app.on("before-quit", () => player.stop());
+const musicBar = createMusicBar({
+  page: () => `nimbo://app/src/renderer/player.html?lang=${lang()}`,
+  preload: path.join(__dirname, "player-preload.js"),
+  getPos: () => prefs.musicBarPos,
+  setPos: (pos) => { prefs.musicBarPos = pos; savePrefs(); },
+  enabled: () => prefs.musicBar !== false,
+  mini: () => mini,
+});
+const player = watchMedia((m) => { media = m; if (win && !win.isDestroyed()) win.webContents.send("media", m); musicBar.update(m); });
+app.on("before-quit", () => { player.stop(); musicBar.destroy(); });
 ipcMain.handle("media", () => media);
 ipcMain.on("media-do", (_e, order) => player.send(String(order)));
 
@@ -656,6 +668,7 @@ function buildMenu() {
           prefs.lang = id;
           savePrefs();
           win.loadURL(pageUrl()); // la página se recarga en el idioma nuevo
+          musicBar.reload();
           watchWhatsapp();
           setTimeout(pollGithub, 3000);
         },
@@ -675,6 +688,12 @@ function buildMenu() {
     { label: t("Reglas de WhatsApp…"), enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
     { label: t("Nueva conversación"), click: () => orchestrator.reset() },
     { type: "separator" },
+    {
+      label: t("Barra de música flotante"),
+      type: "checkbox",
+      checked: prefs.musicBar !== false,
+      click: (item) => { prefs.musicBar = item.checked; savePrefs(); if (item.checked) musicBar.reset(); else musicBar.sync(); },
+    },
     {
       label: t("Leer las respuestas en voz alta"),
       type: "checkbox",
@@ -800,6 +819,7 @@ app.whenReady().then(() => {
   setInterval(checkPlan, 30 * 60_000);
   watchWhatsapp();
   if (telegram.status().token) telegram.start();
+  musicBar.sync(); // si Spotify ya estaba sonando al arrancar
   setTimeout(refreshTrelloIfStale, 90_000); // después de arrancar, para no competir con el inicio
   setInterval(refreshTrelloIfStale, 15 * 60_000); // reintentos, y por si el PC queda prendido varios días
   setInterval(checkReminders, 15_000);
