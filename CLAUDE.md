@@ -6,6 +6,30 @@ de cada chat), deja aprobar permisos, chatear con Claude (imágenes, archivos so
 dictado), avisa de notificaciones de GitHub y tiene personalidad: saludo, gestos y sonidos.
 Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `README.md`.
 
+## Estado y siguiente paso (2026-10-13)
+Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el contexto del dueño y lo que está abierto.
+- **Publicado:** 0.7.0 (release de GitHub con instalador, compilado por CI). En `main`, después de esa versión y aún sin
+  versión nueva: el reordenamiento en carpetas y el reintento de la consulta diaria de Trello.
+- **Hecho:** hooks y permisos, chat y orquestador, recordatorios, GitHub, Trello por tableros (lista una vez al día; tarjetas
+  al abrir un tablero), WhatsApp de solo lectura con modelo local, voz con servicio propio y una voz por tema, plan del día,
+  ver la pantalla, Spotify (tarjeta con botones, búsqueda, y con Premium la canción suena; probado con Spotify real),
+  instalador, CI, español e inglés.
+- **Sin verificar con uso real:** el instalador instalado (último probado de verdad: 0.3.2), la bandeja y el botón ⋮ con clic
+  real, dictado/chat/WhatsApp en inglés, el sonido de las dos voces, `scripts/promo/promo-main.js` con las rutas nuevas.
+- **Abierto:** firma del instalador (solicitud enviada a SignPath Foundation, sin respuesta); `app.js` tiene ~1.670 líneas y
+  conviene partirlo (ver "Carpetas": hacerlo por piezas y probando).
+- **Siguiente paso, en este orden (cada uno se acuerda con el dueño antes):** (1) entrenador de entrevistas y copiloto de
+  reuniones: capturar el audio del sistema con `desktopCapturer`/`setDisplayMediaRequestHandler` (`audio: "loopback"`), pasarlo
+  por el Whisper local de `stt-worker.js` en trozos y resumir con `claude -p`; SIN modo oculto para entrevistas reales;
+  (2) chat con otras IAs empezando por Ollama (sin claves); (3) web app para iPhone sobre Tailscale.
+
+## Convenciones del dueño
+- Nada de claves ni datos personales en el repo (es público); lo suyo va en `%APPDATA%\nimbo\prefs.json`.
+- Subir (push) o publicar una versión solo cuando lo pide. Commits con el correo noreply de GitHub.
+- Trabajo fácil con Sonnet, difícil con Opus: avisarle ANTES de empezar lo difícil. Cuidar el costo de las pruebas que llaman
+  a `claude -p` con datos reales (una consulta con Opus costó ~1 USD).
+- No mover el mouse ni hacer clics reales en su PC sin preguntar.
+
 ## Arrancar
 - `npm start` (o el acceso directo `Nimbo.lnk` en la carpeta Inicio de Windows, que arranca
   `node_modules\electron\dist\electron.exe "<carpeta de nimbo>"` al iniciar sesión).
