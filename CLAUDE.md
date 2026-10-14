@@ -8,7 +8,7 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 
 ## Estado y siguiente paso (2026-10-14)
 Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el contexto del dueño y lo que está abierto.
-- **Publicado:** 0.8.0 (release de GitHub con instalador compilado por CI). Todo lo de este documento está en esa versión.
+- **Publicado:** 0.8.0 (release de GitHub con instalador compilado por CI). La rama `multiplataforma` (Linux y macOS en vista previa, GIF nuevo, prueba de humo) está subida y probada en el CI pero NO fusionada ni publicada.
 - **Hecho:** hooks y permisos, chat y orquestador, recordatorios, GitHub, Trello por tableros, WhatsApp de solo lectura, voz, plan del día, ver la pantalla, Spotify (tarjeta, búsqueda, Premium), barra flotante de música, entrenador de entrevistas, Telegram (chat, bandeja, avisos), otras IAs (Ollama de un clic, Gemini, OpenAI), correo de Gmail a pedido (botón ✉), chats en Sonnet, instalador, CI, español e inglés.
 - **Sin verificar con uso real:** el instalador instalado (último probado de verdad: 0.3.2), la bandeja de Windows y el botón ⋮, arrastrar la barra de música y que recuerde su sitio, dictado/chat/WhatsApp en inglés, el sonido de las dos voces, `scripts/promo/promo-main.js`; las otras IAs con un modelo REAL (el Ollama del dueño no tiene ninguno y él pidió no descargarlo), y los avisos al celular, `/pendiente` con el PC apagado y `/correo` con su bot real (probados con un Telegram de mentira).
 - **Abierto:** firma del instalador (SignPath la RECHAZÓ el 2026-10-13: ver "Firma del instalador"); `app.js` tiene ~1.830 líneas y conviene partirlo por piezas y probando; regenerar el GIF y el video del README con la interfaz nueva.
@@ -70,6 +70,7 @@ assets/ build/ examples/ .github/
 | `trello.js` | Tableros y tarjetas de Trello vía el conector de tu `claude` (solo lectura, bajo demanda). |
 | `spotify.js` | Buscar canciones vía el conector de Spotify de tu `claude` (solo búsqueda). |
 | `spotify-api.js` | Spotify con Premium (opcional): Web API con PKCE para buscar al instante y poner a sonar la canción elegida. |
+| `platform.js` | Lo que cambia por sistema operativo: carpeta de datos, dónde están `claude` y `ollama`, PATH. |
 | `ai.js` | Otras IAs en el chat: Ollama, Gemini, OpenAI con un solo adaptador. |
 | `mail.js` | Correo importante de tu Gmail por el conector de tu `claude` (solo lectura). |
 | `alerts.js` | Avisos al celular por Telegram (filtrados: trabajos largos, lejos del PC). |
@@ -179,6 +180,21 @@ el modelo por defecto; Haiku elegía peor. Caché `%APPDATA%\nimbo\trello.json` 
 descarta). En la página: píldora con los tableros → lista → tablero (volver, Actualizar); `trello-busy` manda las claves
 en curso. El aviso de "vence en < 24 h" solo mira tableros ya abiertos. El video/GIF de `scripts/promo/` usa el formato viejo
 (`window.__trello`): al regenerarlos, actualizar ese dato.
+**Linux y macOS** (vista previa, 2026-10-14; Windows sigue siendo el sistema principal): `src/main/platform.js` concentra lo que cambia por sistema (carpeta de datos = la
+MISMA que `app.getPath("userData")`, dónde está `claude` y `ollama`, PATH ampliado en macOS/Linux porque una app gráfica arranca con un PATH mínimo). Lo exclusivo de Windows
+queda desactivado, no roto: WhatsApp (lee las notificaciones de Windows; `wa.watch` no hace nada y el panel dice "solo Windows"). Música: Windows = PowerShell/SMTC;
+Linux = `playerctl -p spotify`; macOS = AppleScript (`osascript`, pide permiso de Automatización). El poller (`pollingWatcher`) está probado con piezas falsas; la carátula se
+baja solo de hosts de Spotify, PNG/JPEG ≤ 400 KB. Hooks: `hook.cmd` (Windows) / `hook.sh` (macOS y Linux: el .app y el .deb tienen ruta fija y corren hook.js con su
+ejecutable en modo Node; un AppImage se monta en otra carpeta cada vez, así que copia hook.js a la carpeta de datos y usa el `node` del sistema). `hook.js` calcula
+la carpeta del token con `platform.userDataDir()`. Linux: autoinicio con un `.desktop` en `~/.config/autostart`; el AppImage arranca con `--no-sandbox` (Ubuntu 24.04
+bloquea el sandbox sin SUID). macOS: `LSUIElement` (sin Dock), `setVisibleOnAllWorkspaces`, firma ad hoc en `build/after-pack.js` (sin ella los Mac con chip Apple dicen
+"dañada"; con ella dicen "desarrollador no identificado": clic derecho → Abrir). Empaquetado: AppImage + deb (nombres fijos `Nimbo-linux-x64.*`) y dmg x64 + arm64 (`Nimbo-mac-<arch>.dmg`);
+el icono de 512 px (`build/icon-512.png`) es el de 256 agrandado: conviene rehacerlo con más resolución.
+**Probar en otros sistemas SIN tenerlos:** `.github/workflows/build.yml` corre en `windows-latest`, `ubuntu-latest` (con xvfb) y `macos-latest`: `npm test`, `scripts/smoke.js` (arranca la
+app de verdad, comprueba la página, el panel, el servidor de hooks y que un evento REAL de hook llegue a la isla) y el empaquetado; en Linux y Mac también contra el paquete
+INSTALADO (.deb, .app). `NIMBO_SMOKE_EXE` apunta al ejecutable instalado; en el CI (`CI=true`) usa las carpetas normales, en tu PC datos temporales (y cierra Nimbo antes: usa el puerto 47823).
+Para probar una rama sin publicar: subirla y `gh workflow run build.yml --ref <rama>`. SIN probar con uso real: arrastre y transparencia en escritorios Linux, `playerctl`, los permisos de macOS,
+el Dock/Spaces, y que Gatekeeper deje abrir el .dmg descargado.
 **Otras IAs** (`src/integrations/ai.js`, `node src/integrations/ai.js` = autoprueba con servidores de mentira en tu PC): UN solo adaptador del protocolo
 "chat/completions" de OpenAI para Ollama (`http://127.0.0.1:11434/v1`, sin clave, modelo = `pickLocal` o `prefs.aiModels.ollama`), Gemini
 (`.../v1beta/openai`, modelo por defecto `gemini-2.5-flash`) y OpenAI (`gpt-4o-mini`): los nombres de modelo envejecen, se cambian en `prefs.aiModels`.

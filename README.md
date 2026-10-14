@@ -2,7 +2,7 @@
 
 **English** · [Español](README.es.md)
 
-A floating companion for [Claude Code](https://claude.com/claude-code) on Windows. It lives on the top edge of your screen, shows what each of your chats is doing, and lets you approve permissions without switching to the terminal.
+A floating companion for [Claude Code](https://claude.com/claude-code) on Windows, and in preview on Linux and macOS. It lives on the top edge of your screen, shows what each of your chats is doing, and lets you approve permissions without switching to the terminal.
 
 No API key: it uses the `claude` you already have installed and signed in.
 
@@ -19,6 +19,23 @@ No API key: it uses the `claude` you already have installed and signed in.
 3. Nimbo opens and shows the **Connections** panel. Click **Connect** next to Claude Code and you are done.
 
 You do not need Node.js. You do need Claude Code installed and signed in (`claude` in a terminal).
+
+### Linux and macOS (preview)
+
+Nimbo also runs on Linux and macOS. These versions are newer than the Windows one: each build is started for real on Ubuntu and macOS by GitHub before it is published (the window loads, the panel answers, and a Claude Code hook event reaches the island), but nobody has used them day to day yet. Please [open an issue](https://github.com/FedericoChalaca/nimbo/issues) if something is off.
+
+| | Windows | Linux | macOS |
+|---|---|---|---|
+| Download | [Nimbo-Setup.exe](https://github.com/FedericoChalaca/nimbo/releases/latest/download/Nimbo-Setup.exe) | [.deb](https://github.com/FedericoChalaca/nimbo/releases/latest/download/Nimbo-linux-x64.deb) (Ubuntu, Debian…) or [AppImage](https://github.com/FedericoChalaca/nimbo/releases/latest/download/Nimbo-linux-x64.AppImage) | [Apple Silicon](https://github.com/FedericoChalaca/nimbo/releases/latest/download/Nimbo-mac-arm64.dmg) or [Intel](https://github.com/FedericoChalaca/nimbo/releases/latest/download/Nimbo-mac-x64.dmg) |
+| Claude Code, chats, permissions | ✅ | ✅ | ✅ |
+| Telegram, other AIs, email, Trello, GitHub | ✅ | ✅ | ✅ |
+| Music bar and Spotify buttons | built in | needs `playerctl` | asks permission to control Spotify |
+| WhatsApp summaries | ✅ | — (reads Windows notifications) | — |
+| Start with the system | ✅ | ✅ | ✅ |
+
+- **Linux:** prefer the **.deb** (`sudo apt install ./Nimbo-linux-x64.deb`): its path never changes, so the Claude Code hooks stay connected. The **AppImage** works too but needs Node.js installed for the hooks. Transparency and "always on top" depend on your desktop (X11 with a compositor works best; Wayland may ignore some of it). Install `playerctl` for the music bar.
+- **macOS:** open the `.dmg`, drag Nimbo to Applications, then **right-click → Open** the first time (the app is not signed by Apple; it only carries an ad-hoc signature, so macOS says "unidentified developer" instead of "damaged"). macOS will ask for permission to control Spotify, to use the microphone (dictation) and to record the screen (the 🖥 button) when you first use each. Nimbo has no Dock icon: look for it at the top of the screen.
+- Everything else in this guide is the same on the three systems, except the paths: your settings live in `~/.config/nimbo` on Linux and `~/Library/Application Support/nimbo` on macOS (instead of `%APPDATA%\nimbo`).
 
 To remove it, uninstall Nimbo from Windows Settings → Apps. The uninstaller also removes Nimbo's hooks from Claude Code; your settings in `%APPDATA%\nimbo` are kept.
 
