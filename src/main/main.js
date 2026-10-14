@@ -26,6 +26,7 @@ const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
 const { createWhatsapp } = require("../integrations/whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
 const { readPlan, planSpeech } = require("./plan");
+const { createRemoteApi } = require("./remote-api");
 
 // La carpeta de Nimbo (donde están package.json, hook.js, node_modules y assets). Este archivo vive en src/main.
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -476,6 +477,16 @@ app.on("before-quit", () => telegram.stop());
 const alertCfg = () => ({ claude: true, reminders: true, mail: true, whatsapp: false, onlyAway: true, ...(prefs.telegramAlerts ?? {}) });
 const alerts = createAlerts({ send: (text) => telegram.notify(text), enabled: (k) => alertCfg()[k] === true, idle: () => powerMonitor.getSystemIdleTime(), t });
 ipcMain.handle("dispatch", (_e, id, prompt) => orchestrator.dispatch(String(id), String(prompt)));
+// --- Celular (remote-api.js): Nimbo en el iPhone, por el puente del asistente. Solo 127.0.0.1 y con su token. ---
+const remote = createRemoteApi({
+  tokenFile: path.join(app.getPath("userData"), "remote-token"),
+  ask: askNimbo,
+  dispatch: (id, prompt) => orchestrator.dispatch(String(id), String(prompt)),
+  reminders,
+  remindersChanged,
+  permission: () => pending && { id: pending.remoteId, payload: pending.payload },
+  decide: (id, decision) => { if (pending?.remoteId === id) pending.finish(decision); },
+});
 
 // --- GitHub: notificaciones con la sesión que ya tiene `gh` (Nimbo no guarda claves) ---
 function pollGithub() {
@@ -986,6 +997,8 @@ function askPermission(payload, nonce, res) {
 
   const me = {
     id: nonce,
+    remoteId: crypto.randomUUID(), // el celular decide con este id, nunca con el nonce del hook
+    payload,
     finish(decision) {
       // Cada petición solo cierra su propia tarjeta, nunca la de la siguiente.
       if (pending !== me) return;
@@ -1046,6 +1059,7 @@ http
       payload.title = sessionTitle(payload.transcript_path) ||
         (path.resolve(String(payload.cwd ?? "")) === CHAT_DIR ? "Nimbo" : path.basename(String(payload.cwd ?? "")));
       try { alerts.onHook(payload); } catch {} // avisos al celular (solo el título del chat y el nombre de la herramienta)
+      try { remote.onHook(payload); } catch {} // estado de los chats para la app del iPhone
       if (req.url === "/permission") return askPermission(payload, nonce, res);
       res.writeHead(204).end();
       if (win && !win.isDestroyed()) win.webContents.send("hook", payload);
@@ -1066,6 +1080,7 @@ app.whenReady().then(() => {
   setInterval(checkPlan, 30 * 60_000);
   watchWhatsapp();
   if (telegram.status().token) telegram.start();
+  remote.listen();
   musicBar.sync(); // si Spotify ya estaba sonando al arrancar
   setTimeout(refreshTrelloIfStale, 90_000); // después de arrancar, para no competir con el inicio
   setInterval(refreshTrelloIfStale, 15 * 60_000); // reintentos, y por si el PC queda prendido varios días

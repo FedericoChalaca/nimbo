@@ -8,7 +8,7 @@
     "start": "electron .",
     "install-hooks": "node src/main/install-hooks.js",
     "uninstall-hooks": "node src/main/install-hooks.js --uninstall",
-    "test": "node src/main/platform.js && node src/main/delegate.js && node src/main/reminders.js && node src/integrations/whatsapp.js && node src/shared/i18n.js && node src/main/tts.js && node src/main/plan.js && node src/main/interview.js && node src/main/musicbar.js && node src/main/alerts.js && node src/integrations/mail.js && node src/integrations/ai.js && node src/integrations/trello.js && node src/integrations/telegram.js && node src/integrations/spotify.js && node src/integrations/spotify-api.js && node src/integrations/media.js && node examples/tts-service/api/tts.js",
+    "test": "node src/main/platform.js && node src/main/remote-api.js && node src/main/delegate.js && node src/main/reminders.js && node src/integrations/whatsapp.js && node src/shared/i18n.js && node src/main/tts.js && node src/main/plan.js && node src/main/interview.js && node src/main/musicbar.js && node src/main/alerts.js && node src/integrations/mail.js && node src/integrations/ai.js && node src/integrations/trello.js && node src/integrations/telegram.js && node src/integrations/spotify.js && node src/integrations/spotify-api.js && node src/integrations/media.js && node examples/tts-service/api/tts.js",
     "promo": "electron scripts/promo/promo-main.js",
     "dist": "electron-builder --win",
     "promo:gif": "electron scripts/promo/gif-main.js",

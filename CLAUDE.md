@@ -75,6 +75,7 @@ assets/ build/ examples/ .github/
 | `delegate.js` | Encargos de Claude a Gemini: validación y carpeta de imágenes. |
 | `mail.js` | Correo importante de tu Gmail por el conector de tu `claude` (solo lectura). |
 | `alerts.js` | Avisos al celular por Telegram (filtrados: trabajos largos, lejos del PC). |
+| `remote-api.js` | API para Nimbo en el iPhone (la app del asistente, por su puente): estado de los chats, permiso pendiente, pendientes, hablar con Nimbo y mandar sus encargos (`node remote-api.js` = autoprueba). |
 | `musicbar.js` | Barra flotante de música (ventana propia) que aparece mientras suena Spotify. |
 | `media.js` + `media-watch.ps1` | Lo que suena en Spotify y sus botones, con los controles multimedia de Windows. |
 | `whatsapp.js` + `wa-watch.ps1` | WhatsApp de escritorio en solo lectura (`node whatsapp.js` = autoprueba). |
@@ -460,6 +461,13 @@ la página sin `?lang` (español).
 - La tarjeta de permiso muestra TODO lo que se aprueba (comando completo con scroll, contenido de
   Write/Edit, y las reglas que dejaría "Siempre"). No volver a recortarla: con 4 líneas, una cola
   maliciosa quedaba oculta. La decisión viaja con el id de su tarjeta (`rid`).
+- API del celular (`remote-api.js`, puerto 47824): otro servidor, NO el de hooks. Solo `127.0.0.1` y `Host: 127.0.0.1:47824`,
+  token propio en `%APPDATA%\nimbo\remote-token` (no reutiliza el HMAC de los hooks) y cuerpos de 16 KB. Nunca se publica por
+  Tailscale: lo llama el puente del asistente (`D:\hobby\asistente\bridge\nimbo.js`), que es lo único que ve el teléfono. El
+  estado lleva título del chat, estado y nombre de la herramienta, nunca comandos; el permiso pendiente sí va COMPLETO (misma
+  regla que la tarjeta) y se decide con un id aleatorio propio (`remoteId`), solo allow/deny. Los encargos de Nimbo quedan
+  guardados ahí: el celular manda solo su id, nunca el texto ni el chat. Si Nimbo está en mini o ya hay una tarjeta, el permiso
+  va a la terminal como siempre y el celular no lo ve.
 - `claude.exe` y PowerShell se lanzan directo (sin `shell: true`); el texto del usuario va por stdin.
 - Todo `claude -p` que lee texto de terceros lleva lista cerrada de herramientas: orquestador
   `Read,Glob,Grep` sin MCP; Trello sin herramientas propias y conector en lectura; WhatsApp sin nada.
