@@ -9,6 +9,7 @@ const path = require("path");
 // argumentos (que llevan títulos de tus chats) no pueden inyectar comandos.
 // Se busca donde lo dejan npm y el instalador nativo; NIMBO_CLAUDE permite indicar otra ruta.
 const { claudeCandidates, findInPath, extraBinDirs } = require("./platform");
+const { cleanDelegates } = require("./delegate");
 const CLAUDE_EXE = [
   ...claudeCandidates(),
   findInPath(process.platform === "win32" ? ["claude.exe"] : ["claude"], { extra: extraBinDirs() }),
@@ -184,6 +185,15 @@ const SCHEMA = JSON.stringify({
       items: { type: "object", properties: { text: { type: "string" }, due: { type: "string" } }, required: ["text"] },
     },
     complete: { type: "array", items: { type: "string" } },
+    // Encargos a otra IA (solo Gemini por ahora): el usuario los ve en una tarjeta y decide.
+    delegate: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { ai: { type: "string", enum: ["gemini"] }, kind: { type: "string", enum: ["image", "text"] }, prompt: { type: "string" } },
+        required: ["ai", "kind", "prompt"],
+      },
+    },
   },
   required: ["reply", "dispatch"],
 });
@@ -223,6 +233,7 @@ Terminado cuando: de uno a tres criterios que se puedan comprobar (algo que se v
 Fuera de alcance: lo que NO debe tocar ni decidir (otras partes del proyecto, credenciales, y publicar, subir o desplegar si el usuario no lo pidió).
 Un encargo es una sola pieza de trabajo. Si el pedido tiene partes independientes que les tocan a chats distintos, un encargo por chat; si una parte depende del resultado de otra, propón solo la primera y dilo en "reply".
 Si no está claro a qué chat va, pregunta en "reply" y deja "dispatch" vacío. Si es una pregunta general, respóndela tú en "reply" con "dispatch" vacío.
+OTRAS IAs: tú no generas imágenes. Si el usuario pide una imagen, un logo o una ilustración, o pide expresamente que otra IA (Gemini) haga algo, propón un encargo en "delegate" con ai "gemini", kind "image" (o "text") y un "prompt" completo y autosuficiente, en inglés si es una imagen. Si no, deja "delegate" vacío. No lo uses para lo que puedes responder tú.
 "reply" es lo que le dices al usuario. Tú no envías nada: cada prompt de "dispatch" aparece como propuesta y el usuario decide si lo envía. Así que en "reply" di qué propones mandar y a qué chat, nunca que ya lo mandaste. En "dispatch.session" usa exactamente un id de la lista.`;
 }
 
@@ -292,6 +303,7 @@ function createOrchestrator(chatDir, { vault, lang, plan, model } = {}) {
       return {
         text: plan.reply || r.result || t("(sin respuesta)"),
         dispatch,
+        delegate: cleanDelegates(plan.delegate),
         reminders: Array.isArray(plan.reminders) ? plan.reminders.slice(0, 10) : [],
         complete: (Array.isArray(plan.complete) ? plan.complete : []).filter((id) => pendingIds.has(id)),
       };

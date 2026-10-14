@@ -14,6 +14,11 @@ const PRESETS = {
   openai: { label: "OpenAI", base: "https://api.openai.com/v1", model: "gpt-4o-mini" },
 };
 const KEYED = ["gemini", "openai"];
+// Imágenes: la API nativa de Gemini (la compatible con OpenAI no las genera bien). Los nombres de modelo envejecen: se cambia en prefs.aiModels.geminiImage.
+const GEMINI_NATIVE = "https://generativelanguage.googleapis.com/v1beta";
+const IMAGE_MODEL = "gemini-2.5-flash-image";
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const MAX_IMAGE_B64 = 14_000_000; // ≈ 10 MB
 const KEY_FORMAT = /^[A-Za-z0-9_.-]{20,200}$/;
 const MAX_HISTORY = 12; // mensajes (6 idas y vueltas) que se le repiten al modelo
 const MAX_REPLY = 4000;
@@ -35,6 +40,20 @@ function cleanReply(j) {
   const c = j?.choices?.[0]?.message?.content;
   const text = typeof c === "string" ? c.trim() : "";
   return text ? text.slice(0, MAX_REPLY) : null;
+}
+
+/** La imagen (y el texto que la acompañe) de una respuesta de generateContent, o null. */
+function cleanImage(j) {
+  const parts = j?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return null;
+  for (const p of parts) {
+    const d = p?.inlineData ?? p?.inline_data;
+    const mime = d?.mimeType ?? d?.mime_type;
+    if (IMAGE_TYPES.includes(mime) && typeof d.data === "string" && /^[A-Za-z0-9+/]+=*$/.test(d.data) && d.data.length <= MAX_IMAGE_B64) {
+      return { mime, data: d.data, text: str(parts.map((x) => (typeof x?.text === "string" ? x.text : "")).join(" "), 300) };
+    }
+  }
+  return null;
 }
 
 /**
@@ -91,6 +110,38 @@ function createAi({ getKey, models = () => ({}), bases = {}, fetch: doFetch = fe
       return reply ? { text: reply, model } : { error: "fail" };
     },
 
+    /**
+     * Una imagen con Gemini (API nativa, la clave va en un encabezado, nunca en la dirección).
+     * { mime, data (base64), text } o { error: "key" | "limit" | "billing" | "blocked" | "model" | "offline" | "fail" }.
+     */
+    async image(prompt) {
+      const key = getKey("gemini");
+      if (!key) return { error: "key" };
+      const model = str(models().geminiImage, 80) || IMAGE_MODEL;
+      let r;
+      try {
+        r = await doFetch(`${bases.geminiNative ?? GEMINI_NATIVE}/models/${encodeURIComponent(model)}:generateContent`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({ contents: [{ parts: [{ text: str(prompt, 1500) }] }], generationConfig: { responseModalities: ["TEXT", "IMAGE"] } }),
+          signal: AbortSignal.timeout(90_000),
+        });
+      } catch { return { error: "offline" }; }
+      if (r.status === 401) return { error: "key" };
+      if (r.status === 404) return { error: "model" };
+      if (r.status === 429) return { error: "limit" };
+      if (!r.ok) {
+        // Sin facturación, Google responde 400/403 con un texto que habla de plan, cuota o facturación: se distingue de una clave mala.
+        const msg = JSON.stringify(await r.json().catch(() => ({}))).toLowerCase();
+        if (/billing|free tier|not available|quota|plan/.test(msg)) return { error: "billing" };
+        return { error: r.status === 403 ? "key" : "fail" };
+      }
+      const j = await r.json().catch(() => null);
+      const img = cleanImage(j);
+      if (img) return img;
+      return { error: j?.promptFeedback?.blockReason || j?.candidates?.[0]?.finishReason === "IMAGE_SAFETY" ? "blocked" : "fail" };
+    },
+
     /** ¿Acepta el proveedor esta clave? (pide su lista de modelos: no gasta nada). */
     async verify(id, key) {
       if (!KEYED.includes(id) || !KEY_FORMAT.test(key ?? "")) return false;
@@ -141,7 +192,7 @@ async function pullModel({ base = PRESETS.ollama.base, name = RECOMMENDED, onPro
   return ended ? { ok: true } : { error: "fail" };
 }
 
-module.exports = { createAi, pullModel, parsePullLine, RECOMMENDED, trimHistory, buildMessages, cleanReply, KEYED, KEY_FORMAT, PRESETS };
+module.exports = { createAi, pullModel, parsePullLine, cleanImage, RECOMMENDED, IMAGE_MODEL, trimHistory, buildMessages, cleanReply, KEYED, KEY_FORMAT, PRESETS };
 
 // Autoprueba (sin internet, con servidores de mentira en tu PC): `node src/integrations/ai.js`
 if (require.main === module) (async () => {
@@ -168,6 +219,16 @@ if (require.main === module) (async () => {
       seen.push({ url: req.url, auth: req.headers.authorization ?? null, body: body ? JSON.parse(body) : null });
       const send = (code, json) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(json)); };
       if (req.url === "/api/tags") return send(200, { models: tags });
+      if (req.url.startsWith("/nat/")) {
+        if (req.headers["x-goog-api-key"] !== "GOOD-KEY-1234567890-abcdef") return send(401, {});
+        const p = JSON.parse(body).contents[0].parts[0].text;
+        if (p === "bloqueada") return send(200, { promptFeedback: { blockReason: "SAFETY" } });
+        if (p === "sin imagen") return send(200, { candidates: [{ content: { parts: [{ text: "no puedo" }] } }] });
+        if (p === "sin plan") return send(403, { error: { message: "Image generation is not available on the free tier. Enable billing." } });
+        if (p === "lenta") return send(429, {});
+        if (p === "rota") return send(200, { candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: "<script>" } }] } }] });
+        return send(200, { candidates: [{ content: { parts: [{ text: "Aquí tienes " + req.url }, { inlineData: { mimeType: "image/png", data: "iVBORw0KGgo=" } }] } }] });
+      }
       const key = (req.headers.authorization ?? "").replace("Bearer ", "");
       if (req.url.startsWith("/gem/")) { if (key !== "GOOD-KEY-1234567890-abcdef") return send(401, { error: "no" }); if (req.url.endsWith("/models")) return send(200, { data: [] }); }
       if (req.url.startsWith("/lim/")) return send(429, {});
@@ -208,6 +269,24 @@ if (require.main === module) (async () => {
   assert.deepStrictEqual(await make({ gemini: "http://127.0.0.1:1/x" }).chat("gemini", [], "x", "S"), { error: "offline" });
   assert.deepStrictEqual(await ai.chat("openai", [], "x", "S"), { error: "key" }); // sin clave de OpenAI
   assert.deepStrictEqual(await ai.chat("otra", [], "x", "S"), { error: "fail" });
+  // Imágenes de Gemini (API nativa): la clave va en un encabezado y la dirección nunca la lleva.
+  const nat = make({ geminiNative: `${origin}/nat` });
+  const im = await nat.image("un gato");
+  assert.deepStrictEqual([im.mime, im.data], ["image/png", "iVBORw0KGgo="]);
+  assert.ok(im.text.includes("gemini-2.5-flash-image:generateContent") && !im.text.includes("GOOD-KEY"));
+  assert.deepStrictEqual(await nat.image("bloqueada"), { error: "blocked" });
+  assert.deepStrictEqual(await nat.image("sin imagen"), { error: "fail" });
+  assert.deepStrictEqual(await nat.image("sin plan"), { error: "billing" });
+  assert.deepStrictEqual(await nat.image("lenta"), { error: "limit" });
+  assert.deepStrictEqual(await nat.image("rota"), { error: "fail" }); // base64 inválido: no se acepta
+  assert.deepStrictEqual(await make({ geminiNative: "http://127.0.0.1:1/x" }).image("x"), { error: "offline" });
+  assert.deepStrictEqual(await createAi({ getKey: () => "", bases: { geminiNative: `${origin}/nat` } }).image("x"), { error: "key" });
+  key = "BAD-KEY-1234567890-abcdefgh";
+  const imBad = await nat.image("un gato");
+  assert.deepStrictEqual(imBad, { error: "key" });
+  key = "GOOD-KEY-1234567890-abcdef";
+  assert.ok(!seen.some((x) => x.url.includes("GOOD-KEY") || x.url.includes("key=")));
+  assert.strictEqual((await createAi({ getKey: () => key, models: () => ({ geminiImage: "otro-modelo" }), bases: { geminiNative: `${origin}/nat` } }).image("x")).text.includes("otro-modelo:generateContent"), true);
   tags = []; // Ollama sin ningún modelo instalado
   const s2 = await ai.status();
   assert.deepStrictEqual([s2.ollama, s2.providers.map((p) => p.id)], ["empty", ["gemini"]]);

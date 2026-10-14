@@ -71,7 +71,8 @@ assets/ build/ examples/ .github/
 | `spotify.js` | Buscar canciones vía el conector de Spotify de tu `claude` (solo búsqueda). |
 | `spotify-api.js` | Spotify con Premium (opcional): Web API con PKCE para buscar al instante y poner a sonar la canción elegida. |
 | `platform.js` | Lo que cambia por sistema operativo: carpeta de datos, dónde están `claude` y `ollama`, PATH. |
-| `ai.js` | Otras IAs en el chat: Ollama, Gemini, OpenAI con un solo adaptador. |
+| `ai.js` | Otras IAs en el chat: Ollama, Gemini, OpenAI con un solo adaptador (+ imágenes de Gemini). |
+| `delegate.js` | Encargos de Claude a Gemini: validación y carpeta de imágenes. |
 | `mail.js` | Correo importante de tu Gmail por el conector de tu `claude` (solo lectura). |
 | `alerts.js` | Avisos al celular por Telegram (filtrados: trabajos largos, lejos del PC). |
 | `musicbar.js` | Barra flotante de música (ventana propia) que aparece mientras suena Spotify. |
@@ -202,6 +203,15 @@ el Dock/Spaces, y que Gatekeeper deje abrir el .dmg descargado.
 Claude; sin ellos, a la IA elegida (historial solo en memoria, 12 mensajes, se borra con "Nueva conversación"). Solo conversación: ni archivos, ni
 recordatorios, ni `dispatch`. Las claves de Gemini/OpenAI van cifradas con `safeStorage` en `ai-keys.bin` (JSON), se verifican con `GET /models` antes de
 guardarse y nunca salen en un error. Probado con el adaptador y servidores falsos, la UI y rechazo de claves; **Ollama de un clic para quien llega nuevo** (fila "Otras IAs"): sin Ollama → "Instalar Ollama" (abre ollama.com/download, nunca ejecuta nada); instalado y cerrado → "Abrir Ollama" (`ollama app.exe` en `%LOCALAPPDATA%\Programs\Ollama`); sin modelo → "Descargar modelo gratis (≈2 GB)": `pullModel` (`POST /api/pull`, avance en NDJSON, % en el panel, cancelable) SOLO con el clic y SOLO el modelo `RECOMMENDED` = llama3.2:3b (el nombre lo fija main, nunca la página). Probado el protocolo con un servidor falso y contra el Ollama real con un modelo inexistente (entiende el error, no descarga). SIN probar una descarga completa ni una respuesta de un modelo real: el Ollama del dueño NO tiene ningún modelo (ya no está llama3.2:3b: los resúmenes de WhatsApp caen a Claude) y no hay claves; él pidió NO descargarlo por él.
+**Encargos a otras IAs** (`src/main/delegate.js`, autoprueba `node src/main/delegate.js`; 2026-10-14): el orquestador devuelve `delegate: [{ai:"gemini", kind:"image"|"text", prompt}]`
+(SCHEMA + regla "OTRAS IAs" en `systemPrompt`; `cleanDelegates` deja solo Gemini, imagen/texto, ≤3, prompt ≤1500). Probado con Sonnet real: "genérame un logo…" → un encargo
+`image` con prompt en inglés; "¿cuánto es 15 por 4?" → ninguno. La página lo muestra con `delegateCard` (como `proposal`): **Abrir en Gemini** (IPC `delegate-open`: copia el
+prompt y abre gemini.google.com/app; sirve con la licencia de estudiante, SIN clave) y **Generar aquí** (`delegate-run`: texto por `ai.chat("gemini")`; imagen por `ai.image`, API
+NATIVA `models/<modelo>:generateContent` con `responseModalities`, clave en el encabezado `x-goog-api-key`, modelo `gemini-2.5-flash-image` o `prefs.aiModels.geminiImage`;
+se guarda en `Imágenes\Nimbo` y `delegate-show` solo muestra archivos dentro de esa carpeta). `delegateResult` pinta el resultado y **Dárselo a Claude** lo adjunta (imagen ≤5 MB) o lo
+pone en la caja. Errores entendidos: key, limit, billing (Google exige facturación para imágenes con clave gratis: SIN verificar con una clave real), blocked, model, offline.
+Telegram solo avisa que hay encargos (no los ejecuta). NO probado con una clave real de Gemini (el dueño solo tiene la licencia de estudiante, que es la app, no la API).
+Ideas: ChatGPT/OpenAI como segundo destino (`gpt-image-1`), guardar y reutilizar resultados, que Gemini devuelva el resultado a Claude sin clic.
 **Bandeja de pendientes de Telegram:** `/pendiente <texto>` (o `/p`, `/anotar`, `/tarea`; `parseInbox` en telegram.js) agrega a `reminders` sin fecha (la píldora
 Pendientes); `/pendientes` lista y `/hecho <n>` completa. Con Nimbo apagado Telegram guarda los mensajes 24 h; al arrancar `prime()` los lee TODOS (hasta 500):
 las notas `/pendiente` de la cuenta vinculada se anotan (`onBacklog`) y se confirma; el resto se descarta (sigue la regla de no ejecutar nada viejo) y se avisa.

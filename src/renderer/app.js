@@ -1727,6 +1727,7 @@ async function askAndShow(message) {
   answer.replaceChildren(el("div", "reply", r?.text ?? t("No pude hablar con Claude.")));
   speak(r?.text); // solo la respuesta corta; los prompts propuestos para otros chats no se leen
   for (const d of r?.dispatch ?? []) answer.append(proposal(d));
+  for (const d of r?.delegate ?? []) answer.append(delegateCard(d));
   answer.scrollTop = 0;
   return r;
 }
@@ -1768,6 +1769,67 @@ function proposal(d) {
     answerBox.classList.remove("hidden");
     setState("finished", t("¡Listo! · {0}", d.project), { back: 5000 });
     SOUNDS.finish();
+  };
+  return box;
+}
+
+// --- Encargo a otra IA (Gemini): Claude lo propone; tú eliges abrirlo en la web de Gemini o generarlo aquí con tu clave ---
+const DELEGATE_ERR = {
+  key: "Gemini no tiene una clave válida. Pégala en Conexiones → Otras IAs (se saca gratis en Google AI Studio).",
+  limit: "Gemini dice que llegaste a su límite. Espera un rato.",
+  billing: "Google no deja generar imágenes con la clave gratis: hay que activar la facturación en AI Studio. Mientras, usa \"Abrir en Gemini\" con tu cuenta.",
+  blocked: "Gemini no quiso generar eso (filtros de seguridad). Cambia el texto del encargo.",
+  model: "Gemini no tiene el modelo que se necesita. Revisa su nombre.",
+  offline: "No pude conectarme con Gemini.",
+  fail: "Gemini no pudo responder.",
+};
+// El resultado de un encargo ya hecho (imagen o texto) y el botón para dárselo a Claude.
+function delegateResult(out, res) {
+  const give = el("button", "allow", t("Dárselo a Claude"));
+  const more = el("div", "btns");
+  if (res.kind === "image") {
+    const url = `data:${res.mime};base64,${res.data}`;
+    const img = el("img", "dimg");
+    img.src = url;
+    const show = el("button", "", t("Ver en la carpeta"));
+    show.onclick = () => api.delegateShow(res.file);
+    give.onclick = () => {
+      if (res.data.length * 0.75 > MAX_IMAGE) { out.textContent = t("La imagen pesa más de 5 MB: ábrela desde la carpeta."); return; }
+      images.push({ media_type: res.mime, data: res.data, url });
+      renderThumbs();
+      msg.focus();
+    };
+    more.append(give, show);
+    out.replaceChildren(img, more);
+  } else {
+    give.onclick = () => { msg.value = `${msg.value ? msg.value + "\n\n" : ""}${res.text}`; msg.focus(); };
+    more.append(give);
+    out.replaceChildren(el("div", "dtext", res.text), more);
+  }
+}
+function delegateCard(d) {
+  const box = el("div", "prop");
+  box.append(el("div", "what", d.kind === "image" ? t("→ Gemini · imagen") : t("→ Gemini · texto")));
+  const prompt = el("textarea");
+  prompt.value = d.prompt;
+  const open = el("button", "allow", t("Abrir en Gemini"));
+  const run = el("button", "", t("Generar aquí"));
+  const drop = el("button", "", t("Descartar"));
+  const btns = el("div", "btns");
+  btns.append(open, run, drop);
+  const out = el("div", "dout");
+  box.append(prompt, btns, out);
+  const mine = () => ({ ai: "gemini", kind: d.kind, prompt: prompt.value });
+
+  drop.onclick = () => box.remove();
+  open.onclick = () => { api.delegateOpen(mine()); out.textContent = t("Copié el encargo: pégalo en Gemini con Ctrl+V."); };
+  run.onclick = async () => {
+    run.disabled = true;
+    out.textContent = t("Gemini está trabajando…");
+    const res = await api.delegateRun(mine()).catch(() => ({ error: "fail" }));
+    run.disabled = false;
+    if (res?.error) { out.textContent = t(DELEGATE_ERR[res.error] ?? DELEGATE_ERR.fail); return; }
+    delegateResult(out, res);
   };
   return box;
 }

@@ -294,6 +294,9 @@
     border: 1px solid rgba(255, 255, 255, .07); outline: none; border-radius: 10px; padding: 8px 10px; color: #eceef2;
     background: #0b0c0e; font: 12.5px "Segoe UI Variable Text", "Segoe UI", sans-serif; }
   .prop .done { white-space: pre-wrap; }
+  .prop .dout { margin-top: 8px; color: #9aa0a8; font-size: 12px; }
+  .prop .dimg { display: block; max-width: 100%; max-height: 220px; border-radius: 10px; margin-bottom: 8px; }
+  .prop .dtext { color: #eceef2; white-space: pre-wrap; margin-bottom: 8px; max-height: 180px; overflow: auto; }
   .warn { color: #ffb347; }
 
   /* Chats activos (al pasar el mouse) */

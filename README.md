@@ -244,6 +244,8 @@ Besides Claude, the chat can talk to other models. A selector appears next to th
 
 Keys are checked with the provider and stored encrypted by Windows (`%APPDATA%\nimbo\ai-keys.bin`). To change a model, set it in `prefs.json`, for example `"aiModels": { "gemini": "gemini-2.5-flash" }`. What you write (and the last few messages of that conversation) goes to the provider you chose.
 
+**Claude asks Gemini (requests to other AIs).** Claude cannot draw. If you ask the chat for an image or a logo, or tell it to have Gemini do something, it writes the request and shows it as a card (you can edit it). Two buttons: **Open in Gemini** copies the request and opens gemini.google.com, so it works with your own Gemini account or student plan and needs no key; **Generate here** asks Gemini directly with the key above, saves images in `Pictures\Nimbo` and shows them in the card. **Give it to Claude** attaches the result to your next message. Nothing is sent until you press a button. Google may require billing to generate images with an API key; if so Nimbo says so, and **Open in Gemini** still works. (Gemini only for now.)
+
 ### 13. Email (optional)
 
 Nimbo checks your unread Gmail and tells you which emails matter, with a one-line summary of each. It is read-only: your Claude's Gmail connector is allowed to do exactly one thing, search, and everything that sends, replies, forwards, deletes or labels is forbidden by name. Nimbo never opens the body of a message.

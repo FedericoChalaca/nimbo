@@ -20,6 +20,7 @@ const { extraBinDirs, findInPath, ollamaLocations, userDataDir } = require("./pl
 const { createAlerts } = require("./alerts");
 const { createMail, threadUrl } = require("../integrations/mail");
 const { createAi, pullModel, RECOMMENDED, KEYED, KEY_FORMAT } = require("../integrations/ai");
+const { cleanDelegates, imageFileName, insideDir } = require("./delegate");
 const { createTelegram, parseInbox } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
 const { createWhatsapp } = require("../integrations/whatsapp");
@@ -362,6 +363,32 @@ ipcMain.handle("ai-providers", () => aiState());
 ipcMain.on("ai-select", async (_e, id) => {
   if ((await aiState()).providers.some((p) => p.id === String(id))) { prefs.chatProvider = String(id); savePrefs(); }
 });
+// --- Encargos a otra IA (delegate.js): Claude propone, tú decides en la tarjeta. "Abrir en Gemini" copia el encargo y abre su web
+// (sirve con tu cuenta/licencia, sin clave); "Generar aquí" usa tu clave de Gemini y guarda las imágenes en Imágenes\Nimbo. ---
+const imagesDir = () => path.join(app.getPath("pictures"), "Nimbo");
+ipcMain.on("delegate-open", (_e, d) => {
+  const [x] = cleanDelegates([d]);
+  if (!x) return;
+  clipboard.writeText(x.prompt);
+  shell.openExternal("https://gemini.google.com/app");
+});
+ipcMain.handle("delegate-run", async (_e, d) => {
+  const [x] = cleanDelegates([d]);
+  if (!x) return { error: "fail" };
+  if (x.kind === "text") {
+    const r = await ai.chat("gemini", [], x.prompt, "Haz exactamente lo que se pide, en el idioma del encargo, sin preámbulos.");
+    return r.error ? { error: r.error } : { kind: "text", text: r.text };
+  }
+  const r = await ai.image(x.prompt);
+  if (r.error) return { error: r.error };
+  try {
+    fs.mkdirSync(imagesDir(), { recursive: true });
+    const file = path.join(imagesDir(), imageFileName(r.mime));
+    fs.writeFileSync(file, Buffer.from(r.data, "base64"));
+    return { kind: "image", mime: r.mime, data: r.data, file };
+  } catch { return { error: "fail" }; }
+});
+ipcMain.on("delegate-show", (_e, file) => { if (insideDir(file, imagesDir())) shell.showItemInFolder(path.resolve(String(file))); });
 // --- Correo (opcional, mail.js): tu Gmail por el conector de tu claude, solo lectura. SOLO cuando lo pides (botón ✉, chat o /correo). ---
 const mail = createMail(path.join(app.getPath("userData"), "mail.json"));
 async function refreshMail({ quiet = false } = {}) {
@@ -422,6 +449,9 @@ async function telegramReply(text) {
   let out = r.text || t("(sin respuesta)");
   if (r.added?.length) out += `\n\n⏰ ${r.added.map((x) => x.text).join(" · ")}`;
   // Los encargos para otros chats NO se envían desde aquí: hay que confirmarlos en la isla.
+  if (r.delegate?.length) out += `
+
+${t("Propuse {0} encargo(s) para Gemini; ábrelos en Nimbo para decidir.", r.delegate.length)}`;
   if (r.dispatch?.length) out += `\n\n${t("Tengo {0} encargo(s) para otros chats; no se envían desde Telegram, confírmalos en Nimbo:", r.dispatch.length)}\n${r.dispatch.map((d) => `• ${d.title || d.project}`).join("\n")}`;
   return out;
 }
