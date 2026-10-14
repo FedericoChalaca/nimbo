@@ -587,7 +587,8 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
       case "telegram-logout": telegram.stop(); telegram.logout(); telegramSaveToken(""); prefs.telegramChat = 0; savePrefs(); break;
       case "open":
         // "guide" = la guía de conexiones del README, en el idioma de la interfaz.
-        if (value === "telegram-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#11-telegram-opcional" : "README.md#11-telegram-optional"}`);
+        if (value === "telegram-bot") { const b = telegram.status().bot; if (/^[A-Za-z0-9_]{4,32}$/.test(b)) shell.openExternal(`https://t.me/${b}`); }
+        else if (value === "telegram-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#11-telegram-opcional" : "README.md#11-telegram-optional"}`);
         else if (value === "spotify-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#10-spotify-opcional" : "README.md#10-spotify-optional"}`);
         else if (value === "guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#conectar-todo" : "README.md#connect-everything"}`);
         else if (Object.hasOwn(LINKS, value)) shell.openExternal(LINKS[value]);

@@ -1110,7 +1110,7 @@ function renderSetup(s) {
   tgToken.autocomplete = "off";
   tgToken.onchange = () => act("telegram-token", tgToken.value);
   const telegramRow = tg.paired ? row(true, "Telegram", t("Conectado con @{0}: escríbele a tu bot desde el celular.", tg.bot || "bot"), btn(t("Desconectar"), "telegram-logout"))
-    : tg.token ? row(false, "Telegram", tg.pairing ? t("Envíale este código a tu bot en Telegram: {0}", tg.pairing) : t("Falta vincular tu cuenta: pulsa Vincular y te doy un código."), btn(t("Quitar"), "telegram-logout"), btn(t("Vincular"), "telegram-pair", null, "allow"))
+    : tg.token ? row(false, "Telegram", tg.pairing ? (tg.bot ? t("Envíale este código a @{0} en Telegram: {1}", tg.bot, tg.pairing) : t("Envíale este código a tu bot en Telegram: {0}", tg.pairing)) : t("Falta vincular tu cuenta: pulsa Vincular y te doy un código."), ...(tg.bot ? [btn(t("Abrir bot"), "open", "telegram-bot")] : []), btn(t("Quitar"), "telegram-logout"), btn(t("Vincular"), "telegram-pair", null, "allow"))
     : row(null, "Telegram", t("Opcional: habla con Nimbo desde el celular. Crea un bot con @BotFather y pega aquí su token."), tgToken, btn(t("Guía"), "open", "telegram-guide"));
   const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, spotify, telegramRow, wa, look, voiceRow, auto];
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));

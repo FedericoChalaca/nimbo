@@ -114,6 +114,8 @@ const NIMBO_EN = {
   "Ese no parece un token de bot de Telegram (se ve así: 123456789:AAH…).": "That does not look like a Telegram bot token (it looks like: 123456789:AAH…).",
   "Telegram no aceptó ese token. Cópialo de nuevo desde @BotFather.": "Telegram did not accept that token. Copy it again from @BotFather.",
   "Token del bot": "Bot token",
+  "Envíale este código a @{0} en Telegram: {1}": "Send this code to @{0} on Telegram: {1}",
+  "Abrir bot": "Open bot",
   "Conectado con @{0}: escríbele a tu bot desde el celular.": "Connected as @{0}: write to your bot from your phone.",
   "Envíale este código a tu bot en Telegram: {0}": "Send this code to your bot on Telegram: {0}",
   "Falta vincular tu cuenta: pulsa Vincular y te doy un código.": "Your account is not linked yet: press Link and I will give you a code.",
