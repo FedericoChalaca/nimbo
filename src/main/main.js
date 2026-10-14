@@ -486,6 +486,7 @@ const remote = createRemoteApi({
   remindersChanged,
   permission: () => pending && { id: pending.remoteId, payload: pending.payload },
   decide: (id, decision) => { if (pending?.remoteId === id) pending.finish(decision); },
+  idle: () => powerMonitor.getSystemIdleTime(),
 });
 
 // --- GitHub: notificaciones con la sesión que ya tiene `gh` (Nimbo no guarda claves) ---

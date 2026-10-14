@@ -42,7 +42,7 @@ const sameToken = (a, b) => {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 };
 
-function createRemoteApi({ tokenFile, ask, dispatch, reminders, remindersChanged, permission, decide, now = Date.now }) {
+function createRemoteApi({ tokenFile, ask, dispatch, reminders, remindersChanged, permission, decide, idle = () => 0, now = Date.now }) {
   const token = readToken(tokenFile);
   const chats = new Map(); // session_id → { id, title, state, step, at }
   const proposals = new Map(); // id → encargo propuesto en la última respuesta de Nimbo
@@ -70,6 +70,8 @@ function createRemoteApi({ tokenFile, ask, dispatch, reminders, remindersChanged
       permission: p ? { id: p.id, chat: String(p.payload?.title || "Claude"), tool: String(p.payload?.tool_name ?? ""), input: p.payload?.tool_input ?? {} } : null,
       pending: reminders.pending().map((r) => ({ id: String(r.id), text: String(r.text), due: r.due || "" })),
       results: [...results],
+      // Lejos del PC (2 min sin tocarlo, como los avisos de Telegram): el puente solo avisa al celular entonces.
+      away: idle() >= 120,
     };
   }
 
@@ -188,6 +190,7 @@ if (require.main === module) {
     remindersChanged: () => changed++,
     permission: () => pending,
     decide: (id, d) => { decided.push([id, d]); pending = null; },
+    idle: () => 300,
     now: () => clock,
   });
   const token = fs.readFileSync(tokenFile, "utf8");
@@ -213,6 +216,7 @@ if (require.main === module) {
       api.onHook({ session_id: "b", hook_event_name: "PostToolUse", title: "Tienda web" });
       let [code, st] = await call("/estado");
       assert.strictEqual(code, 200);
+      assert.strictEqual(st.away, true);
       assert.deepStrictEqual(st.chats.map((c) => [c.id, c.state, c.step]), [["b", "working", "Bash"], ["a", "thinking", ""]]);
       assert.ok(!JSON.stringify(st.chats).includes("npm test"), "el estado no lleva comandos");
       api.onHook({ session_id: "a", hook_event_name: "SessionEnd" });
