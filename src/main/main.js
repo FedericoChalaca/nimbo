@@ -18,7 +18,7 @@ const { askInterview } = require("./interview");
 const { createMusicBar } = require("./musicbar");
 const { createAlerts } = require("./alerts");
 const { createMail, threadUrl } = require("../integrations/mail");
-const { createAi, KEYED, KEY_FORMAT } = require("../integrations/ai");
+const { createAi, pullModel, RECOMMENDED, KEYED, KEY_FORMAT } = require("../integrations/ai");
 const { createTelegram, parseInbox } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
 const { createWhatsapp } = require("../integrations/whatsapp");
@@ -194,7 +194,7 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
   // Spotify con Premium (opcional): el Client ID de TU app de developer.spotify.com (ver spotify-api.js).
   spotifyClientId: "",
   // Entrenador de entrevistas: modelo de tu claude ("" = haiku, el más barato; "sonnet" para un entrenador más exigente).
-  interviewModel: "",
+  interviewModel: "sonnet",
   // Correo (mail.js): Nimbo revisa tu Gmail con el conector de tu claude. Apagado hasta que lo actives en Conexiones.
   mailRead: false,
   // Avisos al celular por Telegram (alerts.js): qué categorías mandan aviso y si solo cuando estás lejos del PC.
@@ -203,8 +203,8 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
   chatProvider: "claude", aiModels: {},
   // Barra flotante de música (musicbar.js): aparece cuando Spotify tiene algo cargado; se mueve y su sitio se guarda.
   musicBar: true, musicBarPos: null,
-  // Modelo del chat de Nimbo, en la isla y en Telegram ("" = el de tu claude; "sonnet" o "haiku" gastan mucho menos).
-  chatModel: "",
+  // Modelo del chat de Nimbo, en la isla y en Telegram ("sonnet" por defecto; "" = el que use tu claude, normalmente el más caro; "haiku" gasta aún menos).
+  chatModel: "sonnet",
   // Telegram (opcional): la cuenta vinculada (0 = ninguna). El token del bot NO va aquí: va cifrado en telegram.bin.
   telegramChat: 0,
   // Plan del día (ver plan.js): dónde está, y la fecha del último plan que ya te mostró.
@@ -314,10 +314,12 @@ const aiSave = () => {
 };
 const ai = createAi({ getKey: (id) => aiLoad()[id] ?? "", models: () => prefs.aiModels ?? {} });
 const aiHistory = new Map(); // id → mensajes de la conversación con esa IA (solo en memoria)
+const ollamaExe = () => path.join(process.env.LOCALAPPDATA ?? "", "Programs", "Ollama", "ollama app.exe");
+let aiPull = null; // la descarga del modelo recomendado en curso: { percent, controller }
 async function aiState() {
   const st = await ai.status();
   const providers = [{ id: "claude", label: "Claude" }, ...st.providers];
-  return { providers, current: providers.some((p) => p.id === prefs.chatProvider) ? prefs.chatProvider : "claude", ollama: st.ollama, keyed: st.keyed };
+  return { installed: fs.existsSync(ollamaExe()), recommended: RECOMMENDED, pull: aiPull ? { percent: aiPull.percent } : null, providers, current: providers.some((p) => p.id === prefs.chatProvider) ? prefs.chatProvider : "claude", ollama: st.ollama, keyed: st.keyed };
 }
 const aiSystem = () => `Eres Nimbo, el compañero de escritorio del usuario (una nube pequeña arriba de su pantalla). Responde en el idioma del usuario, claro y breve (máximo 4 frases salvo que pidan más). No tienes acceso a sus archivos, recordatorios, chats ni a internet: si te lo piden, dilo en una frase y sugiere cambiar a Claude en el selector del chat. Hoy es ${new Date().toLocaleDateString(lang() === "es" ? "es-CO" : "en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`;
 async function askOther(provider, text) {
@@ -345,7 +347,7 @@ ipcMain.handle("ai-providers", () => aiState());
 ipcMain.on("ai-select", async (_e, id) => {
   if ((await aiState()).providers.some((p) => p.id === String(id))) { prefs.chatProvider = String(id); savePrefs(); }
 });
-// --- Correo (opcional, mail.js): tu Gmail por el conector de tu claude, solo lectura. Cada 4 h y al pedirlo. ---
+// --- Correo (opcional, mail.js): tu Gmail por el conector de tu claude, solo lectura. SOLO cuando lo pides (botón ✉, chat o /correo). ---
 const mail = createMail(path.join(app.getPath("userData"), "mail.json"));
 async function refreshMail({ quiet = false } = {}) {
   win?.webContents.send("mail-busy", true);
@@ -359,21 +361,6 @@ async function refreshMail({ quiet = false } = {}) {
 ipcMain.handle("mail", () => ({ on: prefs.mailRead === true, ...mail.cached() }));
 ipcMain.on("mail-refresh", () => { if (prefs.mailRead === true) refreshMail(); });
 ipcMain.on("mail-open", (_e, id) => { const url = threadUrl(id); if (url) shell.openExternal(url); });
-const MAIL_MAX_AGE = 4 * 3600_000;
-let mailTried = 0;
-let mailTries = 0;
-function refreshMailIfStale() {
-  if (prefs.mailRead !== true || mini) return;
-  const at = Date.parse(mail.cached().at || "");
-  if (Date.now() - (Number.isFinite(at) ? at : 0) < MAIL_MAX_AGE) { mailTries = 0; return; }
-  const since = Date.now() - mailTried;
-  if (since < 10 * 60_000 || (mailTries >= 3 && since < 6 * 3600_000)) return; // si falla: 3 intentos y luego espera 6 h
-  if (since >= 6 * 3600_000) mailTries = 0;
-  mailTried = Date.now();
-  mailTries++;
-  refreshMail();
-}
-
 // --- Telegram (opcional, telegram.js): hablar con Nimbo desde el celular. El token del bot va cifrado por Windows. ---
 const telegramTokenFile = path.join(app.getPath("userData"), "telegram.bin");
 let telegramToken; // undefined = aún no se leyó del disco
@@ -600,7 +587,7 @@ function hookCommand() {
   return `"${cmd.replace(/\\/g, "/")}"`;
 }
 // Páginas que el panel puede abrir: una lista fija, la página nunca manda la URL.
-const LINKS = { claude: "https://claude.com/claude-code", gh: "https://cli.github.com", connectors: "https://claude.ai/settings/connectors", spotifyDev: "https://developer.spotify.com/dashboard" };
+const LINKS = { ollama: "https://ollama.com/download", claude: "https://claude.com/claude-code", gh: "https://cli.github.com", connectors: "https://claude.ai/settings/connectors", spotifyDev: "https://developer.spotify.com/dashboard" };
 const loginItem = () => (app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] });
 const ghStatus = () => new Promise((resolve) => {
   execFile("gh", ["auth", "status"], { windowsHide: true, timeout: 10_000 }, (err) => resolve(!err ? "on" : err.code === "ENOENT" ? "missing" : "off"));
@@ -737,6 +724,25 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         aiSave();
         break;
       }
+      case "ollama-open": if (fs.existsSync(ollamaExe())) shell.openPath(ollamaExe()); break;
+      case "ollama-pull": {
+        // Solo el modelo recomendado y solo con el clic del usuario; avisa el avance a la página cada segundo.
+        if (aiPull) break;
+        const controller = new AbortController();
+        aiPull = { percent: 0, controller };
+        let sentAt = 0;
+        pullModel({ name: RECOMMENDED, signal: controller.signal, onProgress: (p) => {
+          if (p.percent !== null) aiPull.percent = p.percent;
+          if (Date.now() - sentAt > 1000) { sentAt = Date.now(); aiState().then((s) => win?.webContents.send("ai", s)); }
+        } }).then(async (r) => {
+          aiPull = null;
+          const s = await aiState();
+          win?.webContents.send("ai", s);
+          if (r.error && r.error !== "cancelled") win?.webContents.send("ai-error", t("No pude descargar el modelo. Revisa tu conexión y que Ollama esté abierto."));
+        });
+        break;
+      }
+      case "ollama-pull-cancel": aiPull?.controller.abort(); break;
       case "ai-key-clear": {
         const id = String(value ?? "");
         if (KEYED.includes(id)) { delete aiLoad()[id]; aiSave(); aiHistory.delete(id); }
@@ -767,6 +773,7 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
 // icono de Nimbo junto al reloj (por si a alguien no le funciona el clic derecho).
 function buildMenu() {
   return Menu.buildFromTemplate([
+    { label: t("Revisar correo"), click: () => win.webContents.send("mail-open-ui") },
     { label: t("Conexiones y ajustes…"), click: () => win.webContents.send("setup-open") },
     { type: "separator" },
     {
@@ -982,8 +989,6 @@ app.whenReady().then(() => {
   watchWhatsapp();
   if (telegram.status().token) telegram.start();
   musicBar.sync(); // si Spotify ya estaba sonando al arrancar
-  setTimeout(refreshMailIfStale, 120_000); // el correo va después de Trello
-  setInterval(refreshMailIfStale, 15 * 60_000);
   setTimeout(refreshTrelloIfStale, 90_000); // después de arrancar, para no competir con el inicio
   setInterval(refreshTrelloIfStale, 15 * 60_000); // reintentos, y por si el PC queda prendido varios días
   setInterval(checkReminders, 15_000);

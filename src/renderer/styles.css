@@ -65,6 +65,11 @@
   /* Botón de WhatsApp en la barra: chats sin leer; late mientras se resume; rojo si hay algo urgente */
   #waBtn { flex: none; position: relative; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px; background: #25d366; color: #05270f;
     font: 800 12px "Segoe UI Variable Text", "Segoe UI", sans-serif; animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both; }
+  #mailBtn { flex: none; position: relative; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px; background: #ea4335; color: #fff;
+    font: 800 12px "Segoe UI Variable Text", "Segoe UI", sans-serif; animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both; }
+  #mailBtn:hover { filter: brightness(1.15); }
+  #mailBtn.busy::after { content: ""; position: absolute; inset: -4px; border-radius: 999px; border: 2px solid transparent;
+    border-top-color: #ea4335; border-right-color: #ea4335; animation: spin .8s linear infinite; }
   #waBtn:hover { filter: brightness(1.15); }
   #waBtn.urgent { background: #ff4d4f; color: #fff; }
   #waBtn.busy::after { content: ""; position: absolute; inset: -4px; border-radius: 999px; border: 2px solid transparent;

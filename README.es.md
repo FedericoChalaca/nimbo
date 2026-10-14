@@ -215,13 +215,13 @@ Qué conviene saber:
 - **Bandeja de pendientes.** `/pendiente comprar pan` (o `/p …`) agrega un pendiente a la lista de Pendientes de Nimbo. Si tu PC estaba apagado, Nimbo anota lo que le enviaste apenas enciende y te lo confirma en Telegram. `/pendientes` los lista y `/hecho 2` marca uno. Telegram guarda los mensajes 24 horas, y solo estas notas se conservan: todo lo demás que enviaste con Nimbo apagado se descarta.
 - **Avisos al celular.** Clic derecho → **Avisos al celular (Telegram)** elige qué te llega: un chat de Claude Code terminó un trabajo de un minuto o más o te necesita, recordatorios, correos importantes y (apagado por defecto) WhatsApp urgente. Solo se manda el título del chat y el nombre de la herramienta, nunca un comando ni el texto de un mensaje, y por defecto solo cuando llevas 2 minutos lejos del PC.
 - `/correo` te dice qué correos importan (paso 13).
-- **Cada mensaje cuesta como uno en el chat de Nimbo**, con el modelo por defecto de tu Claude. Para gastar mucho menos, pon `"chatModel": "sonnet"` (o `"haiku"`) en `%APPDATA%\nimbo\prefs.json`; también aplica al chat de la isla.
+- **Cada mensaje cuesta como uno en el chat de Nimbo.** El chat de Nimbo (la isla y Telegram) corre con Sonnet por defecto, un buen equilibrio entre calidad y costo. Puedes cambiarlo en `%APPDATA%\nimbo\prefs.json`: `"chatModel": "haiku"` gasta aún menos, y vacío `""` usa el que tu Claude tenga por defecto (normalmente el más caro).
 
 ### 12. Otras IAs (opcional)
 
 Además de Claude, el chat puede hablar con otros modelos. Junto al cuadro del chat aparece un selector cuando hay más de uno. Son solo conversación: no leen tus archivos, no crean recordatorios ni ven tus otros chats, y los adjuntos siempre van a Claude.
 
-- **Ollama (gratis, local).** Instala [Ollama](https://ollama.com) y un modelo pequeño, por ejemplo `ollama pull llama3.2:3b` (unos 2 GB). Nimbo lo detecta solo; nada sale de tu PC. Tu tarjeta de video decide qué tan grande puede ser cómodo el modelo.
+- **Ollama (gratis, local).** En la fila **Otras IAs** Nimbo te guía: **Instalar Ollama** abre su página de descarga, **Abrir Ollama** lo enciende y **Descargar modelo gratis** baja `llama3.2:3b` (unos 2 GB, una sola vez) con su porcentaje. No se descarga nada hasta que pulses, y después nada sale de tu PC. O hazlo a mano: Instala [Ollama](https://ollama.com) y un modelo pequeño, por ejemplo `ollama pull llama3.2:3b` (unos 2 GB). Nimbo lo detecta solo; nada sale de tu PC. Tu tarjeta de video decide qué tan grande puede ser cómodo el modelo.
 - **Gemini.** Crea una clave en [Google AI Studio](https://aistudio.google.com/apikey) (Google decide sus límites gratuitos). En Nimbo: clic derecho → **Conexiones** → fila **Otras IAs** → elige Gemini, pega la clave y pulsa Enter.
 - **OpenAI.** Igual, con una clave de tu cuenta de OpenAI (de pago).
 
@@ -235,7 +235,7 @@ Nimbo revisa tu Gmail sin leer y te dice cuáles correos importan, con un resume
 2. En el panel Conexiones de Nimbo, busca **Correo** y pulsa **Activar**. Lo comprueba de verdad (cerca de un minuto) antes de dejarlo encendido.
 3. Cuando haya algo sin leer aparece una píldora roja **Correo**; tócala para ver la lista, los importantes primero, y toca una fila para abrirla en Gmail. Escribe `revisa mi correo` en el chat o `/correo` en Telegram para verla.
 
-Se actualiza cada 4 horas (unos 5 centavos de dólar cada vez con Haiku), o cuando lo pides. El remitente, el asunto y una vista previa van a Anthropic a través de tu propio Claude, como todo lo del chat. Al apagarlo se borra lo que Nimbo había guardado.
+Solo revisa cuando tú lo pides: toca el botón **✉** de la barra (aparece cuando el correo está activo), escribe `revisa mi correo` en el chat, usa **Revisar correo** en el menú o envía `/correo` en Telegram. Cada revisión tarda cerca de un minuto y cuesta unos 5 centavos de dólar. El remitente, el asunto y una vista previa van a Anthropic a través de tu propio Claude, como todo lo del chat. Al apagarlo se borra lo que Nimbo había guardado.
 
 ### Si algo no funciona
 
@@ -255,10 +255,10 @@ Se actualiza cada 4 horas (unos 5 centavos de dólar cada vez con Haiku), o cuan
 - **Chatea con tu Claude.** Escribe, dicta (Whisper local, el audio no sale de tu PC), pega imágenes o suéltale archivos encima.
 - **Ve tu pantalla cuando se lo pides.** Pulsa 🖥 en el chat: toma un pantallazo, te muestra la miniatura y le preguntas lo que necesites ("¿qué significa este error?", "¿dónde hago clic para exportar?"). No hay vista en vivo ni nada automático: una sola foto, solo cuando pulsas el botón, y se envía a tu Claude solo cuando mandas el mensaje.
 - **Otras IAs.** Junto a Claude, el chat puede hablar con un modelo local por Ollama (gratis, nada sale de tu PC), con Gemini o con OpenAI usando tu propia clave. En el chat aparece un selector pequeño. Ver el paso 12.
-- **Correo.** Opcional: Nimbo revisa tu Gmail sin leer (solo lectura, con el conector de Gmail de tu Claude) y te dice cuáles correos importan. Ver el paso 13.
+- **Correo.** Opcional: cuando lo pides (un botón **✉** en la barra), Nimbo revisa tu Gmail sin leer (solo lectura, con el conector de Gmail de tu Claude) y te dice cuáles correos importan. Ver el paso 13.
 - **Avisos al celular.** Por tu propio bot de Telegram, Nimbo te avisa cuando un chat de Claude Code termina un trabajo largo o te necesita, además de recordatorios y correos importantes, solo cuando estás lejos del PC. Telegram también tiene una bandeja de pendientes que se llena aunque tu PC esté apagado. Ver el paso 11.
 - **Una barra flotante de música.** Mientras Spotify tenga algo cargado aparece sola una barrita, separada de la isla: carátula, canción, anterior / pausa / siguiente y un cuadro de búsqueda. Arrástrala a donde quieras (recuerda dónde la dejaste). Ciérrala con la ✕ (vuelve con la siguiente canción), se esconde en modo mini, o apágala en el menú ("Barra de música flotante").
-- **Te entrena para entrevistas.** Escribe `entrenar entrevista para desarrollador junior` (o `practice interview for …`): Nimbo hace una pregunta a la vez, tú contestas escribiendo o dictando, y tu Claude califica la respuesta, te da un consejo y una versión mejor que nunca inventa experiencia, y hace la siguiente pregunta. Di "terminar" para ver tu promedio. Es solo práctica: no se guarda nada. Cada pregunta cuesta cerca de un centavo de tu uso de Claude (Haiku, sin herramientas).
+- **Te entrena para entrevistas.** Escribe `entrenar entrevista para desarrollador junior` (o `practice interview for …`): Nimbo hace una pregunta a la vez, tú contestas escribiendo o dictando, y tu Claude califica la respuesta, te da un consejo y una versión mejor que nunca inventa experiencia, y hace la siguiente pregunta. Di "terminar" para ver tu promedio. Es solo práctica: no se guarda nada. Con Sonnet (el modelo por defecto) una pregunta cuesta menos de un centavo y una evaluación unos 2 centavos.
 - **Orquesta.** Conoce tus chats: si pides algo que le toca a otro proyecto, redacta el prompt para ese chat y lo envía solo cuando tú confirmas.
 - **Recordatorios.** "Recuérdame mañana a las 9 enviar la factura": avisa en la isla y con una notificación de Windows.
 - **Dos apariencias.** Una nube con cara o una esfera de puntos estilo JARVIS.

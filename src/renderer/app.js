@@ -27,6 +27,7 @@ const wrap = document.getElementById("wrap");
 const content = document.getElementById("content");
 const pips = document.getElementById("pips");
 const waBtn = document.getElementById("waBtn");
+const mailBtn = document.getElementById("mailBtn");
 const measure = document.getElementById("measure");
 const badge = document.getElementById("badge");
 
@@ -59,7 +60,7 @@ function layout() {
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
     measure.textContent = text;
-    const pipsW = (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10);
+    const pipsW = (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10) + (mailBtn.classList.contains("hidden") ? 0 : mailBtn.offsetWidth + 8);
     // El texto ocupa lo que quepa (el resto se corta con "…"): la isla no pasa de MAX_W.
     const textW = text ? Math.min(measure.offsetWidth, 270, MAX_W - 116 - 12 - pipsW - 16) : 0;
     w = text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150;
@@ -443,7 +444,7 @@ function appsList() {
   if (dayPlan) out.push({ id: "plan", name: t("Plan"), color: "#2dd4bf", count: dayPlan.solos + dayPlan.teNecesitan });
   if (github !== null) out.push({ id: "github", name: "GitHub", color: "#a371f7", count: github.length });
   if (media) out.push({ id: "spotify", name: "Spotify", color: "#1db954", count: 1, badge: media.playing ? "♪" : "❚❚" });
-  if (mailData?.on && mailData.emails.length) out.push({ id: "mail", name: t("Correo"), color: "#ea4335", count: mailData.emails.length });
+  if (mailData?.on) out.push({ id: "mail", name: t("Correo"), color: "#ea4335", count: mailData.emails.length || 1, badge: String(mailData.emails.length) });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
   return out.filter((a) => a.count > 0);
@@ -560,11 +561,12 @@ function renderAppView() {
   } else if (app.id === "mail") {
     const imp = mailData.emails.filter((e) => e.important).length;
     head.append(el("span", "sub", t("{0} sin leer · {1} importantes", mailData.emails.length, imp)));
-    const again = el("button", "", mailBusy ? t("Revisando…") : t("Actualizar"));
+    const again = el("button", "", mailBusy ? t("Revisando…") : t("Revisar ahora"));
     again.type = "button";
     again.onclick = () => api.mailRefresh();
     head.append(again);
     const list = el("div", "alist");
+    if (!mailData.emails.length) list.append(el("div", "afoot", mailBusy ? t("Revisando…") : t("No tienes correos sin leer. 📭")));
     for (const e of mailData.emails) {
       const r = el("div", "arow link");
       r.title = e.subject;
@@ -574,7 +576,7 @@ function renderAppView() {
       r.append(el("span", `chip2 cnt ${e.important ? "amber" : ""}`, e.important ? "★" : "·"), name);
       list.append(r);
     }
-    rows.push(list, el("div", "afoot", t("Actualizado {0}", fmtDue(mailData.at))));
+    rows.push(list, el("div", "afoot", mailData.at ? t("Actualizado {0}", fmtDue(mailData.at)) : t("Revisando…")));
   } else if (app.id === "spotify") {
     head.append(el("span", "sub", media.album));
     const find = el("button", "", t("Buscar"));
@@ -813,12 +815,34 @@ function onMail(d) {
   mailData = d;
   for (const e of d?.emails ?? []) seenMail.add(e.id);
   if (fresh && !first && !mini) setState(state, `✉ ${fresh.from}: ${fresh.subject}`.slice(0, 80), { labelFor: 6000 });
+  updateMailBtn();
   renderApps();
   if (openApp === "mail") renderAppView();
 }
+// El botón ✉ de la barra: visible mientras el correo esté activado; gira mientras revisa y muestra cuántos importan.
+function updateMailBtn() {
+  const show = mailData?.on === true;
+  if (show === mailBtn.classList.contains("hidden")) { mailBtn.classList.toggle("hidden", !show); relayout(); }
+  const n = (mailData?.emails ?? []).filter((e) => e.important).length;
+  mailBtn.textContent = n ? `✉ ${n}` : "✉";
+  mailBtn.classList.toggle("busy", mailBusy);
+}
+// Tocar el botón ES pedir el correo: se abre la lista con lo último que había y se vuelve a revisar (si pasaron 2 min).
+function openMail() {
+  if (mini || !card.classList.contains("hidden")) return;
+  if (!mailData?.on) return; // apagado: el botón ni se ve (se activa en Conexiones)
+  lastActivity = Date.now();
+  toggleChat(false);
+  appsBox.classList.remove("hidden");
+  openApp = openApp === "mail" ? null : "mail";
+  if (openApp === "mail" && !mailBusy && !(Date.now() - Date.parse(mailData.at || 0) < 120_000)) api.mailRefresh();
+  renderApps();
+  renderAppView();
+}
+api.onMailOpenUi(() => { if (!mailData?.on) openSetup(); else if (openApp !== "mail") openMail(); }); // desde el menú: apagado lleva a Conexiones, donde se activa
 api.mail().then(onMail);
 api.onMail(onMail);
-api.onMailBusy((b) => { mailBusy = b; if (openApp === "mail") renderAppView(); });
+api.onMailBusy((b) => { mailBusy = b; updateMailBtn(); if (openApp === "mail") renderAppView(); });
 // "revisa mi correo": abre la lista (y la vuelve a pedir si tiene más de 30 min).
 const MAIL_ASK = /^\W*(?:(?:revisa|mira|abre|dame|mu[eé]strame|c[oó]mo (?:va|est[aá])n?)\s+(?:mi\s+|mis\s+|el\s+|los\s+)?(?:correos?|e-?mails?|mail|gmail|bandeja de entrada)|(?:check|show)\s+(?:my\s+)?(?:e-?mail|mail|gmail|inbox))\W*$/i;
 function answerMail() {
@@ -826,10 +850,10 @@ function answerMail() {
     answer.replaceChildren(el("div", "reply", t("El correo está apagado: actívalo en Conexiones (necesita el conector de Gmail de tu Claude).")));
     return answerBox.classList.remove("hidden");
   }
-  if (!(Date.now() - Date.parse(mailData.at || 0) < 30 * 60_000)) api.mailRefresh();
+  if (!mailBusy) api.mailRefresh(); // lo pediste: se revisa ahora
   appsBox.classList.remove("hidden");
-  openApp = mailData.emails.length ? "mail" : null;
-  answer.replaceChildren(el("div", "reply", mailData.emails.length ? t("Estos son tus correos sin leer:") : t("No tienes correos sin leer. 📭")));
+  openApp = "mail";
+  answer.replaceChildren(el("div", "reply", t("Revisando tu correo…")));
   answerBox.classList.remove("hidden");
   renderApps(); renderAppView();
 }
@@ -1172,13 +1196,19 @@ function renderSetup(s) {
   aiKey.autocomplete = "off";
   aiKey.onchange = () => { if (aiKey.value.trim()) act("ai-key", `${aiProv.value}:${aiKey.value.trim()}`); };
   const others = ai.providers.filter((p) => p.id !== "claude");
-  const aiText = others.length ? t("Disponibles: {0}. Elige cuál usar en el selector del chat.", others.map((p) => `${p.label} (${p.model})`).join(", "))
-    : ai.ollama === "empty" ? t("Ollama no tiene ningún modelo: instala uno con `ollama pull llama3.2:3b`. O pega una clave de Gemini u OpenAI.")
-    : t("Opcional: otras IAs en el chat. Instala Ollama (gratis, local) o pega una clave de Gemini u OpenAI.");
-  const aiRow = row(others.length ? true : null, t("Otras IAs"), aiText, aiProv, aiKey,
+  // Ollama en pocos clics para quien llega nuevo: instalarlo, abrirlo y descargar un modelo (con su peso a la vista), todo desde aquí.
+  const aiText = ai.pull ? t("Descargando {0}… {1} % (puedes seguir usando Nimbo).", ai.recommended, ai.pull.percent)
+    : others.length ? t("Disponibles: {0}. Elige cuál usar en el selector del chat.", others.map((p) => `${p.label} (${p.model})`).join(", "))
+    : ai.ollama === "empty" ? t("Ollama está listo pero sin ningún modelo: descarga uno gratis con un clic (≈2 GB, una sola vez) o pega una clave de Gemini u OpenAI.")
+    : ai.installed ? t("Ollama está instalado pero cerrado: ábrelo para usar una IA gratis en tu PC, o pega una clave de Gemini u OpenAI.")
+    : t("Opcional: una IA gratis en tu PC. Instala Ollama (gratis) y descarga un modelo con un clic, o pega una clave de Gemini u OpenAI.");
+  const ollamaBtns = ai.pull ? [btn(t("Cancelar descarga"), "ollama-pull-cancel")]
+    : ai.ollama === "empty" ? [btn(t("Descargar modelo gratis (≈2 GB)"), "ollama-pull", null, "allow")]
+    : ai.ollama === "off" ? [ai.installed ? btn(t("Abrir Ollama"), "ollama-open") : btn(t("Instalar Ollama (gratis)"), "open", "ollama")] : [];
+  const aiRow = row(others.length ? true : null, t("Otras IAs"), aiText, ...ollamaBtns, aiProv, aiKey,
     ...["gemini", "openai"].filter((id) => ai.keyed?.[id]).map((id) => btn(t("Quitar {0}", id === "gemini" ? "Gemini" : "OpenAI"), "ai-key-clear", id)), btn(t("Guía"), "open", "ai-guide"));
   // Correo: tu Gmail por el conector de tu Claude (solo lectura). Apagado hasta que lo activas; al activarlo se comprueba de verdad.
-  const mailRow = s.mail?.on ? row(true, t("Correo"), t("Revisa tus correos sin leer cada 4 horas y te dice cuáles importan: {0} sin leer, {1} importantes.", s.mail.count, s.mail.important), btn(t("Revisar ahora"), "mail-refresh"), btn(t("Apagar"), "mail-off"))
+  const mailRow = s.mail?.on ? row(true, t("Correo"), t("Solo revisa cuando tú lo pides: toca el botón ✉ de la barra, escribe «revisa mi correo» o usa /correo en Telegram. Ahora: {0} sin leer, {1} importantes.", s.mail.count, s.mail.important), btn(t("Revisar ahora"), "mail-refresh"), btn(t("Apagar"), "mail-off"))
     : row(null, t("Correo"), t("Opcional: Nimbo revisa tu Gmail (solo lectura, con el conector de Gmail de tu Claude) y te dice cuáles correos importan."), btn("claude.ai", "open", "connectors"), btn(t("Activar"), "mail-on", null, "allow"));
   const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, mailRow, spotify, telegramRow, aiRow, wa, look, voiceRow, auto];
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));
@@ -1216,6 +1246,7 @@ let clickTimer;
 wrap.addEventListener("click", (e) => {
   if (e.target.closest("#menuBtn")) return api.menu();
   if (e.target.closest("#waBtn")) return openWaSummary();
+  if (e.target.closest("#mailBtn")) return openMail();
   // composedPath y no closest(): una píldora se redibuja en su propio clic, y para cuando el
   // evento llega aquí el botón ya no está en la página (closest daba null y se abría el chat).
   if (e.composedPath().includes(content) || suppressClick) return;
@@ -1563,7 +1594,8 @@ function applyAi(r) {
 }
 aiSelect.onchange = () => { api.aiSelect(aiSelect.value); aiLabel = aiSelect.selectedOptions[0]?.textContent ?? "Claude"; resetPlaceholder(); };
 api.aiProviders().then(applyAi);
-api.onAi(applyAi);
+api.onAi((r) => { applyAi(r); if (!setupBox.classList.contains("hidden")) api.setup().then(renderSetup); });
+api.onAiError((m) => { setState(state, m.slice(0, 80), { labelFor: 6000 }); if (!setupBox.classList.contains("hidden")) api.setup().then(renderSetup); });
 
 chat.addEventListener("submit", async (e) => {
   e.preventDefault();

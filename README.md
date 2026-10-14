@@ -215,13 +215,13 @@ What to know:
 - **To-do inbox.** `/pendiente buy bread` (or `/p …`) adds a to-do to Nimbo's Pending list. If your PC was off, Nimbo adds what you sent as soon as it turns on and confirms in Telegram. `/pendientes` lists them and `/hecho 2` checks one off. Telegram keeps messages for 24 hours, and only these notes are kept: everything else you sent while Nimbo was off is discarded.
 - **Phone alerts.** Right-click → **Phone alerts (Telegram)** chooses what reaches you: a Claude Code chat finished a job of a minute or more or needs you, reminders, important emails, and (off by default) urgent WhatsApp. Only the chat title and the tool name are sent, never a command or a message text, and by default only when you have been away from the PC for 2 minutes.
 - `/correo` tells you which emails matter (step 13).
-- **Each message costs like a message in Nimbo's chat**, with your Claude's default model. To spend much less, set `"chatModel": "sonnet"` (or `"haiku"`) in `%APPDATA%\nimbo\prefs.json`; it applies to the island chat too.
+- **Each message costs like a message in Nimbo's chat.** Nimbo's chat (the island and Telegram) runs on Sonnet by default, a good balance of quality and cost. You can change it in `%APPDATA%\nimbo\prefs.json`: `"chatModel": "haiku"` spends even less, and an empty `""` uses whatever your Claude uses by default (usually the most expensive).
 
 ### 12. Other AIs (optional)
 
 Besides Claude, the chat can talk to other models. A selector appears next to the chat box when there is more than one. They are chat only: they cannot read your files, make reminders or see your other chats, and attachments always go to Claude.
 
-- **Ollama (free, local).** Install [Ollama](https://ollama.com) and a small model, for example `ollama pull llama3.2:3b` (about 2 GB). Nimbo detects it by itself; nothing leaves your PC. Your graphics card decides how big a model is comfortable.
+- **Ollama (free, local).** In the **Other AIs** row Nimbo walks you through it: **Install Ollama** opens its download page, **Open Ollama** starts it, and **Download a free model** gets `llama3.2:3b` (about 2 GB, only once) with a progress percentage. Nothing is downloaded until you click, and nothing leaves your PC afterwards. Or do it by hand: Install [Ollama](https://ollama.com) and a small model, for example `ollama pull llama3.2:3b` (about 2 GB). Nimbo detects it by itself; nothing leaves your PC. Your graphics card decides how big a model is comfortable.
 - **Gemini.** Create a key in [Google AI Studio](https://aistudio.google.com/apikey) (Google decides its free limits). In Nimbo: right-click → **Connections** → **Other AIs** row → pick Gemini, paste the key, press Enter.
 - **OpenAI.** Same, with a key from your OpenAI account (paid).
 
@@ -235,7 +235,7 @@ Nimbo checks your unread Gmail and tells you which emails matter, with a one-lin
 2. In Nimbo's Connections panel, find **Email** and click **Activate**. It checks for real (about a minute) before staying on.
 3. A red **Email** pill appears when there is something unread; click it to see the list, most important first, and click a row to open it in Gmail. Type `check my email` in the chat or `/correo` in Telegram to see it.
 
-It refreshes every 4 hours (about 5 US cents each with Haiku), or when you ask. Sender, subject and a preview go to Anthropic through your own Claude, like everything else in the chat. Turning it off deletes what Nimbo saved.
+It only checks when you ask: click the **✉** button on the bar (it appears once Email is on), type `check my email` in the chat, use **Check email** in the menu, or send `/correo` in Telegram. Each check takes about a minute and costs around 5 US cents. Sender, subject and a preview go to Anthropic through your own Claude, like everything else in the chat. Turning it off deletes what Nimbo saved.
 
 ### If something does not work
 
@@ -255,10 +255,10 @@ It refreshes every 4 hours (about 5 US cents each with Haiku), or when you ask. 
 - **Chats with your Claude.** Type, dictate (local Whisper, no audio leaves your PC), paste images, or drop files on it.
 - **Sees your screen when you ask.** Click 🖥 in the chat: it takes one screenshot, shows you the thumbnail, and you ask what you need ("what does this error mean?", "where do I click to export?"). No live view and nothing automatic: one picture, only when you press the button, sent to your Claude only when you send the message.
 - **Other AIs.** Next to Claude, the chat can talk to a local model through Ollama (free, nothing leaves your PC), to Gemini or to OpenAI with your own key. A small selector appears in the chat. See step 12.
-- **Email.** Optional: Nimbo checks your unread Gmail (read-only, with your Claude's Gmail connector) and tells you which emails matter. See step 13.
+- **Email.** Optional: when you ask (a **✉** button on the bar), Nimbo checks your unread Gmail (read-only, with your Claude's Gmail connector) and tells you which emails matter. See step 13.
 - **Phone alerts.** Through your own Telegram bot, Nimbo tells you when a Claude Code chat finishes a long job or needs you, plus reminders and important emails, only when you are away from the PC. Telegram also has a to-do inbox that fills even while your PC is off. See step 11.
 - **A floating music bar.** While Spotify has something loaded, a small bar appears on its own, separate from the island: cover, song, previous / pause / next, and a search box. Drag it anywhere (it remembers where). Close it with the ✕ (it comes back with the next song), it hides in mini mode, or turn it off in the menu ("Floating music bar").
-- **Trains you for interviews.** Type `practice interview for junior developer` (or `entrenar entrevista para …`): Nimbo asks one question at a time, you answer by typing or dictating, and your Claude scores the answer, gives one tip and a better version that never invents experience, then asks the next question. Say "end" to see your average. It is practice only: nothing is saved. Each question costs about a cent of your Claude usage (Haiku, no tools).
+- **Trains you for interviews.** Type `practice interview for junior developer` (or `entrenar entrevista para …`): Nimbo asks one question at a time, you answer by typing or dictating, and your Claude scores the answer, gives one tip and a better version that never invents experience, then asks the next question. Say "end" to see your average. It is practice only: nothing is saved. With Sonnet (the default) a question costs under a cent and an evaluation about 2 cents.
 - **Orchestrates.** It knows your chats: ask for something that belongs to another project and it drafts the prompt for that chat, and sends it only when you confirm.
 - **Reminders.** "Remind me tomorrow at 9 to send the invoice": it alerts on the island and with a Windows notification.
 - **Two looks.** A cloud with a face, or a JARVIS-style sphere of connected dots.

@@ -17,6 +17,7 @@ const KEYED = ["gemini", "openai"];
 const KEY_FORMAT = /^[A-Za-z0-9_.-]{20,200}$/;
 const MAX_HISTORY = 12; // mensajes (6 idas y vueltas) que se le repiten al modelo
 const MAX_REPLY = 4000;
+const RECOMMENDED = "llama3.2:3b"; // el modelo que se ofrece descargar (≈2 GB): cabe en una tarjeta de 4 GB y habla español
 
 const str = (v, max) => String(v ?? "").trim().slice(0, max);
 
@@ -98,7 +99,49 @@ function createAi({ getKey, models = () => ({}), bases = {}, fetch: doFetch = fe
   };
 }
 
-module.exports = { createAi, trimHistory, buildMessages, cleanReply, KEYED, KEY_FORMAT, PRESETS };
+/** Una línea del avance de `ollama pull` (JSON por línea) → { percent, status, error, done }. */
+function parsePullLine(line) {
+  let j;
+  try { j = JSON.parse(line); } catch { return null; }
+  if (!j || typeof j !== "object") return null;
+  const total = Number(j.total), completed = Number(j.completed);
+  return { error: typeof j.error === "string" ? str(j.error, 160) : "", status: str(j.status, 60), done: j.status === "success",
+    percent: total > 0 && completed >= 0 ? Math.min(100, Math.floor((completed / total) * 100)) : null };
+}
+
+/**
+ * Descarga un modelo con Ollama (`POST /api/pull`). SOLO lo pide el usuario con un clic, y el nombre lo fija main.js
+ * (nunca la página). Devuelve { ok: true } o { error }.
+ */
+async function pullModel({ base = PRESETS.ollama.base, name = RECOMMENDED, onProgress = () => {}, signal, fetch: doFetch = fetch }) {
+  let r;
+  try { r = await doFetch(`${new URL(base).origin}/api/pull`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: name, stream: true }), signal }); }
+  catch { return { error: signal?.aborted ? "cancelled" : "offline" }; }
+  if (!r.ok || !r.body) return { error: "fail" };
+  let buf = "";
+  let ended = false;
+  const decoder = new TextDecoder();
+  try {
+    for await (const chunk of r.body) {
+      buf += decoder.decode(chunk, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const p = parsePullLine(buf.slice(0, i).trim());
+        buf = buf.slice(i + 1);
+        if (!p) continue;
+        if (p.error) return { error: p.error };
+        onProgress(p);
+        if (p.done) ended = true;
+      }
+    }
+  } catch { return { error: signal?.aborted ? "cancelled" : "offline" }; }
+  const last = parsePullLine(buf.trim());
+  if (last?.error) return { error: last.error };
+  if (last?.done) ended = true;
+  return ended ? { ok: true } : { error: "fail" };
+}
+
+module.exports = { createAi, pullModel, parsePullLine, RECOMMENDED, trimHistory, buildMessages, cleanReply, KEYED, KEY_FORMAT, PRESETS };
 
 // Autoprueba (sin internet, con servidores de mentira en tu PC): `node src/integrations/ai.js`
 if (require.main === module) (async () => {
@@ -177,6 +220,30 @@ if (require.main === module) (async () => {
   assert.strictEqual(await ai.verify("gemini", "BAD-KEY-1234567890-abcdefgh"), false);
   assert.strictEqual(await ai.verify("gemini", "corta"), false);
   assert.strictEqual(await ai.verify("ollama", "GOOD-KEY-1234567890-abcdef"), false);
+  // La descarga de un modelo: el avance llega por líneas (partidas a la mitad entre trozos), y los errores se entienden.
+  const pull = http.createServer((req, res) => {
+    let body = ""; req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const model = JSON.parse(body).model;
+      if (model === "no-existe") { res.writeHead(200); return res.end(JSON.stringify({ error: "pull model manifest: file does not exist" }) + "\n"); }
+      if (model === "roto") { res.writeHead(500); return res.end("x"); }
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      const lines = [{ status: "pulling manifest" }, { status: "pulling aaa", total: 1000, completed: 250 }, { status: "pulling aaa", total: 1000, completed: 1000 }, { status: "verifying sha256 digest" }, { status: "success" }].map((l) => JSON.stringify(l) + "\n").join("");
+      res.write(lines.slice(0, 40)); setTimeout(() => { res.write(lines.slice(40, 95)); setTimeout(() => res.end(lines.slice(95)), 15); }, 15); // cortado a mitad de línea
+    });
+  });
+  await new Promise((r) => pull.listen(0, "127.0.0.1", r));
+  const pbase = `http://127.0.0.1:${pull.address().port}/v1`;
+  const steps = [];
+  assert.deepStrictEqual(await pullModel({ base: pbase, onProgress: (p) => steps.push(p.percent) }), { ok: true });
+  assert.deepStrictEqual(steps.filter((x) => x !== null), [25, 100]);
+  assert.deepStrictEqual(await pullModel({ base: pbase, name: "no-existe" }), { error: "pull model manifest: file does not exist" });
+  assert.deepStrictEqual(await pullModel({ base: pbase, name: "roto" }), { error: "fail" });
+  assert.deepStrictEqual(await pullModel({ base: "http://127.0.0.1:1/v1" }), { error: "offline" });
+  const stop = new AbortController(); stop.abort();
+  assert.deepStrictEqual(await pullModel({ base: pbase, signal: stop.signal }), { error: "cancelled" });
+  assert.deepStrictEqual([parsePullLine("no es json"), parsePullLine("5"), parsePullLine('{"status":"success"}').done, parsePullLine('{"total":10,"completed":5}').percent, parsePullLine('{"total":10,"completed":99}').percent], [null, null, true, 50, 100]);
+  pull.close();
   // El modelo que fija el usuario manda.
   assert.strictEqual((await createAi({ getKey: () => "", models: () => ({ ollama: "qwen2.5:7b" }), bases: { ollama: `${origin}/ol` } }).chat("ollama", [], "x", "S")).model, "qwen2.5:7b");
   server.close();

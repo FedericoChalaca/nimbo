@@ -54,7 +54,7 @@ async function askInterview(raw, { lang = "es", model } = {}) {
   if (!req.role) return { error: true };
   const cwd = path.join(os.tmpdir(), "nimbo-interview");
   fs.mkdirSync(cwd, { recursive: true });
-  const args = ["-p", "--output-format", "json", "--json-schema", SCHEMA, "--model", str(model, 40) || "haiku", "--system-prompt", SYSTEM,
+  const args = ["-p", "--output-format", "json", "--json-schema", SCHEMA, "--model", str(model, 40) || "sonnet", "--system-prompt", SYSTEM,
     "--tools", "", "--strict-mcp-config", "--setting-sources", "project", "--no-session-persistence",
     // Esfuerzo bajo: sin esto una evaluación llegó a tardar 71 s y costar 0,05 USD (4 veces lo normal) por "pensar" de más;
     // el tope corta cualquier turno que se salga de control.

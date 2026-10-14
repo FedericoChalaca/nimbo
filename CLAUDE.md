@@ -13,7 +13,7 @@ Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el con
   pendientes y avisos de Telegram, otras IAs y correo. Sería la 0.8.0.
 - **Hecho:** hooks y permisos, chat y orquestador, recordatorios, GitHub, Trello por tableros, WhatsApp de solo lectura, voz, plan del día,
   ver la pantalla, Spotify (tarjeta, búsqueda, Premium), barra flotante de música, entrenador de entrevistas, Telegram (chat, bandeja, avisos),
-  otras IAs (Ollama/Gemini/OpenAI), correo de Gmail, instalador, CI, español e inglés.
+  otras IAs (Ollama/Gemini/OpenAI, con Ollama de un clic), correo de Gmail a pedido (botón ✉), chats en Sonnet, instalador, CI, español e inglés.
 - **Sin verificar con uso real:** el instalador instalado (último probado de verdad: 0.3.2), la bandeja de Windows y el botón ⋮, arrastrar la barra
   de música y que recuerde su sitio, dictado/chat/WhatsApp en inglés, el sonido de las dos voces, `scripts/promo/promo-main.js`; las otras IAs
   con un modelo REAL (el Ollama del dueño no tiene ninguno instalado y no hay claves), y los avisos al celular y `/correo`/`/pendiente` con su
@@ -196,8 +196,7 @@ en curso. El aviso de "vence en < 24 h" solo mira tableros ya abiertos. El video
 `prefs.chatProvider` elige cuál habla; el selector del chat (`#ai`) aparece cuando hay más de uno y `ask` (main) enruta: con adjuntos SIEMPRE va a
 Claude; sin ellos, a la IA elegida (historial solo en memoria, 12 mensajes, se borra con "Nueva conversación"). Solo conversación: ni archivos, ni
 recordatorios, ni `dispatch`. Las claves de Gemini/OpenAI van cifradas con `safeStorage` en `ai-keys.bin` (JSON), se verifican con `GET /models` antes de
-guardarse y nunca salen en un error. Probado con el adaptador y servidores falsos, la UI y rechazo de claves; SIN probar con un modelo real porque el Ollama del
-dueño NO tiene ningún modelo instalado (ya no está llama3.2:3b: los resúmenes de WhatsApp caen a Claude) y no hay claves.
+guardarse y nunca salen en un error. Probado con el adaptador y servidores falsos, la UI y rechazo de claves; **Ollama de un clic para quien llega nuevo** (fila "Otras IAs"): sin Ollama → "Instalar Ollama" (abre ollama.com/download, nunca ejecuta nada); instalado y cerrado → "Abrir Ollama" (`ollama app.exe` en `%LOCALAPPDATA%\Programs\Ollama`); sin modelo → "Descargar modelo gratis (≈2 GB)": `pullModel` (`POST /api/pull`, avance en NDJSON, % en el panel, cancelable) SOLO con el clic y SOLO el modelo `RECOMMENDED` = llama3.2:3b (el nombre lo fija main, nunca la página). Probado el protocolo con un servidor falso y contra el Ollama real con un modelo inexistente (entiende el error, no descarga). SIN probar una descarga completa ni una respuesta de un modelo real: el Ollama del dueño NO tiene ningún modelo (ya no está llama3.2:3b: los resúmenes de WhatsApp caen a Claude) y no hay claves; él pidió NO descargarlo por él.
 **Bandeja de pendientes de Telegram:** `/pendiente <texto>` (o `/p`, `/anotar`, `/tarea`; `parseInbox` en telegram.js) agrega a `reminders` sin fecha (la píldora
 Pendientes); `/pendientes` lista y `/hecho <n>` completa. Con Nimbo apagado Telegram guarda los mensajes 24 h; al arrancar `prime()` los lee TODOS (hasta 500):
 las notas `/pendiente` de la cuenta vinculada se anotan (`onBacklog`) y se confirma; el resto se descarta (sigue la regla de no ejecutar nada viejo) y se avisa.
@@ -209,8 +208,7 @@ Se configura en el menú "Avisos al celular (Telegram)" → `prefs.telegramAlert
 **Correo** (`src/integrations/mail.js`, autoprueba sin red; `... live` revisa tu Gmail de verdad y solo imprime cantidades, CUESTA ~0,05 USD): como Trello pero con
 Gmail. Al `claude -p` solo se le permite `search_threads` (ya devuelve remitente, asunto y vista previa: nunca se abre el cuerpo) y se prohíben por nombre las otras
 27 herramientas de Gmail (enviar, responder, reenviar, borrar, etiquetar, borradores); los demás conectores se excluyen con `connectors()`; Haiku, `--effort low`, tope
-0,15 USD. `prefs.mailRead` (apagado hasta activarlo en Conexiones; al activar se revisa de verdad 15–60 s). Cada 4 h (`refreshMailIfStale`, 3 intentos y luego 6 h) y al
-pedirlo (píldora "Correo", "revisa mi correo", `/correo`). Importantes nuevos → `alerts.notify("mail")` (la primera revisión al activar no avisa). `mail-open` abre
+0,15 USD. `prefs.mailRead` (apagado hasta activarlo en Conexiones; al activar se revisa de verdad 15–60 s). SOLO cuando lo pides (decisión del dueño, 2026-10-14: no hay revisión automática): botón ✉ de la barra (`#mailBtn`, visible mientras `mailRead`; tocarlo ES pedirlo y vuelve a revisar si pasaron 2 min), "revisa mi correo", entrada "Revisar correo" del menú, `/correo` y "Revisar ahora" en Conexiones. Importantes nuevos → `alerts.notify("mail")` (la primera revisión al activar no avisa). `mail-open` abre
 `https://mail.google.com/mail/u/0/#inbox/<id>` solo con un id hexadecimal. Apagar borra `mail.json`. Probado con Gmail real: 6 sin leer, 3 importantes, 47–56 s.
 **Barra flotante de música** (`src/main/musicbar.js` + `player-preload.js` + `src/renderer/player.{html,css,js}`; `node src/main/musicbar.js` = autoprueba
 sin Electron): una SEGUNDA ventana (sin marco, transparente, siempre arriba en nivel "floating", `showInactive` para no robar el foco)
@@ -229,7 +227,7 @@ pega el token en Conexiones (`setup-do telegram-token`: se valida con `getMe` y 
 intentos; `telegram-pair`). Solo atiende UNA cuenta (`prefs.telegramChat`), solo chats privados de personas; lo demás se ignora SIN
 responder. Al arrancar descarta lo pendiente (`prime`) y avisa si era suyo. Los mensajes van a `askNimbo` (la MISMA conversación que
 la isla; una cola evita dos `ask` a la vez) y /plan se contesta desde `plan`. Los `dispatch` (encargos a otros chats) NO se envían
-desde Telegram: solo se listan. `prefs.chatModel` ("sonnet"/"haiku") baja el costo de TODO el chat de Nimbo. Telegram ve el texto (los
+desde Telegram: solo se listan. `prefs.chatModel` (defecto "sonnet" desde 2026-10-14; "" = el modelo de su `claude`, Opus en este equipo, el más caro; "haiku") rige TODO el chat de Nimbo (isla y Telegram). Las extracciones (WhatsApp, Trello, correo, búsqueda de Spotify) siguen en Haiku. Telegram ve el texto (los
 bots no tienen cifrado de punta a punta): está en PRIVACY.md. Probado: autoprueba (incluye mutación: sin el filtro de cuenta ajena
 falla), la fila de Conexiones en sus 3 estados, rechazo de tokens mal formados y de uno falso (401 real). SIN probar con un bot real:
 hace falta que el dueño cree uno.
@@ -237,9 +235,9 @@ hace falta que el dueño cree uno.
 CUESTA centavos): en el chat, "entrenar entrevista para <puesto>" / "interview me for …" (`INTERVIEW_START` en `app.js`; si falta el
 puesto lo pregunta). Mientras `interview` (variable de la página) está activo, lo que se escribe es la respuesta; "terminar" sale
 con promedio y consejos, "siguiente" pasa a otra pregunta. Cada turno es una llamada `claude -p` SIN estado: puesto + últimas 6
-preguntas recortadas + la respuesta; `--model haiku` (`prefs.interviewModel` lo cambia), `--tools ""`, `--strict-mcp-config`,
-`--setting-sources project`, `--effort low` y `--max-budget-usd 0.10`. Medido el 2026-10-13: pregunta ~8–10 s y ~0,006 USD;
-evaluación 14–70 s y 0,009–0,05 USD (sin `--effort low` llegó a 71 s y 0,052: el modelo "pensaba" de más). El modelo devuelve
+preguntas recortadas + la respuesta; `--model sonnet` (`prefs.interviewModel` lo cambia; Sonnet es el defecto desde 2026-10-14), `--tools ""`, `--strict-mcp-config`,
+`--setting-sources project`, `--effort low` y `--max-budget-usd 0.10`. Medido con Sonnet el 2026-10-14: pregunta ~5 s y ~0,008 USD; evaluación ~11 s y ~0,017 USD.
+Con Haiku (2026-10-13) variaba mucho: 14–70 s y 0,009–0,05 USD (sin `--effort low` llegó a 71 s y 0,052: "pensaba" de más), y salía MÁS caro y lento que Sonnet. El modelo devuelve
 `{feedback, tip, score, better, next}` y `cleanTurn` lo valida; "better" conserva los hechos del candidato y deja [dato] donde falta.
 Solo se dice en voz alta la pregunta (la cuota de voz se paga por letra). Decisión del dueño: es práctica; NO se construye ningún
 modo oculto para entrevistas reales. El dictado existente (🎤) sirve para contestar hablando.
