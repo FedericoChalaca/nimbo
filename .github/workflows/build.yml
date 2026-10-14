@@ -53,6 +53,12 @@ jobs:
       - name: Prueba de humo (abre Nimbo de verdad en una pantalla virtual)
         run: xvfb-run -a node scripts/smoke.js
       - run: npx electron-builder --linux --publish never
+      - name: Prueba del paquete .deb ya instalado (los hooks de punta a punta)
+        run: |
+          sudo apt-get install -y ./dist/Nimbo-linux-x64.deb
+          dpkg -L nimbo | grep -E "/nimbo$" | head -5
+          EXE=$(dpkg -L nimbo | grep -E "^/opt/.*/nimbo$" | head -1)
+          NIMBO_SMOKE_EXE="$EXE" xvfb-run -a node scripts/smoke.js
       - uses: actions/upload-artifact@v4
         with:
           name: Nimbo-Linux
@@ -80,18 +86,21 @@ jobs:
       - name: Prueba de humo (abre Nimbo de verdad)
         run: node scripts/smoke.js
       - run: npx electron-builder --mac --publish never
+      - name: Prueba de la app empaquetada (firmada ad hoc)
+        run: |
+          APP=$(find dist -maxdepth 2 -name Nimbo.app | grep arm64 | head -1)
+          echo "app: $APP"
+          NIMBO_SMOKE_EXE="$PWD/$APP/Contents/MacOS/Nimbo" node scripts/smoke.js
       - uses: actions/upload-artifact@v4
         with:
           name: Nimbo-Mac
           path: |
             dist/Nimbo-mac-x64.dmg
             dist/Nimbo-mac-arm64.dmg
-            dist/Nimbo-mac-x64.zip
-            dist/Nimbo-mac-arm64.zip
           if-no-files-found: error
       - name: Adjuntar los paquetes a la versión
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
-        run: gh release upload "$TAG" dist/Nimbo-mac-x64.dmg dist/Nimbo-mac-arm64.dmg dist/Nimbo-mac-x64.zip dist/Nimbo-mac-arm64.zip --clobber
+        run: gh release upload "$TAG" dist/Nimbo-mac-x64.dmg dist/Nimbo-mac-arm64.dmg --clobber

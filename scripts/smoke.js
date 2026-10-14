@@ -12,7 +12,11 @@ const PORT = 9477;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nimbo-smoke-"));
 const electron = require("electron"); // la ruta del ejecutable de Electron instalado
 const log = [];
-const child = spawn(electron, [".", "--no-sandbox", `--remote-debugging-port=${PORT}`, `--user-data-dir=${tmp}`, ...(process.platform === "linux" ? ["--disable-gpu"] : [])],
+// NIMBO_SMOKE_EXE: probar el paquete INSTALADO (el .deb, el .app) en vez del código. En el CI (máquina desechable) Nimbo usa sus
+// carpetas normales, y así se comprueba también que hook.js encuentra el token donde la app lo guarda; en tu PC, datos temporales.
+const packaged = process.env.NIMBO_SMOKE_EXE;
+const isolate = !process.env.CI;
+const child = spawn(packaged || electron, [...(packaged ? [] : ["."]), "--no-sandbox", `--remote-debugging-port=${PORT}`, ...(isolate ? [`--user-data-dir=${tmp}`] : []), ...(process.platform === "linux" ? ["--disable-gpu"] : [])],
   { cwd: root, env: { ...process.env, NIMBO_SMOKE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
 child.stdout.on("data", (d) => log.push(String(d)));
 child.stderr.on("data", (d) => log.push(String(d)));
@@ -68,6 +72,20 @@ function stop() {
     const hook = await fetch("http://127.0.0.1:47823/hook").catch(() => null);
     if (!hook || hook.status !== 404) throw new Error("el servidor de hooks no está escuchando en 127.0.0.1:47823");
     console.log("ok  el servidor de hooks escucha (y rechaza lo que no está firmado)");
+    // Lo esencial: un evento de un hook (el mismo comando que Claude Code ejecutaría) llega a la isla. Solo en el CI y no en Windows
+    // (ahí la carpeta de datos temporal no coincide con la que lee hook.js).
+    if (process.env.CI && process.platform !== "win32") {
+      let command = `node "${path.join(root, "hook.js")}"`;
+      if (packaged) {
+        await evaluate(page.webSocketDebuggerUrl, `api.setupDo("hooks-on")`);
+        const settings = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude", "settings.json"), "utf8"));
+        command = settings.hooks.UserPromptSubmit[0].hooks[0].command;
+      }
+      const event = JSON.stringify({ hook_event_name: "UserPromptSubmit", session_id: "smoke-session", cwd: root, prompt: "hola" });
+      require("child_process").execSync(command, { input: event, timeout: 20_000, stdio: ["pipe", "ignore", "inherit"] });
+      await waitFor(() => evaluate(page.webSocketDebuggerUrl, `sessions.has("smoke-session")`), 15_000, "que el hook llegue a la isla");
+      console.log(`ok  el hook llegó a la isla (${packaged ? "comando instalado: " + command : "desde el código"})`);
+    }
     const media = await evaluate(page.webSocketDebuggerUrl, `api.media()`);
     console.log(`ok  la música responde (${media ? "algo suena" : "sin Spotify, como se espera"})`);
     console.log("PRUEBA DE HUMO: todo bien");
