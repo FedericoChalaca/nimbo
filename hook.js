@@ -28,7 +28,7 @@ function trim(v) {
 }
 
 async function main(body) {
-  const token = fs.readFileSync(path.join(process.env.APPDATA, "nimbo", "token"), "utf8").trim();
+  const token = fs.readFileSync(path.join(require("./src/main/platform").userDataDir(), "token"), "utf8").trim();
   const mac = (msg) => crypto.createHmac("sha256", token).update(msg).digest("hex");
   const nonce = crypto.randomBytes(16).toString("hex");
   const isPermission = JSON.parse(body).hook_event_name === "PermissionRequest";

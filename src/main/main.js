@@ -16,6 +16,7 @@ const { searchSpotify, TRACK_URI } = require("../integrations/spotify");
 const { watchMedia } = require("../integrations/media");
 const { askInterview } = require("./interview");
 const { createMusicBar } = require("./musicbar");
+const { extraBinDirs, findInPath, ollamaLocations, userDataDir } = require("./platform");
 const { createAlerts } = require("./alerts");
 const { createMail, threadUrl } = require("../integrations/mail");
 const { createAi, pullModel, RECOMMENDED, KEYED, KEY_FORMAT } = require("../integrations/ai");
@@ -27,6 +28,10 @@ const { readPlan, planSpeech } = require("./plan");
 
 // La carpeta de Nimbo (donde están package.json, hook.js, node_modules y assets). Este archivo vive en src/main.
 const ROOT = path.resolve(__dirname, "..", "..");
+// macOS y Linux: una app gráfica arranca con un PATH mínimo; se le suman las carpetas donde viven `claude`, `gh`, `ollama`, `playerctl`.
+if (process.platform !== "win32") process.env.PATH = [...new Set([...extraBinDirs(), ...String(process.env.PATH ?? "").split(path.delimiter)])].join(path.delimiter);
+// En un AppImage el sandbox de Chromium no puede usar su ayudante con permisos especiales (Ubuntu 24.04 lo bloquea): sin esto no abre.
+if (process.env.APPIMAGE) app.commandLine.appendSwitch("no-sandbox");
 const PORT = 47823;
 const W = 440;
 const H = 480;
@@ -95,6 +100,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   win.setAlwaysOnTop(true, "screen-saver");
+  if (process.platform === "darwin") win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); // la isla sigue al usuario entre escritorios
   // Los clics atraviesan la ventana salvo sobre la nube y las cajas (ver más abajo).
   win.setIgnoreMouseEvents(true);
   win.loadURL(pageUrl());
@@ -314,12 +320,21 @@ const aiSave = () => {
 };
 const ai = createAi({ getKey: (id) => aiLoad()[id] ?? "", models: () => prefs.aiModels ?? {} });
 const aiHistory = new Map(); // id → mensajes de la conversación con esa IA (solo en memoria)
-const ollamaExe = () => path.join(process.env.LOCALAPPDATA ?? "", "Programs", "Ollama", "ollama app.exe");
+// Ollama según el sistema: Windows (ollama app.exe), macOS (Ollama.app) o Linux (el comando `ollama`).
+const ollamaWhere = () => ollamaLocations({ env: process.env });
+const ollamaInstalled = () => { const o = ollamaWhere(); return !!o.path && (o.kind === "cli" ? true : fs.existsSync(o.path)); };
+function openOllama() {
+  const o = ollamaWhere();
+  if (!ollamaInstalled()) return;
+  if (o.kind === "file") shell.openPath(o.path);
+  else if (o.kind === "app") execFile("open", ["-a", "Ollama"], () => {});
+  else require("child_process").spawn(o.path, ["serve"], { detached: true, stdio: "ignore" }).unref();
+}
 let aiPull = null; // la descarga del modelo recomendado en curso: { percent, controller }
 async function aiState() {
   const st = await ai.status();
   const providers = [{ id: "claude", label: "Claude" }, ...st.providers];
-  return { installed: fs.existsSync(ollamaExe()), recommended: RECOMMENDED, pull: aiPull ? { percent: aiPull.percent } : null, providers, current: providers.some((p) => p.id === prefs.chatProvider) ? prefs.chatProvider : "claude", ollama: st.ollama, keyed: st.keyed };
+  return { installed: ollamaInstalled(), recommended: RECOMMENDED, pull: aiPull ? { percent: aiPull.percent } : null, providers, current: providers.some((p) => p.id === prefs.chatProvider) ? prefs.chatProvider : "claude", ollama: st.ollama, keyed: st.keyed };
 }
 const aiSystem = () => `Eres Nimbo, el compañero de escritorio del usuario (una nube pequeña arriba de su pantalla). Responde en el idioma del usuario, claro y breve (máximo 4 frases salvo que pidan más). No tienes acceso a sus archivos, recordatorios, chats ni a internet: si te lo piden, dilo en una frase y sugiere cambiar a Claude en el selector del chat. Hoy es ${new Date().toLocaleDateString(lang() === "es" ? "es-CO" : "en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`;
 async function askOther(provider, text) {
@@ -581,6 +596,26 @@ ipcMain.on("chat-open", (_e, open) => {
 // en modo Node (ELECTRON_RUN_AS_NODE). En desarrollo se usa `node hook.js`.
 function hookCommand() {
   if (!app.isPackaged) return undefined;
+  if (process.platform !== "win32") {
+    // macOS y Linux: un hook.sh. El .app y el .deb tienen una ruta fija y corren hook.js con su propio ejecutable en modo Node.
+    // Un AppImage se monta en una carpeta distinta cada vez (y arrancarlo en cada evento sería lento): ahí se copia hook.js
+    // a la carpeta de datos y se corre con el `node` del sistema.
+    const sh = path.join(app.getPath("userData"), "hook.sh");
+    let text;
+    if (process.env.APPIMAGE) {
+      const hookDir = path.join(app.getPath("userData"), "hook");
+      fs.mkdirSync(path.join(hookDir, "src", "main"), { recursive: true });
+      fs.copyFileSync(path.join(ROOT, "hook.js"), path.join(hookDir, "hook.js"));
+      fs.copyFileSync(path.join(__dirname, "platform.js"), path.join(hookDir, "src", "main", "platform.js"));
+      if (!findInPath(["node"])) throw new Error(t("El AppImage necesita Node.js para conectar los hooks. Instala Node.js o usa el paquete .deb."));
+      text = `#!/bin/sh\nexec node "${path.join(hookDir, "hook.js")}"\n`;
+    } else {
+      text = `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${process.execPath}" "${path.join(ROOT, "hook.js")}"\n`;
+    }
+    if (!fs.existsSync(sh) || fs.readFileSync(sh, "utf8") !== text) fs.writeFileSync(sh, text);
+    fs.chmodSync(sh, 0o755);
+    return `"${sh}"`;
+  }
   const cmd = path.join(app.getPath("userData"), "hook.cmd");
   const text = `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${path.join(ROOT, "hook.js")}"\r\n`;
   if (fs.readFileSync(cmd, { encoding: "utf8", flag: "a+" }) !== text) fs.writeFileSync(cmd, text);
@@ -589,6 +624,16 @@ function hookCommand() {
 // Páginas que el panel puede abrir: una lista fija, la página nunca manda la URL.
 const LINKS = { ollama: "https://ollama.com/download", claude: "https://claude.com/claude-code", gh: "https://cli.github.com", connectors: "https://claude.ai/settings/connectors", spotifyDev: "https://developer.spotify.com/dashboard" };
 const loginItem = () => (app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] });
+// Iniciar con el sistema: Electron lo hace en Windows y macOS; en Linux se deja un archivo .desktop en la carpeta de autoinicio.
+const linuxAutostart = () => path.join(process.env.XDG_CONFIG_HOME || path.join(require("os").homedir(), ".config"), "autostart", "nimbo.desktop");
+const autostartOn = () => (process.platform === "linux" ? fs.existsSync(linuxAutostart()) : app.getLoginItemSettings(loginItem()).openAtLogin);
+function setAutostart(on) {
+  if (process.platform !== "linux") return app.setLoginItemSettings({ ...loginItem(), openAtLogin: on });
+  if (!on) return fs.rmSync(linuxAutostart(), { force: true });
+  fs.mkdirSync(path.dirname(linuxAutostart()), { recursive: true });
+  const exe = process.env.APPIMAGE || process.execPath;
+  fs.writeFileSync(linuxAutostart(), `[Desktop Entry]\nType=Application\nName=Nimbo\nExec="${exe}"${app.isPackaged ? "" : ` "${app.getAppPath()}"`}\nX-GNOME-Autostart-enabled=true\n`);
+}
 const ghStatus = () => new Promise((resolve) => {
   execFile("gh", ["auth", "status"], { windowsHide: true, timeout: 10_000 }, (err) => resolve(!err ? "on" : err.code === "ENOENT" ? "missing" : "off"));
 });
@@ -610,7 +655,8 @@ async function setupStatus() {
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
     whatsappRead: prefs.whatsappRead === true,
     whatsappBrain: prefs.whatsappRead === true ? await wa.brain() : "",
-    autostart: app.getLoginItemSettings(loginItem()).openAtLogin,
+    autostart: autostartOn(),
+    platform: process.platform,
   };
 }
 // --- Ver la pantalla: UN pantallazo, solo cuando tú pulsas 🖥 en el chat ---
@@ -671,8 +717,9 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         savePrefs();
         win.webContents.send("name", prefs.name);
         break;
-      case "autostart": app.setLoginItemSettings({ ...loginItem(), openAtLogin: value === true }); break;
-      case "whatsapp": prefs.whatsappRead = value === true; savePrefs(); watchWhatsapp(); break;
+      case "autostart": setAutostart(value === true); break;
+      case "whatsapp": if (process.platform !== "win32") break; // lee las notificaciones de Windows: solo existe allí
+        prefs.whatsappRead = value === true; savePrefs(); watchWhatsapp(); break;
       case "theme": setTheme(String(value)); break;
       case "speak": setSpeak(value === true); break;
       case "whatsapp-rules": shell.openPath(wa.rulesFile); break;
@@ -724,7 +771,7 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         aiSave();
         break;
       }
-      case "ollama-open": if (fs.existsSync(ollamaExe())) shell.openPath(ollamaExe()); break;
+      case "ollama-open": openOllama(); break;
       case "ollama-pull": {
         // Solo el modelo recomendado y solo con el clic del usuario; avisa el avance a la página cada segundo.
         if (aiPull) break;
@@ -979,6 +1026,7 @@ http
 // Sin esto Windows no muestra las notificaciones de una app sin instalador.
 app.setAppUserModelId("Nimbo");
 app.whenReady().then(() => {
+  if (process.platform === "darwin") app.dock?.hide(); // una app de la barra superior: sin icono en el Dock
   serveAppFiles();
   createWindow();
   createTray();

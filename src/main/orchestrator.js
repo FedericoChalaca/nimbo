@@ -8,10 +8,10 @@ const path = require("path");
 // El .exe real que hay detrás de claude.cmd. Se llama directo, sin shell: los
 // argumentos (que llevan títulos de tus chats) no pueden inyectar comandos.
 // Se busca donde lo dejan npm y el instalador nativo; NIMBO_CLAUDE permite indicar otra ruta.
+const { claudeCandidates, findInPath, extraBinDirs } = require("./platform");
 const CLAUDE_EXE = [
-  process.env.NIMBO_CLAUDE,
-  path.join(process.env.APPDATA ?? "", "npm", "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe"),
-  path.join(os.homedir(), ".local", "bin", "claude.exe"),
+  ...claudeCandidates(),
+  findInPath(process.platform === "win32" ? ["claude.exe"] : ["claude"], { extra: extraBinDirs() }),
 ].find((p) => p && fs.existsSync(p)) ?? "";
 const PROJECTS = path.join(os.homedir(), ".claude", "projects");
 // Opcional (prefs.json → "vault"): tu carpeta de notas. El orquestador la puede leer y su

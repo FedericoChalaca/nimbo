@@ -5,15 +5,17 @@ const on = (name) => (fn) => { window.__cb[name] = fn; };
 const later = (ms, value) => new Promise((r) => setTimeout(() => r(typeof value === "function" ? value() : value), ms));
 const soon = (h) => new Date(Date.now() + h * 3600e3).toISOString();
 
+// Trello (formato actual): la lista de tableros y, de uno, sus tarjetas ya cargadas.
+const BOARD = 'https://trello.com/b/AbCdEfGh/web-shop';
 window.__trello = {
   at: new Date().toISOString(),
-  boards: [{ name: "Tienda web", pending: 5 }, { name: "Marca", pending: 2 }],
-  cards: [
-    { name: "Modo oscuro en el checkout", board: "Tienda web", list: "En proceso", due: soon(5), url: "" },
-    { name: "Reintentos en pagos", board: "Tienda web", list: "En proceso", url: "" },
-    { name: "Banner de temporada", board: "Marca", list: "Revisión", due: soon(30), url: "" },
-    { name: "Pasarela en staging", board: "Tienda web", list: "Bloqueado", url: "" },
-  ],
+  boards: [{ name: 'Web Shop', url: BOARD }, { name: 'Brand', url: 'https://trello.com/b/IjKlMnOp/brand' }],
+  byBoard: { [BOARD]: { at: new Date().toISOString(), cards: [
+    { name: 'Dark mode at checkout', list: 'In progress', due: soon(5), url: '', done: false },
+    { name: 'Payment retries', list: 'In progress', due: '', url: '', done: false },
+    { name: 'Staging gateway', list: 'Blocked', due: '', url: '', done: false },
+    { name: 'Seasonal banner', list: 'Review', due: soon(30), url: '', done: false },
+    { name: 'New logo', list: 'Done', due: '', url: '', done: true }] } },
 };
 
 const api = {
@@ -25,7 +27,8 @@ const api = {
   onTheme: on("theme"), onGithub: on("github"), openGithub() {}, openUrl() {},
   onName: on("name"), onAnchor: on("anchor"), dragStart() {}, dragEnd() {}, onDragAbort: on("dragAbort"),
   onWhatsapp: on("whatsapp"), openWhatsapp() {},
-  trello: () => Promise.resolve(window.__trello), onTrello: on("trello"), onTrelloBusy: on("trelloBusy"), trelloRefresh() {},
+  trello: () => Promise.resolve(window.__trello), onTrello: on("trello"), onTrelloBusy: on("trelloBusy"), trelloRefresh() {}, trelloBoard() {},
+  media: () => Promise.resolve(null), mail: () => Promise.resolve(null), aiProviders: () => Promise.resolve(null),
   reminders: () => Promise.resolve([]), onReminders: on("reminders"), onReminder: on("reminder"), reminderDone() {}, reminderSnooze() {},
   filePath: () => "", hitRects() {}, onHover: on("hover"), menu() {},
 };

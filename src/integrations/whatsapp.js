@@ -371,6 +371,7 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
     rulesFile,
     /** read = true: además del título, lee y clasifica las notificaciones (lo activa el usuario). */
     watch(read) {
+      if (process.platform !== "win32") return { kill() {} }; // lee las notificaciones de Windows: en otros sistemas esta función no existe
       // Las reglas de ejemplo se crean aquí (ya con la app lista) para que salgan en el idioma del usuario.
       if (!fs.existsSync(rulesFile)) fs.writeFileSync(rulesFile, lang() === "en" ? DEFAULT_RULES_EN : DEFAULT_RULES);
       reading = read === true;

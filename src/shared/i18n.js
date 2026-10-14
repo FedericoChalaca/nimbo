@@ -105,6 +105,10 @@ const NIMBO_EN = {
   "{0} sin propuesta hoy": "{0} with no proposal today",
   "hoy": "today",
   "No tengo el plan de hoy: no está configurado, no hay conexión o todavía no ha salido.": "I do not have today's plan: it is not set up, there is no connection, or it has not come out yet.",
+  // — Otros sistemas —
+  "Solo funciona en Windows: lee las notificaciones de Windows.": "Windows only: it reads Windows notifications.",
+  "Iniciar con el sistema": "Start with the system",
+  "El AppImage necesita Node.js para conectar los hooks. Instala Node.js o usa el paquete .deb.": "The AppImage needs Node.js to connect the hooks. Install Node.js or use the .deb package.",
   // — Correo —
   "Correo": "Email",
   "{0} sin leer · {1} importantes": "{0} unread · {1} important",

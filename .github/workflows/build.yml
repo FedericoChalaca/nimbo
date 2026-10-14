@@ -1,8 +1,9 @@
-# Arma el instalador de Windows desde el código de este repositorio, sin pasos manuales.
-# Así cualquiera puede comprobar que el instalador de una versión sale de su código, y es el
-# requisito para firmarlo (ver "Firma del instalador" en el README).
+# Arma los instaladores desde el código de este repositorio, sin pasos manuales, y prueba que Nimbo arranque de verdad
+# en cada sistema. Así cualquiera puede comprobar que lo que se descarga sale de su código, y es el requisito para firmarlo
+# (ver "Firma del instalador" en el README).
 #
-# Builds the Windows installer straight from this repository, with no manual steps.
+# Builds the installers straight from this repository, with no manual steps, and checks that Nimbo really starts on
+# each system. On a published release the installers are attached to it; "Run workflow" only builds and uploads artifacts.
 name: build
 
 on:
@@ -11,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # solo para adjuntar el instalador a la versión
+  contents: write # solo para adjuntar los instaladores a la versión
 
 jobs:
   windows-installer:
@@ -36,3 +37,61 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
         run: gh release upload "$env:TAG" dist/Nimbo-Setup.exe --clobber
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Librerías que Electron necesita para abrir una ventana
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgbm1 libnss3 libasound2t64 libxss1 libxtst6 libgtk-3-0t64 libnotify4 libsecret-1-0
+      - run: npm ci
+      - run: npm test
+      - name: Prueba de humo (abre Nimbo de verdad en una pantalla virtual)
+        run: xvfb-run -a node scripts/smoke.js
+      - run: npx electron-builder --linux --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nimbo-Linux
+          path: |
+            dist/Nimbo-linux-x64.AppImage
+            dist/Nimbo-linux-x64.deb
+          if-no-files-found: error
+      - name: Adjuntar los paquetes a la versión
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist/Nimbo-linux-x64.AppImage dist/Nimbo-linux-x64.deb --clobber
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Prueba de humo (abre Nimbo de verdad)
+        run: node scripts/smoke.js
+      - run: npx electron-builder --mac --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nimbo-Mac
+          path: |
+            dist/Nimbo-mac-x64.dmg
+            dist/Nimbo-mac-arm64.dmg
+            dist/Nimbo-mac-x64.zip
+            dist/Nimbo-mac-arm64.zip
+          if-no-files-found: error
+      - name: Adjuntar los paquetes a la versión
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist/Nimbo-mac-x64.dmg dist/Nimbo-mac-arm64.dmg dist/Nimbo-mac-x64.zip dist/Nimbo-mac-arm64.zip --clobber

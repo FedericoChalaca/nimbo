@@ -1154,10 +1154,11 @@ function renderSetup(s) {
     : row(null, "GitHub", t("Opcional: avisa de tus notificaciones."), btn(t("Instalar GitHub CLI"), "open", "gh"));
   const trello = s.trello !== null ? row(true, "Trello", t(s.trello === 1 ? "Conectado: {0} tablero." : "Conectado: {0} tableros.", s.trello), btn(t("Actualizar"), "trello"))
     : row(null, "Trello", t("Opcional: activa el conector de Trello en claude.ai y pulsa Probar (tarda 1 min)."), btn("claude.ai", "open", "connectors"), btn(t("Probar"), "trello"));
-  const wa = s.whatsappRead ? row(true, "WhatsApp", s.whatsappBrain === "claude" ? t("Lo resume tu propio Claude. Con Ollama lo haría un modelo local, sin gastar tokens.")
+  const wa = s.platform && s.platform !== "win32" ? row(null, "WhatsApp", t("Solo funciona en Windows: lee las notificaciones de Windows."))
+    : s.whatsappRead ? row(true, "WhatsApp", s.whatsappBrain === "claude" ? t("Lo resume tu propio Claude. Con Ollama lo haría un modelo local, sin gastar tokens.")
       : t("Lo resume un modelo local ({0}): nada sale de tu equipo.", s.whatsappBrain), btn(t("Reglas"), "whatsapp-rules"), btn(t("Apagar"), "whatsapp", false))
     : row(null, "WhatsApp", t("Opcional: tu propio Claude resume tus mensajes. Nada pasa por Nimbo ni por su autor."), btn(t("Activar"), "whatsapp", true));
-  const auto = row(s.autostart ? true : null, t("Iniciar con Windows"), s.autostart ? t("Nimbo arranca al prender el equipo.") : t("Que Nimbo arranque solo al prender el equipo."),
+  const auto = row(s.autostart ? true : null, (!s.platform || s.platform === "win32" ? t("Iniciar con Windows") : t("Iniciar con el sistema")), s.autostart ? t("Nimbo arranca al prender el equipo.") : t("Que Nimbo arranque solo al prender el equipo."),
     btn(s.autostart ? t("Quitar") : t("Activar"), "autostart", !s.autostart));
 
   const look = row(null, t("Apariencia"), s.theme === "cloud" ? t("Nube. Cada apariencia tiene su propia voz.") : t("JARVIS. Cada apariencia tiene su propia voz."),

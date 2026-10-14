@@ -31,7 +31,7 @@ const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
 // al hook.cmd de la app instalada, o a una instalación vieja en una carpeta "nimbo".
 const isOurs = (group) => (group.hooks ?? []).some((h) => {
   const c = String(h.command ?? "").replace(/\\/g, "/");
-  return c.includes(hookPath) || /nimbo\/hook\.(js|cmd)/i.test(c);
+  return c.includes(hookPath) || /nimbo\/hook\.(js|cmd|sh)/i.test(c);
 });
 
 function read() {
