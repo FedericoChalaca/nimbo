@@ -176,7 +176,7 @@ async function askClaude(rules, groups, lang = "es") {
   const cwd = path.join(os.tmpdir(), "nimbo-wa");
   fs.mkdirSync(cwd, { recursive: true });
   const input = header(rules, lang) + groups.map((g, i) => `[${i + 1}] ${chatBlock(g)}`).join("\n\n");
-  const r = await runClaude(CLAUDE_ARGS, { cwd, input, env: QUIET });
+  const r = await runClaude(CLAUDE_ARGS, { cwd, input, env: QUIET, timeoutMs: 3 * 60_000 });
   let out = r.structured_output;
   if (!out && r.result) { try { out = JSON.parse(r.result); } catch {} }
   if (!Array.isArray(out?.chats)) return null;
@@ -377,35 +377,50 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
       reading = read === true;
       if (!reading) { chats = []; kept.clear(); clearTimeout(timer); }
       quiet = true;
-      const script = fs.readFileSync(path.join(__dirname, "wa-watch.ps1"), "utf8").replace(/^\uFEFF/, "");
-      // -EncodedCommand (UTF-16 en base64): el script llega intacto, sin comillas que escapar.
-      // Ruta completa a PowerShell: nunca uno que alguien haya dejado en la carpeta actual.
-      const powershell = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-      const child = spawn(powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
-        { windowsHide: true, env: { ...process.env, NIMBO_WA_READ: reading ? "1" : "0" } });
-      let buf = "";
-      let lastKey = "";
-      child.stdout.setEncoding("utf8");
-      child.stdout.on("data", (d) => {
-        buf += d;
-        const lines = buf.split(/\r?\n/);
-        buf = lines.pop().slice(-200_000);
-        const line = lines.filter((l) => l.startsWith("wa:")).pop();
-        if (!line) return;
-        let next;
-        try { next = parseLine(line.slice(3)); } catch { return; }
-        remember(kept, next);
-        const before = new Set(seen.msgs.map((m) => m.id));
-        const msgs = [...kept.values()].filter((m) => !dismissed.has(m.id)).sort((a, b) => a.t - b.t).slice(-60);
-        const fresh = msgs.some((m) => !before.has(m.id));
-        seen = { ...next, msgs };
-        if (!msgs.length) quiet = false; // nada pendiente al arrancar: lo próximo ya es nuevo
-        const key = JSON.stringify([next.running, next.count, next.access, seen.msgs.map((m) => m.id)]);
-        if (fresh) schedule();
-        if (key !== lastKey) { lastKey = key; onChange(state(), null); }
-      });
-      child.on("error", () => {});
-      return child;
+      // Si PowerShell se cierra o deja de responder (suspensión del equipo, un error raro), se vuelve a lanzar: antes se quedaba
+      // muerto hasta reiniciar Nimbo y los mensajes dejaban de detectarse sin avisar.
+      let stopped = false, child = null, restart = null, lastData = Date.now();
+      const start = () => {
+        lastData = Date.now();
+        child = launch();
+        child.on("close", () => { if (!stopped) restart = setTimeout(start, 3000); });
+      };
+      const watchdog = setInterval(() => { if (Date.now() - lastData > 25_000) child?.kill(); }, 10_000);
+      watchdog.unref?.();
+      const launch = () => {
+        const script = fs.readFileSync(path.join(__dirname, "wa-watch.ps1"), "utf8").replace(/^\uFEFF/, "");
+        // -EncodedCommand (UTF-16 en base64): el script llega intacto, sin comillas que escapar.
+        // Ruta completa a PowerShell: nunca uno que alguien haya dejado en la carpeta actual.
+        const powershell = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+        const child = spawn(powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
+          { windowsHide: true, env: { ...process.env, NIMBO_WA_READ: reading ? "1" : "0" } });
+        let buf = "";
+        let lastKey = "";
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (d) => {
+          lastData = Date.now();
+          buf += d;
+          const lines = buf.split(/\r?\n/);
+          buf = lines.pop().slice(-200_000);
+          const line = lines.filter((l) => l.startsWith("wa:")).pop();
+          if (!line) return;
+          let next;
+          try { next = parseLine(line.slice(3)); } catch { return; }
+          remember(kept, next);
+          const before = new Set(seen.msgs.map((m) => m.id));
+          const msgs = [...kept.values()].filter((m) => !dismissed.has(m.id)).sort((a, b) => a.t - b.t).slice(-60);
+          const fresh = msgs.some((m) => !before.has(m.id));
+          seen = { ...next, msgs };
+          if (!msgs.length) quiet = false; // nada pendiente al arrancar: lo próximo ya es nuevo
+          const key = JSON.stringify([next.running, next.count, next.access, seen.msgs.map((m) => m.id)]);
+          if (fresh) schedule();
+          if (key !== lastKey) { lastKey = key; onChange(state(), null); }
+        });
+        child.on("error", () => {});
+        return child;
+      };
+      start();
+      return { kill() { stopped = true; clearTimeout(restart); clearInterval(watchdog); child?.kill(); } };
     },
   };
 }

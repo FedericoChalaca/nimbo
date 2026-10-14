@@ -31,13 +31,15 @@ const ACTIVE_MS = 2 * 60_000;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 /** Ejecuta `claude` y devuelve la línea final "result" de su salida. */
-function runClaude(args, { cwd, input, env }) {
+function runClaude(args, { cwd, input, env, timeoutMs = 10 * 60_000, onChild }) {
   return new Promise((resolve) => {
     if (!CLAUDE_EXE) return resolve({ error: t("No encontré claude.exe. Instala Claude Code o define NIMBO_CLAUDE con su ruta.") });
     const child = spawn(CLAUDE_EXE, args, { cwd, windowsHide: true, env: env ? { ...process.env, ...env } : process.env });
     let out = "";
     let err = "";
-    const killer = setTimeout(() => child.kill(), 10 * 60_000);
+    onChild?.(child);
+    let timedOut = false;
+    const killer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs);
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
     child.on("error", (e) => resolve({ error: e.message }));
@@ -47,6 +49,8 @@ function runClaude(args, { cwd, input, env }) {
         .split("\n")
         .map((line) => { try { return JSON.parse(line); } catch { return null; } })
         .findLast((o) => o?.type === "result");
+      if (!result && child.cancelled) return resolve({ error: t("Cancelado.") });
+      if (!result && timedOut) return resolve({ error: t("Claude tardó demasiado en responder. Inténtalo de nuevo.") });
       resolve(result ?? { error: (err || t("No pude hablar con Claude.")).trim().slice(0, 600) });
     });
     child.stdin.end(input);
@@ -85,13 +89,13 @@ const STR = '"((?:[^"\\\\]|\\\\.)*)"';
  * (p. ej. un chat abierto en D:\varios que en realidad trabaja en D:\proyectos\web).
  * Al reanudarlo se le dan con --add-dir. Nunca carpetas del sistema ni tu carpeta de usuario.
  */
-function workDirs(text, cwd) {
+function rootCounts(text, cwd, counts) {
   const home = os.homedir().toLowerCase();
-  const counts = new Map();
   const re = new RegExp(`"file_path":${STR}`, "g");
   let m;
   while ((m = re.exec(text))) {
-    const file = path.resolve(JSON.parse(`"${m[1]}"`));
+    let file;
+    try { file = path.resolve(JSON.parse(`"${m[1]}"`)); } catch { continue; }
     if (file.toLowerCase().startsWith(cwd.toLowerCase() + path.sep)) continue;
     // Raíz del proyecto = unidad + dos carpetas (D:\proyectos\web).
     const root = file.split(path.sep).slice(0, 3).join(path.sep);
@@ -99,6 +103,8 @@ function workDirs(text, cwd) {
     if (root.toLowerCase() === home || root.toLowerCase().startsWith(home + path.sep)) continue;
     counts.set(root, (counts.get(root) ?? 0) + 1);
   }
+}
+function pickDirs(counts) {
   return [...counts]
     .filter(([dir, n]) => n >= 3 && fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
     .sort((a, b) => b[1] - a[1])
@@ -120,23 +126,83 @@ function sessionTitle(transcriptPath) {
   if (hit && Date.now() - hit.at < 60_000) return hit.title;
   let title = "";
   try {
-    const text = fs.readFileSync(file, "utf8");
+    const text = readTailSync(file);
     title = lastMatch(text, new RegExp(`"customTitle":${STR}`, "g")) ?? lastMatch(text, new RegExp(`"agentName":${STR}`, "g")) ?? "";
   } catch {}
   titleCache.set(file, { title, at: Date.now() });
   return title;
 }
 
+/**
+ * Las carpetas extra de un chat se cuentan sobre TODA su transcripción, pero sin congelar nada: se lee en trozos de 1 MB (cediendo el
+ * turno entre uno y otro) y se recuerda hasta dónde se leyó; si el archivo crece (solo se agrega al final) se lee únicamente lo nuevo.
+ */
+const dirScans = new Map(); // archivo → { cwd, offset, counts, run }
+async function scanDirs(file, size, cwd) {
+  let st = dirScans.get(file);
+  if (!st || st.cwd !== cwd || size < st.offset) { st = { cwd, offset: 0, counts: new Map(), run: null }; dirScans.set(file, st); }
+  while (st.run) await st.run;
+  if (st.offset < size) {
+    st.run = (async () => {
+      const fh = await fs.promises.open(file, "r");
+      try {
+        const buf = Buffer.alloc(1024 * 1024);
+        while (st.offset < size) {
+          const { bytesRead } = await fh.read(buf, 0, buf.length, st.offset);
+          if (!bytesRead) break;
+          let end = bytesRead;
+          if (st.offset + bytesRead < size) { const nl = buf.lastIndexOf(10, bytesRead - 1); if (nl > 0) end = nl + 1; } // se corta en un salto de línea
+          rootCounts(buf.toString("utf8", 0, end), cwd, st.counts);
+          st.offset += end;
+        }
+      } finally { await fh.close(); }
+    })().catch(() => {}).finally(() => { st.run = null; });
+    await st.run;
+  }
+  return pickDirs(st.counts);
+}
+
+/**
+ * Las transcripciones llegan a más de 100 MB: leerlas enteras en el proceso principal congelaba la isla casi un segundo
+ * (la carpeta aparece en los primeros ~50 KB; el título y el último pedido, a menos de ~31 KB del final).
+ * Por eso solo se leen el principio y el final.
+ */
+const HEAD_BYTES = 128 * 1024;
+const TAIL_BYTES = 1024 * 1024;
+function readTailSync(file, bytes = 256 * 1024) {
+  const fd = fs.openSync(file, "r");
+  try {
+    const size = fs.fstatSync(fd).size;
+    const len = Math.min(size, bytes);
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, size - len);
+    return buf.toString("utf8");
+  } finally { fs.closeSync(fd); }
+}
+async function readEdges(file, size) {
+  if (size <= HEAD_BYTES + TAIL_BYTES) return fs.promises.readFile(file, "utf8");
+  const fh = await fs.promises.open(file, "r");
+  try {
+    const head = Buffer.alloc(HEAD_BYTES), tail = Buffer.alloc(TAIL_BYTES);
+    await fh.read(head, 0, HEAD_BYTES, 0);
+    await fh.read(tail, 0, TAIL_BYTES, size - TAIL_BYTES);
+    return head.toString("utf8") + "\n" + tail.toString("utf8");
+  } finally { await fh.close(); }
+}
+
+const sessionCache = new Map(); // archivo → { mtime, size, session | null }: lo que no cambió no se vuelve a leer
+
 /** Tus chats más recientes que tienen carpeta de proyecto. */
-function listSessions(excludeCwd) {
+async function listSessions(excludeCwd) {
   const files = [];
-  for (const dir of fs.readdirSync(PROJECTS, { withFileTypes: true })) {
+  for (const dir of await fs.promises.readdir(PROJECTS, { withFileTypes: true })) {
     if (!dir.isDirectory()) continue;
-    for (const f of fs.readdirSync(path.join(PROJECTS, dir.name))) {
-      if (!f.endsWith(".jsonl")) continue;
+    const names = await fs.promises.readdir(path.join(PROJECTS, dir.name)).catch(() => []);
+    await Promise.all(names.filter((f) => f.endsWith(".jsonl")).map(async (f) => {
       const full = path.join(PROJECTS, dir.name, f);
-      files.push({ full, dir: dir.name, mtime: fs.statSync(full).mtimeMs });
-    }
+      const st = await fs.promises.stat(full).catch(() => null);
+      if (st) files.push({ full, dir: dir.name, mtime: st.mtimeMs, size: st.size });
+    }));
   }
   files.sort((a, b) => b.mtime - a.mtime);
 
@@ -145,23 +211,30 @@ function listSessions(excludeCwd) {
   const candidates = [vaultFile, ...files.slice(0, 30).filter((f) => f !== vaultFile)].filter(Boolean);
 
   const sessions = [];
-  for (const { full, mtime } of candidates) {
-    const text = fs.readFileSync(full, "utf8");
+  for (const { full, mtime, size } of candidates) {
+    const hit = sessionCache.get(full);
+    if (hit && hit.mtime === mtime && hit.size === size && hit.exclude === excludeCwd) {
+      if (hit.session) sessions.push({ ...hit.session, active: Date.now() - mtime < ACTIVE_MS });
+      if (sessions.length === 16) break;
+      continue;
+    }
+    const text = await readEdges(full, size).catch(() => "");
+    const keep = (session) => { sessionCache.set(full, { mtime, size, exclude: excludeCwd, session }); return session; };
     const cwdMatch = text.match(new RegExp(`"cwd":${STR}`));
     const cwd = cwdMatch && JSON.parse(`"${cwdMatch[1]}"`);
     // Fuera: chats "sin carpeta" de la app (scratch-workspaces) y corridas sueltas de
     // `claude -p` (entrypoint sdk-cli), que no son conversaciones tuyas.
-    if (!cwd || cwd === excludeCwd || cwd.includes("scratch-workspaces") || !fs.existsSync(cwd)) continue;
-    if (text.match(new RegExp(`"entrypoint":${STR}`))?.[1] === "sdk-cli") continue;
-    sessions.push({
+    if (!cwd || cwd === excludeCwd || cwd.includes("scratch-workspaces") || !fs.existsSync(cwd)) { keep(null); continue; }
+    if (text.match(new RegExp(`"entrypoint":${STR}`))?.[1] === "sdk-cli") { keep(null); continue; }
+    sessions.push(keep({
       id: path.basename(full, ".jsonl"),
       cwd,
-      dirs: workDirs(text, cwd),
+      dirs: await scanDirs(full, size, cwd),
       project: path.basename(cwd),
       title: lastMatch(text, new RegExp(`"customTitle":${STR}`, "g")) ?? lastMatch(text, new RegExp(`"agentName":${STR}`, "g")) ?? "",
       lastPrompt: (lastMatch(text, new RegExp(`"lastPrompt":${STR}`, "g")) ?? "").slice(0, 140),
       active: Date.now() - mtime < ACTIVE_MS,
-    });
+    }));
     if (sessions.length === 16) break; // el del vault + los 15 más nuevos
   }
   return sessions;
@@ -256,8 +329,10 @@ function createOrchestrator(chatDir, { vault, lang, plan, model } = {}) {
   if (typeof lang === "function") LANG = lang;
   if (typeof plan === "function") PLAN = plan;
   fs.mkdirSync(chatDir, { recursive: true });
+  setTimeout(() => listSessions(chatDir).catch(() => {}), 3000); // calienta las carpetas de cada chat para que la primera pregunta no espere
   VAULT = typeof vault === "string" && fs.statSync(vault, { throwIfNoEntry: false })?.isDirectory() ? vault : "";
   let sessionId = null;
+  let askChild = null; // el `claude -p` de la pregunta en curso
   let known = new Map(); // id → chat, de la última lista que vio el orquestador
 
   return {
@@ -265,8 +340,13 @@ function createOrchestrator(chatDir, { vault, lang, plan, model } = {}) {
       sessionId = null;
     },
 
+    /** Corta la pregunta que se está esperando (botón "Cancelar" de la isla). */
+    cancel() {
+      if (askChild) { askChild.cancelled = true; askChild.kill(); }
+    },
+
     async ask(msg, { reminders = [] } = {}) {
-      const sessions = listSessions(chatDir);
+      const sessions = await listSessions(chatDir);
       known = new Map(sessions.map((s) => [s.id, s]));
       const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
         "--append-system-prompt", systemPrompt(sessions, reminders), "--json-schema", SCHEMA];
@@ -285,9 +365,12 @@ function createOrchestrator(chatDir, { vault, lang, plan, model } = {}) {
       // El orquestador solo lee: una lista CERRADA de herramientas (leer y buscar archivos) y
       // ningún conector MCP. Así ni una imagen o un PDF con instrucciones escondidas puede
       // hacerle escribir, ejecutar, navegar ni usar tus conectores; los cambios van por "dispatch".
-      args.push("--tools", "Read,Glob,Grep", "--strict-mcp-config");
-      const r = await runClaude(args, { cwd: chatDir, input: userMessage({ text, images: msg?.images }) });
-      if (r.error) return { text: r.error, dispatch: [] };
+      // --setting-sources project: sin los plugins, hooks y habilidades de tu usuario cada pregunta tarda la mitad (medido 2026-10-14: ~11 s → ~5 s con
+      // una pregunta trivial). Por eso estas preguntas ya no disparan los hooks de Nimbo: la isla pone sus propios gestos (ver askAndShow).
+      args.push("--tools", "Read,Glob,Grep", "--strict-mcp-config", "--setting-sources", "project");
+      const r = await runClaude(args, { cwd: chatDir, input: userMessage({ text, images: msg?.images }), timeoutMs: 3 * 60_000, onChild: (c) => { askChild = c; } });
+      askChild = null;
+      if (r.error) return { text: r.error, dispatch: [], error: true };
       if (/^[0-9a-f-]{36}$/i.test(r.session_id ?? "")) sessionId = r.session_id;
 
       let plan = r.structured_output;
@@ -324,4 +407,40 @@ function createOrchestrator(chatDir, { vault, lang, plan, model } = {}) {
   };
 }
 
-module.exports = { createOrchestrator, listSessions, sessionTitle, runClaude, connectors, claudeFound: () => CLAUDE_EXE !== "" };
+module.exports = { createOrchestrator, listSessions, sessionTitle, runClaude, connectors, scanDirs, dirScans, readEdges, claudeFound: () => CLAUDE_EXE !== "" };
+
+// Autoprueba (sin red ni modelo): `node src/main/orchestrator.js` — la lectura acotada de transcripciones grandes y el conteo de carpetas por trozos.
+if (require.main === module) (async () => {
+  const assert = require("assert");
+  process.env.USERPROFILE = process.env.HOME = path.join(path.sep, "no-hay-casa"); // para que la carpeta temporal no cuente como "tu carpeta de usuario"
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nimbo-orq-"));
+  const root = path.join(tmp, "x").split(path.sep).slice(0, 3).join(path.sep); // la "raíz de proyecto" de cualquier archivo dentro de tmp
+  const line = (i) => JSON.stringify({ type: "assistant", n: i, input: { file_path: path.join(tmp, "a.js") }, pad: "x".repeat(3000) }) + "\n";
+  // Un archivo de ~4 MB (más que cabeza + cola): varias lecturas de 1 MB que nunca parten una línea.
+  const big = path.join(tmp, "big.jsonl");
+  const head = JSON.stringify({ cwd: tmp, entrypoint: "cli" }) + "\n";
+  const tail = JSON.stringify({ customTitle: "mi chat", lastPrompt: "hola" }) + "\n";
+  let body = head;
+  for (let i = 0; i < 1300; i++) body += line(i);
+  fs.writeFileSync(big, body + tail);
+  const size = fs.statSync(big).size;
+  assert.ok(size > 4_000_000);
+  assert.deepStrictEqual(await scanDirs(big, size, tmp + "/otra"), [root]); // 1300 menciones → carpeta de trabajo
+  assert.strictEqual(dirScans.get(big).counts.get(root), 1300); // ni de más ni de menos: los cortes caen entre líneas
+  // El archivo crece: solo se lee lo nuevo (el contador sube exactamente en lo agregado).
+  fs.appendFileSync(big, line(9999) + line(10000));
+  await scanDirs(big, fs.statSync(big).size, tmp + "/otra");
+  assert.strictEqual(dirScans.get(big).counts.get(root), 1302);
+  assert.strictEqual(dirScans.get(big).offset, fs.statSync(big).size);
+  // Dos consultas a la vez no cuentan dos veces.
+  fs.appendFileSync(big, line(1));
+  await Promise.all([scanDirs(big, fs.statSync(big).size, tmp + "/otra"), scanDirs(big, fs.statSync(big).size, tmp + "/otra")]);
+  assert.strictEqual(dirScans.get(big).counts.get(root), 1303);
+  // Cabeza y cola: la carpeta está al principio y el título al final, aunque el medio sea enorme.
+  const edges = await readEdges(big, fs.statSync(big).size);
+  assert.ok(edges.includes('"cwd"') && edges.includes('"customTitle":"mi chat"') && edges.length < 1_300_000 + 140_000);
+  // El título de un chat sale del final del archivo, sin leerlo entero.
+  assert.strictEqual(sessionTitle.length, 1);
+  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log("orchestrator.js ok");
+})();

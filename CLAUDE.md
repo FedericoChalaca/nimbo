@@ -106,6 +106,17 @@ respuesta cerraba la tarjeta de la siguiente).
 - `dispatch` (botón Enviar en la propuesta): `claude.exe -p --resume <id> --permission-mode auto
   --add-dir <carpetas> --append-system-prompt <reglas: hazlo tú, 2 frases, sin código>`.
 - Imágenes: Ctrl+V o 📎, van dentro del mensaje stream-json (base64), sin archivos temporales.
+- **Rendimiento (2026-10-14; el dueño se quejaba de que Nimbo "se quedaba quieto")**: (1) Las transcripciones llegan a 125 MB y se leían ENTERAS en el proceso
+  principal (`listSessions` en cada pregunta y `sessionTitle` cada minuto desde cada hook): ~0,8 s congelados cada vez, y con ellos el bucle del cursor, el
+  servidor de hooks y la isla. Ahora `listSessions` es async, lee solo cabeza (128 KB) y cola (1 MB) (medido: cwd a <53 KB del principio; título y último pedido a <31 KB
+  del final), recuerda lo ya leído por mtime+tamaño, y las carpetas extra (`dirs`) se cuentan sobre TODO el archivo pero en trozos de 1 MB cediendo el turno y de forma
+  incremental (`scanDirs`: solo lo agregado; resultado idéntico al de leer todo, comprobado con tus transcripciones reales). `sessionTitle` lee solo los últimos 256 KB.
+  Peor pausa del hilo ahora: ~26 ms. Autoprueba: `node src/main/orchestrator.js`. (2) `ask` lleva `--setting-sources project`: sin tus plugins/hooks/habilidades una
+  pregunta tarda ~7 s en vez de ~14 s (medido en la app real). Consecuencia: esas preguntas ya NO disparan los hooks de Nimbo, así que `askAndShow` pone
+  los gestos de la isla (pensando, "¡Listo!", error). NO usar `--setting-sources project` en Trello/correo/Spotify: sin tus ajustes de usuario el `claude` NO ve los
+  conectores de claude.ai (probado: Spotify respondió `connected:false`). (3) Mientras se espera, la caja muestra "Pensando… / Sigue trabajando… N s" y un botón
+  **Cancelar** (`ask-cancel` → `orchestrator.cancel()` mata el `claude -p`); `runClaude` tiene `timeoutMs` (pregunta 3 min, entrevista y Spotify 2 min, correo 4,
+  Trello 5, WhatsApp 3; por defecto 10) y devuelve un mensaje claro si vence.
 
 **Interacción con el mouse.** La ventana ignora el mouse (`setIgnoreMouseEvents(true)`) salvo
 cuando el cursor está sobre una zona tocable. La página reporta cada 200 ms sus rectángulos
@@ -306,6 +317,11 @@ el flujo crudo con StreamReader) y el flujo de la carátula hay que convertirlo 
   --no-session-persistence`: el texto de un mensaje es de un tercero y no debe poder nada (probado con un
   mensaje "ignora tus instrucciones…": lo marcó como spam). `--setting-sources project` además evita que
   dispare los hooks de Nimbo.
+- Detección (2026-10-14, "a veces no detecta los mensajes"): el lector de PowerShell ahora mira cada 1 s (antes 3) y el número de cada notificación es
+  `creación_ms × 1000 + id % 1000`: el id de Windows es corto (en `whatsapp-vistos.json` se ven 2021…5038) y puede repetirse tras reiniciar, y como los "vistos" se guardan
+  en disco un mensaje NUEVO con un número viejo parecía ya visto y se ignoraba. Además `watch()` ahora SUPERVISA al proceso: si PowerShell se cierra se relanza a los 3 s,
+  si no escribe nada en 25 s se mata y se relanza, y tras una suspensión del equipo (`powerMonitor "resume"`) se reinicia; antes un lector muerto no volvía hasta reiniciar Nimbo.
+  No verificado con un mensaje real nuevo (el lector sí se probó: arranca, responde con `access: true` y revive tras matarlo).
 - Nada de mensajes en disco. Windows/WhatsApp quitan notificaciones de chats que siguen sin leer, así que
   `remember()` las conserva en memoria hasta que el contador del título llega a 0 (con 1 min de gracia) o
   pasan 24 h. Solo se ve lo que dejó notificación (chats silenciados o con WhatsApp en primer plano no).

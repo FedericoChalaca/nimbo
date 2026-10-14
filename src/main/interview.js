@@ -60,7 +60,7 @@ async function askInterview(raw, { lang = "es", model } = {}) {
     // el tope corta cualquier turno que se salga de control.
     "--effort", "low", "--max-budget-usd", "0.10"];
   // (La variable evita que cada turno deje un "chat" con título en ~/.claude/projects.)
-  const r = await runClaude(args, { cwd, input: buildUser(req, lang), env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });
+  const r = await runClaude(args, { cwd, input: buildUser(req, lang), env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" }, timeoutMs: 120_000 });
   let out = r.structured_output;
   if (!out && r.result) { try { out = JSON.parse(r.result); } catch {} }
   const turn = cleanTurn(out, !!req.answer);

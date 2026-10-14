@@ -77,7 +77,7 @@ function createTrello(cacheFile, model = "haiku") {
       "--disallowedTools", ...WRITE_TOOLS, ...all.filter((n) => n !== "mcp__claude_ai_Trello")];
     const t0 = Date.now();
     // (La variable evita que cada consulta deje un "chat" con título en ~/.claude/projects.)
-    const r = await runClaude(args, { cwd, input: prompt, env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });
+    const r = await runClaude(args, { cwd, input: prompt, env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" }, timeoutMs: 5 * 60_000 });
     lastRun = { ms: Date.now() - t0, usd: r.total_cost_usd ?? null, model: model || "(el tuyo)" };
     let out = r.structured_output;
     if (!out && r.result) { try { out = JSON.parse(r.result); } catch {} }

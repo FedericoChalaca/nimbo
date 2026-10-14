@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld("nimbo", {
   delegateOpen: (d) => ipcRenderer.send("delegate-open", d),
   delegateRun: (d) => ipcRenderer.invoke("delegate-run", d),
   delegateShow: (file) => ipcRenderer.send("delegate-show", file),
+  askCancel: () => ipcRenderer.send("ask-cancel"),
   aiProviders: () => ipcRenderer.invoke("ai-providers"),
   aiSelect: (id) => ipcRenderer.send("ai-select", id),
   onAiError: (fn) => ipcRenderer.on("ai-error", (_e, m) => fn(m)),

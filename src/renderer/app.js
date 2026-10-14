@@ -1716,12 +1716,31 @@ api.onVoice((on) => { if (!on) stopSpeaking(); });
 
 async function askAndShow(message) {
   stopSpeaking(); // pregunta nueva: se calla lo anterior
-  answer.replaceChildren(el("div", "", t("Pensando…")));
+  // Mientras Claude responde, la isla sigue viva: contador de segundos y un botón para cancelar (nunca un "Pensando…" mudo e inmóvil).
+  const waiting = el("div", "waiting");
+  const waitText = el("span", "", t("Pensando…"));
+  const cancel = el("button", "", t("Cancelar"));
+  cancel.type = "button";
+  let cancelled = false;
+  cancel.onclick = () => { cancelled = true; cancel.disabled = true; api.askCancel(); };
+  waiting.append(waitText, cancel);
+  answer.replaceChildren(waiting);
   answer.classList.add("wait");
   answerBox.classList.remove("hidden");
   progressStart(message.files?.length || message.images?.length ? 25_000 : 15_000);
-  const r = await api.ask(message);
+  setState("thinking", t("Pensando…"));
+  const started = Date.now();
+  const tick = setInterval(() => {
+    const s = Math.round((Date.now() - started) / 1000);
+    waitText.textContent = s < 12 ? t("Pensando…") : t("Sigue trabajando… {0} s", s);
+  }, 1000);
+  let r;
+  try { r = await api.ask(message); } finally { clearInterval(tick); }
   progressEnd();
+  // Estas preguntas ya no pasan por los hooks de Claude Code (iban más lentas): los gestos de la isla los pone la página.
+  if (cancelled) settle();
+  else if (r?.error || !r?.text) { setState("error", t("Algo falló en {0} 😢", "Nimbo"), { back: 6000, labelFor: 2500 }); SOUNDS.error(); }
+  else { setState("finished", t("¡Listo! · {0}", "Nimbo"), { back: 5000 }); SOUNDS.finish(); }
   if (r?.added?.length) setTimeout(() => setState(state, `⏰ Anotado: ${r.added[0].text}`, { labelFor: 3500 }), 300);
   answer.classList.remove("wait");
   answer.replaceChildren(el("div", "reply", r?.text ?? t("No pude hablar con Claude.")));

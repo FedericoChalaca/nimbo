@@ -1,5 +1,5 @@
 # Nimbo · WhatsApp de escritorio, SOLO LECTURA.
-# Cada 3 s escribe una línea "wa:{json}" con:
+# Cada segundo escribe una línea "wa:{json}" con:
 #   title  → título de la ventana de WhatsApp ("(3) WhatsApp" = 3 chats sin leer; "" = cerrada)
 #   access → si se pueden leer notificaciones: lo activaste en Nimbo (NIMBO_WA_READ=1) y
 #            Windows lo permite (Configuración > Privacidad > Notificaciones)
@@ -41,8 +41,8 @@ if ($env:NIMBO_WA_READ -eq '1') { try {
 $title = ''
 $tick = 0
 while ($true) {
-  # El título cambia poco y listar procesos cuesta más: se mira una de cada 4 vueltas.
-  if ($tick++ % 4 -eq 0) { $title = ''; try {
+  # El título cambia poco y listar procesos cuesta más: se mira una de cada 5 vueltas (cada ~5 s).
+  if ($tick++ % 5 -eq 0) { $title = ''; try {
     $title = "$((Get-Process | Where-Object { $_.MainWindowTitle -match '^(\(\d+\)\s*)?WhatsApp$' } | Select-Object -First 1).MainWindowTitle)"
   } catch {} }
   $msgs = @()
@@ -53,12 +53,13 @@ while ($true) {
         try {
           if ("$($n.AppInfo.AppUserModelId)" -notmatch 'WhatsApp') { continue }
           $texts = @($n.Notification.Visual.GetBinding('ToastGeneric').GetTextElements() | ForEach-Object { "$($_.Text)" })
-          $msgs += @{ id = [int64]$n.Id; t = $n.CreationTime.ToUnixTimeMilliseconds(); texts = $texts }
+          $created = [int64]$n.CreationTime.ToUnixTimeMilliseconds()
+          $msgs += @{ id = ($created * 1000 + ([int64]$n.Id % 1000)); t = $created; texts = $texts }
         } catch {}
       }
     } catch {}
   }
   $line = @{ title = $title; access = $access; msgs = @($msgs) } | ConvertTo-Json -Compress -Depth 4
   try { [Console]::Out.WriteLine('wa:' + $line); [Console]::Out.Flush() } catch { break }
-  Start-Sleep -Seconds 3
+  Start-Sleep -Milliseconds 1000
 }

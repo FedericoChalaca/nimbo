@@ -360,6 +360,7 @@ ipcMain.handle("ask", async (_e, msg) => {
   }
   return askNimbo(msg);
 });
+ipcMain.on("ask-cancel", () => orchestrator.cancel());
 ipcMain.handle("ai-providers", () => aiState());
 ipcMain.on("ai-select", async (_e, id) => {
   if ((await aiState()).providers.some((p) => p.id === String(id))) { prefs.chatProvider = String(id); savePrefs(); }
@@ -531,6 +532,8 @@ function watchWhatsapp() {
   waChild = wa.watch(prefs.whatsappRead === true);
 }
 app.on("before-quit", () => waChild?.kill());
+// Tras una suspensión, el lector de notificaciones de Windows puede quedar sin respuesta: se vuelve a lanzar.
+app.whenReady().then(() => powerMonitor.on("resume", () => setTimeout(watchWhatsapp, 3000)));
 ipcMain.on("open-whatsapp", () => shell.openExternal("whatsapp://"));
 ipcMain.on("whatsapp-refresh", () => wa.refresh());
 ipcMain.on("whatsapp-dismiss", () => wa.dismiss());

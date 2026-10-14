@@ -69,7 +69,7 @@ function createMail(cacheFile, model = "haiku") {
           "--tools", "", "--permission-mode", "default", "--no-session-persistence", "--effort", "low", "--max-budget-usd", "0.15",
           "--allowedTools", ...READ_TOOLS, "--disallowedTools", ...WRITE_TOOLS, ...all.filter((n) => n !== PREFIX)];
         const t0 = Date.now();
-        const r = await runClaude(args, { cwd, input: PROMPT, env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });
+        const r = await runClaude(args, { cwd, input: PROMPT, env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" }, timeoutMs: 4 * 60_000 });
         lastRun = { ms: Date.now() - t0, usd: r.total_cost_usd ?? null };
         let out = r.structured_output;
         if (!out && r.result) { try { out = JSON.parse(r.result); } catch {} }

@@ -53,7 +53,7 @@ async function searchSpotify(query) {
   const prompt = `Busca en Spotify canciones para: ${JSON.stringify(q)}. Usa la herramienta de búsqueda de Spotify una sola vez.
 Responde "connected": true y "tracks": hasta 6 canciones, la mejor coincidencia primero, con "title", "artist" y "uri" (el URI, enlace o id de la canción tal cual lo devuelve la herramienta; nunca lo inventes).
 Si no tienes la herramienta de búsqueda de Spotify o te pide iniciar sesión, responde "connected": false y "tracks": [].`;
-  const r = await runClaude(args, { cwd, input: prompt, env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });
+  const r = await runClaude(args, { cwd, input: prompt, env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" }, timeoutMs: 120_000 });
   let out = r.structured_output;
   if (!out && r.result) { try { out = JSON.parse(r.result); } catch {} }
   if (!out) return { error: true, tracks: [] };
