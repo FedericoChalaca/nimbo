@@ -8,22 +8,11 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 
 ## Estado y siguiente paso (2026-10-14)
 Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el contexto del dueño y lo que está abierto.
-- **Publicado:** 0.7.0 (release de GitHub con instalador, compilado por CI). En `main`, después y SIN versión nueva: carpetas, reintento
-  de Trello, entrenador de entrevistas y Telegram. En local y SIN subir (el dueño pidió esperar): barra flotante de música, bandeja de
-  pendientes y avisos de Telegram, otras IAs y correo. Sería la 0.8.0.
-- **Hecho:** hooks y permisos, chat y orquestador, recordatorios, GitHub, Trello por tableros, WhatsApp de solo lectura, voz, plan del día,
-  ver la pantalla, Spotify (tarjeta, búsqueda, Premium), barra flotante de música, entrenador de entrevistas, Telegram (chat, bandeja, avisos),
-  otras IAs (Ollama/Gemini/OpenAI, con Ollama de un clic), correo de Gmail a pedido (botón ✉), chats en Sonnet, instalador, CI, español e inglés.
-- **Sin verificar con uso real:** el instalador instalado (último probado de verdad: 0.3.2), la bandeja de Windows y el botón ⋮, arrastrar la barra
-  de música y que recuerde su sitio, dictado/chat/WhatsApp en inglés, el sonido de las dos voces, `scripts/promo/promo-main.js`; las otras IAs
-  con un modelo REAL (el Ollama del dueño no tiene ninguno instalado y no hay claves), y los avisos al celular y `/correo`/`/pendiente` con su
-  bot real (probados solo con un Telegram de mentira).
-- **Abierto:** firma del instalador (SignPath la RECHAZÓ el 2026-10-13: proyecto muy nuevo; ver "Firma del instalador"); `app.js` tiene ~1.830
-  líneas y conviene partirlo por piezas y probando; regenerar el GIF y el video del README con la interfaz nueva.
-- **Ideas que el dueño dejó para después:** copiloto de reuniones y clases (capturar el audio del sistema con `setDisplayMediaRequestHandler`
-  `audio: "loopback"`, trozos por el Whisper de `stt-worker.js`, resumir con `claude -p`; SIN modo oculto para entrevistas reales), aprobar permisos
-  de Claude Code desde Telegram, vigilar otros agentes (Codex, Cursor, Gemini CLI), uso del plan de Claude, atajos editables y más idiomas, web app para
-  iPhone sobre Tailscale (no hay Mac). Wazend/WhatsApp automático: DESCARTADO (cuesta).
+- **Publicado:** 0.8.0 (release de GitHub con instalador compilado por CI). Todo lo de este documento está en esa versión.
+- **Hecho:** hooks y permisos, chat y orquestador, recordatorios, GitHub, Trello por tableros, WhatsApp de solo lectura, voz, plan del día, ver la pantalla, Spotify (tarjeta, búsqueda, Premium), barra flotante de música, entrenador de entrevistas, Telegram (chat, bandeja, avisos), otras IAs (Ollama de un clic, Gemini, OpenAI), correo de Gmail a pedido (botón ✉), chats en Sonnet, instalador, CI, español e inglés.
+- **Sin verificar con uso real:** el instalador instalado (último probado de verdad: 0.3.2), la bandeja de Windows y el botón ⋮, arrastrar la barra de música y que recuerde su sitio, dictado/chat/WhatsApp en inglés, el sonido de las dos voces, `scripts/promo/promo-main.js`; las otras IAs con un modelo REAL (el Ollama del dueño no tiene ninguno y él pidió no descargarlo), y los avisos al celular, `/pendiente` con el PC apagado y `/correo` con su bot real (probados con un Telegram de mentira).
+- **Abierto:** firma del instalador (SignPath la RECHAZÓ el 2026-10-13: ver "Firma del instalador"); `app.js` tiene ~1.830 líneas y conviene partirlo por piezas y probando; regenerar el GIF y el video del README con la interfaz nueva.
+- **Ideas para después:** aprobar permisos de Claude Code desde Telegram, copiloto de reuniones y clases (audio del sistema con `setDisplayMediaRequestHandler` `audio: "loopback"` + el Whisper de `stt-worker.js`; SIN modo oculto para entrevistas reales), vigilar otros agentes (Codex, Cursor, Gemini CLI), uso del plan de Claude, atajos editables, más idiomas, web app para iPhone sobre Tailscale (no hay Mac). Wazend/WhatsApp automático: DESCARTADO (cuesta).
 
 ## Convenciones del dueño
 - Nada de claves ni datos personales en el repo (es público); lo suyo va en `%APPDATA%\nimbo\prefs.json`.
