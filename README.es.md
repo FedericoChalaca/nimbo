@@ -198,6 +198,22 @@ Qué queda guardado: el Client ID en `prefs.json` y un token de renovación en `
 
 Si la app de Spotify estaba cerrada, la primera canción solo la abre: cuando cargue, tócala otra vez.
 
+### 11. Telegram (opcional)
+
+Habla con Nimbo desde el celular. Le escribes a tu propio bot de Telegram y la respuesta sale del mismo chat que tienes en la isla (puede leer tus notas, responder y crear recordatorios). Nimbo no necesita un servidor ni abre ningún puerto: le pregunta a Telegram cada pocos segundos si hay mensajes nuevos.
+
+1. En Telegram abre **@BotFather**, envía `/newbot` y elige un nombre y un usuario que termine en `bot`. Te da un **token** (algo como `123456789:AAH…`). Trátalo como una contraseña: quien lo tenga controla el bot.
+2. En Nimbo: clic derecho → **Conexiones** → fila **Telegram** → pega el token y pulsa Enter. Nimbo lo comprueba con Telegram y lo guarda cifrado por Windows.
+3. Pulsa **Vincular**. Nimbo muestra un código de 6 cifras. Abre tu bot (BotFather te dio su enlace `t.me/…`), pulsa **Iniciar** y envíale ese código. Dura 10 minutos y admite 5 intentos.
+4. Listo. Escríbele a tu bot como lo harías en el chat de Nimbo. `/plan` te da el plan de hoy.
+
+Qué conviene saber:
+- **Solo tu cuenta.** Tras vincular, los mensajes de cualquier otra cuenta, grupo o bot se ignoran en silencio. Para cambiar de cuenta, pulsa **Desconectar** y vincula de nuevo.
+- **Los encargos para otros chats no se envían desde Telegram.** Si Nimbo redacta una tarea para otro chat, Telegram solo te avisa que existe; la confirmas en la isla.
+- **Telegram ve el texto.** Los chats con bots no están cifrados de punta a punta: no envíes por ahí lo que no enviarías normalmente por Telegram. Nimbo guarda el token cifrado en tu PC (`%APPDATA%\nimbo\telegram.bin`) y nada más.
+- **Con Nimbo apagado no responde.** Al arrancar descarta lo que enviaste mientras tanto (un mensaje viejo no debe ejecutarse horas después) y te avisa; reenvía lo importante.
+- **Cada mensaje cuesta como uno en el chat de Nimbo**, con el modelo por defecto de tu Claude. Para gastar mucho menos, pon `"chatModel": "sonnet"` (o `"haiku"`) en `%APPDATA%\nimbo\prefs.json`; también aplica al chat de la isla.
+
 ### Si algo no funciona
 
 | Problema | Qué revisar |
@@ -245,7 +261,7 @@ Nimbo se sienta entre tú y los permisos de Claude Code, así que esto importa:
 - La tarjeta de permiso muestra el comando o el cambio completo. Lee antes de permitir.
 - El chat de Nimbo solo puede leer archivos. Para cambiar algo en un proyecto, te propone un prompt y lo envía únicamente cuando haces clic.
 - Los resúmenes de Trello y WhatsApp corren sin herramientas: un texto ajeno no puede hacer que un modelo ejecute nada.
-- Nimbo no guarda contraseñas, tokens ni API keys. GitHub usa tu sesión de `gh`; Trello, el conector de tu Claude. La única excepción es opcional: si conectas Spotify con Premium, queda su token de renovación, cifrado por Windows.
+- Nimbo no guarda contraseñas, tokens ni API keys. GitHub usa tu sesión de `gh`; Trello, el conector de tu Claude. Las excepciones son opcionales y van cifradas por Windows: el token de renovación de Spotify Premium y el token de tu bot de Telegram.
 
 Si encuentras un problema de seguridad, abre un issue.
 

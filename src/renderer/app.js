@@ -778,6 +778,7 @@ function onMedia(m) {
   if (openApp === "spotify") renderAppView();
 }
 // Volvió el permiso de Spotify (Premium): se avisa y, si el panel de conexiones está abierto, se refresca.
+api.onTelegram(() => { if (!setupBox.classList.contains("hidden")) api.setup().then(renderSetup); });
 api.onSpotify((ok) => {
   setState(state, ok ? t("Spotify conectado ♪") : t("No se pudo conectar Spotify."), { labelFor: 4500 });
   if (!setupBox.classList.contains("hidden")) api.setup().then(renderSetup);
@@ -1100,7 +1101,18 @@ function renderSetup(s) {
   const spotify = s.spotify === true ? row(true, "Spotify", t("Conectado con Premium: eliges una canción y suena."), btn(t("Desconectar"), "spotify-logout"))
     : s.spotify === false ? row(false, "Spotify", t("Falta tu permiso: se abre Spotify en el navegador y aceptas. Si se abre donde no tienes tu sesión, pega el enlace en tu navegador: queda copiado."), btn(t("Quitar"), "spotify-id", ""), btn(t("Conectar"), "spotify-login", null, "allow"))
     : row(null, "Spotify", t("Lo que suena sale solo. Con Premium, elegir una canción la pone a sonar: pega el Client ID de tu app de Spotify."), spotifyId, btn(t("Guía"), "open", "spotify-guide"));
-  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, spotify, wa, look, voiceRow, auto];
+  // Telegram: hablar con Nimbo desde el celular. El token se pega aquí y va directo, cifrado, a tu PC.
+  const tg = s.telegram ?? {};
+  const tgToken = el("input");
+  tgToken.type = "password";
+  tgToken.placeholder = t("Token del bot");
+  tgToken.spellcheck = false;
+  tgToken.autocomplete = "off";
+  tgToken.onchange = () => act("telegram-token", tgToken.value);
+  const telegramRow = tg.paired ? row(true, "Telegram", t("Conectado con @{0}: escríbele a tu bot desde el celular.", tg.bot || "bot"), btn(t("Desconectar"), "telegram-logout"))
+    : tg.token ? row(false, "Telegram", tg.pairing ? t("Envíale este código a tu bot en Telegram: {0}", tg.pairing) : t("Falta vincular tu cuenta: pulsa Vincular y te doy un código."), btn(t("Quitar"), "telegram-logout"), btn(t("Vincular"), "telegram-pair", null, "allow"))
+    : row(null, "Telegram", t("Opcional: habla con Nimbo desde el celular. Crea un bot con @BotFather y pega aquí su token."), tgToken, btn(t("Guía"), "open", "telegram-guide"));
+  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, spotify, telegramRow, wa, look, voiceRow, auto];
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));
   setupBox.replaceChildren(...rows);
 }

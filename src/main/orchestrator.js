@@ -22,6 +22,8 @@ let LANG = () => "es";
 const t = (s, ...a) => require("../shared/i18n").translator(LANG())(s, ...a);
 // El plan del día que lee main.js (plan.js), para que el chat pueda responder preguntas sobre él.
 let PLAN = () => null;
+// Modelo del chat (prefs.chatModel): vacío = el que use tu claude por defecto (Opus en este equipo, el más caro).
+let MODEL = () => "";
 // Así nombra Claude Code la carpeta de transcripciones de un cwd (D:\notas → D--notas).
 const projectDirName = (cwd) => cwd.replace(/[^a-zA-Z0-9]/g, "-");
 const ACTIVE_MS = 2 * 60_000;
@@ -238,7 +240,8 @@ function userMessage({ text, images = [] }) {
   return JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
 }
 
-function createOrchestrator(chatDir, { vault, lang, plan } = {}) {
+function createOrchestrator(chatDir, { vault, lang, plan, model } = {}) {
+  if (typeof model === "function") MODEL = model;
   if (typeof lang === "function") LANG = lang;
   if (typeof plan === "function") PLAN = plan;
   fs.mkdirSync(chatDir, { recursive: true });
@@ -257,6 +260,7 @@ function createOrchestrator(chatDir, { vault, lang, plan } = {}) {
       const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
         "--append-system-prompt", systemPrompt(sessions, reminders), "--json-schema", SCHEMA];
       if (VAULT) args.push("--add-dir", VAULT);
+      if (MODEL()) args.push("--model", String(MODEL()).slice(0, 40));
       if (sessionId) args.push("--resume", sessionId);
 
       // Archivos soltados sobre Nimbo: solo rutas que existen; su carpeta se abre en

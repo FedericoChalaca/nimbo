@@ -22,7 +22,7 @@ Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el con
 - **Siguiente paso, en este orden (cada uno se acuerda con el dueño antes):** (1) copiloto de
   reuniones: capturar el audio del sistema con `desktopCapturer`/`setDisplayMediaRequestHandler` (`audio: "loopback"`), pasarlo
   por el Whisper local de `stt-worker.js` en trozos y resumir con `claude -p`; SIN modo oculto para entrevistas reales;
-  (2) chat con otras IAs empezando por Ollama (sin claves); (3) web app para iPhone sobre Tailscale.
+  (2) chat con otras IAs empezando por Ollama (sin claves); (3) web app para iPhone sobre Tailscale (no hay Mac: nada nativo ni TestFlight). Telegram ya cubre hablar con Nimbo desde el celular.
 
 ## Convenciones del dueño
 - Nada de claves ni datos personales en el repo (es público); lo suyo va en `%APPDATA%\nimbo\prefs.json`.
@@ -185,6 +185,17 @@ el modelo por defecto; Haiku elegía peor. Caché `%APPDATA%\nimbo\trello.json` 
 descarta). En la página: píldora con los tableros → lista → tablero (volver, Actualizar); `trello-busy` manda las claves
 en curso. El aviso de "vence en < 24 h" solo mira tableros ya abiertos. El video/GIF de `scripts/promo/` usa el formato viejo
 (`window.__trello`): al regenerarlos, actualizar ese dato.
+**Telegram** (`src/integrations/telegram.js`, `node src/integrations/telegram.js` = autoprueba con un Telegram de mentira): hablar con
+Nimbo desde el celular, SIN servidor ni puerto: `getUpdates` con espera larga de 25 s (saliente). El dueño crea un bot con @BotFather,
+pega el token en Conexiones (`setup-do telegram-token`: se valida con `getMe` y se guarda cifrado con `safeStorage` en
+`%APPDATA%\nimbo\telegram.bin`; el token NUNCA va en prefs, errores ni logs) y se vincula con un código de 6 cifras (10 min, 5
+intentos; `telegram-pair`). Solo atiende UNA cuenta (`prefs.telegramChat`), solo chats privados de personas; lo demás se ignora SIN
+responder. Al arrancar descarta lo pendiente (`prime`) y avisa si era suyo. Los mensajes van a `askNimbo` (la MISMA conversación que
+la isla; una cola evita dos `ask` a la vez) y /plan se contesta desde `plan`. Los `dispatch` (encargos a otros chats) NO se envían
+desde Telegram: solo se listan. `prefs.chatModel` ("sonnet"/"haiku") baja el costo de TODO el chat de Nimbo. Telegram ve el texto (los
+bots no tienen cifrado de punta a punta): está en PRIVACY.md. Probado: autoprueba (incluye mutación: sin el filtro de cuenta ajena
+falla), la fila de Conexiones en sus 3 estados, rechazo de tokens mal formados y de uno falso (401 real). SIN probar con un bot real:
+hace falta que el dueño cree uno.
 **Entrenador de entrevistas** (`src/main/interview.js`, `node src/main/interview.js` = autoprueba; `... live` hace 2 turnos de verdad y
 CUESTA centavos): en el chat, "entrenar entrevista para <puesto>" / "interview me for …" (`INTERVIEW_START` en `app.js`; si falta el
 puesto lo pregunta). Mientras `interview` (variable de la página) está activo, lo que se escribe es la respuesta; "terminar" sale
@@ -405,13 +416,14 @@ la página sin `?lang` (español).
 - Ventana: `contextIsolation`, `sandbox`, sin `nodeIntegration`; navegación y `window.open` bloqueados.
   En la página no se usa `innerHTML`: todo texto externo entra con `textContent`/`el()`.
 - Permisos del navegador: solo micrófono (audio); cámara y lo demás, denegados.
-- Nimbo no guarda claves ni tokens de nadie: GitHub vía `gh`, Trello vía el conector de `claude`. Única excepción,
-  opcional y cifrada por Windows: el token de renovación de Spotify Premium (`spotify.bin`).
+- Nimbo no guarda claves ni tokens de nadie: GitHub vía `gh`, Trello vía el conector de `claude`. Excepciones, opcionales y
+  cifradas por Windows (`safeStorage`): el token de renovación de Spotify Premium (`spotify.bin`) y el token del bot de Telegram
+  (`telegram.bin`).
 - El CSP ya no permite JavaScript en línea (`script-src 'self' 'wasm-unsafe-eval' blob:`): el código de la página está en
   `app.js`. Los estilos sí llevan `'unsafe-inline'` (el código pone variables CSS con `style`).
 
 ## Estado en disco
-`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `interviewModel`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
+`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `interviewModel`, `chatModel`, `telegramChat`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
 caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
 
 ## Lecciones (cosas que ya fallaron)

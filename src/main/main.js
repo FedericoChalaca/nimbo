@@ -15,6 +15,7 @@ const { createTrello } = require("../integrations/trello");
 const { searchSpotify, TRACK_URI } = require("../integrations/spotify");
 const { watchMedia } = require("../integrations/media");
 const { askInterview } = require("./interview");
+const { createTelegram } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
 const { createWhatsapp } = require("../integrations/whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
@@ -190,6 +191,10 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
   spotifyClientId: "",
   // Entrenador de entrevistas: modelo de tu claude ("" = haiku, el más barato; "sonnet" para un entrenador más exigente).
   interviewModel: "",
+  // Modelo del chat de Nimbo, en la isla y en Telegram ("" = el de tu claude; "sonnet" o "haiku" gastan mucho menos).
+  chatModel: "",
+  // Telegram (opcional): la cuenta vinculada (0 = ninguna). El token del bot NO va aquí: va cifrado en telegram.bin.
+  telegramChat: 0,
   // Plan del día (ver plan.js): dónde está, y la fecha del último plan que ya te mostró.
   planRepo: "", planBranch: "", planFile: "", planSeen: "" };
 try {
@@ -235,7 +240,7 @@ ipcMain.on("toggle-mini", () => setMini(!mini));
 
 // --- Chat + orquestador: usa tu Claude Code, sin API key aparte ---
 const CHAT_DIR = path.join(app.getPath("userData"), "chat");
-const orchestrator = createOrchestrator(CHAT_DIR, { vault: prefs.vault, lang, plan: () => plan });
+const orchestrator = createOrchestrator(CHAT_DIR, { vault: prefs.vault, lang, plan: () => plan, model: () => prefs.chatModel });
 
 // --- Plan del día: se lee al arrancar y cada 30 min; si trae fecha nueva, la isla lo anuncia ---
 let plan = null; // el último plan leído (ya validado) o null
@@ -270,13 +275,52 @@ function checkReminders() {
   }
 }
 
-ipcMain.handle("ask", async (_e, msg) => {
+// Un solo `ask` a la vez: la isla y Telegram hablan con la MISMA conversación, y dos a la vez la bifurcarían.
+let askChain = Promise.resolve();
+async function doAsk(msg) {
   const r = await orchestrator.ask(msg, { reminders: reminders.pending() });
   const added = (r.reminders ?? []).map((x) => reminders.add(x)).filter(Boolean);
   for (const id of r.complete ?? []) reminders.complete(String(id));
   if (added.length || r.complete?.length) remindersChanged();
   return { ...r, added };
+}
+const askNimbo = (msg) => (askChain = askChain.then(() => doAsk(msg), () => doAsk(msg)));
+ipcMain.handle("ask", (_e, msg) => askNimbo(msg));
+// --- Telegram (opcional, telegram.js): hablar con Nimbo desde el celular. El token del bot va cifrado por Windows. ---
+const telegramTokenFile = path.join(app.getPath("userData"), "telegram.bin");
+let telegramToken; // undefined = aún no se leyó del disco
+const telegramSaveToken = (value) => {
+  telegramToken = "";
+  try {
+    if (value && safeStorage.isEncryptionAvailable()) { fs.writeFileSync(telegramTokenFile, safeStorage.encryptString(value)); telegramToken = value; }
+    else fs.rmSync(telegramTokenFile, { force: true });
+  } catch {}
+};
+async function telegramReply(text) {
+  if (/^\/(start|help|ayuda)\b/i.test(text)) return t("Soy Nimbo. Escríbeme como en el chat de la isla. /plan te da el plan de hoy.");
+  if (/^\/plan\b/i.test(text)) {
+    if (prefs.planRepo) plan = await readPlan(prefs);
+    return plan ? [planSpeech(plan, t), ...plan.proyectos.filter((p) => p.propuesta).slice(0, 8).map((p) => `• ${p.nombre}: ${p.propuesta.titulo}`)].join("\n") : t("No tengo el plan de hoy: no está configurado, no hay conexión o todavía no ha salido.");
+  }
+  const r = await askNimbo({ text });
+  let out = r.text || t("(sin respuesta)");
+  if (r.added?.length) out += `\n\n⏰ ${r.added.map((x) => x.text).join(" · ")}`;
+  // Los encargos para otros chats NO se envían desde aquí: hay que confirmarlos en la isla.
+  if (r.dispatch?.length) out += `\n\n${t("Tengo {0} encargo(s) para otros chats; no se envían desde Telegram, confírmalos en Nimbo:", r.dispatch.length)}\n${r.dispatch.map((d) => `• ${d.title || d.project}`).join("\n")}`;
+  return out;
+}
+const telegram = createTelegram({
+  token: () => {
+    if (telegramToken === undefined) { try { telegramToken = safeStorage.decryptString(fs.readFileSync(telegramTokenFile)); } catch { telegramToken = ""; } }
+    return telegramToken;
+  },
+  chatId: () => Number(prefs.telegramChat) || 0,
+  setChatId: (id) => { prefs.telegramChat = id; savePrefs(); },
+  onMessage: telegramReply,
+  texts: () => ({ welcome: t("¡Listo! Ya estás vinculado con Nimbo. Escríbeme lo que quieras."), failed: t("No pude responder. Revisa Nimbo en tu PC."), backlog: t("Estaba apagado: ignoré tus mensajes anteriores. Reenvía lo que sea importante.") }),
+  onChange: () => win?.webContents.send("telegram", telegram.status()),
 });
+app.on("before-quit", () => telegram.stop());
 ipcMain.handle("dispatch", (_e, id, prompt) => orchestrator.dispatch(String(id), String(prompt)));
 
 // --- GitHub: notificaciones con la sesión que ya tiene `gh` (Nimbo no guarda claves) ---
@@ -440,6 +484,7 @@ async function setupStatus() {
     hooks: hookState,
     github: await ghStatus(),
     trello: t && t.boards.length ? t.boards.length : null,
+    telegram: telegram.status(),
     spotify: !spotifyApi.configured() ? null : spotifyApi.connected(), // null = sin Client ID · false = falta entrar
     theme: prefs.theme,
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
@@ -526,9 +571,24 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         spotifyApi.login().then((ok) => { if (win && !win.isDestroyed()) win.webContents.send("spotify", ok); });
         break;
       case "spotify-logout": spotifyApi.logout(); break;
+      case "telegram-token": {
+        const token = String(value ?? "").trim();
+        if (!telegram.TOKEN.test(token)) throw new Error(t("Ese no parece un token de bot de Telegram (se ve así: 123456789:AAH…)."));
+        if (!safeStorage.isEncryptionAvailable()) throw new Error(t("Windows no puede cifrar el token en este equipo."));
+        try { await telegram.verify(token); } catch { throw new Error(t("Telegram no aceptó ese token. Cópialo de nuevo desde @BotFather.")); }
+        telegram.stop();
+        telegramSaveToken(token);
+        prefs.telegramChat = 0; // otro bot: hay que vincular de nuevo
+        savePrefs();
+        telegram.start();
+        break;
+      }
+      case "telegram-pair": if (telegram.pair()) telegram.start(); break;
+      case "telegram-logout": telegram.stop(); telegram.logout(); telegramSaveToken(""); prefs.telegramChat = 0; savePrefs(); break;
       case "open":
         // "guide" = la guía de conexiones del README, en el idioma de la interfaz.
-        if (value === "spotify-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#10-spotify-opcional" : "README.md#10-spotify-optional"}`);
+        if (value === "telegram-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#11-telegram-opcional" : "README.md#11-telegram-optional"}`);
+        else if (value === "spotify-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#10-spotify-opcional" : "README.md#10-spotify-optional"}`);
         else if (value === "guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#conectar-todo" : "README.md#connect-everything"}`);
         else if (Object.hasOwn(LINKS, value)) shell.openExternal(LINKS[value]);
         break;
@@ -738,6 +798,7 @@ app.whenReady().then(() => {
   setTimeout(checkPlan, 7000); // después del saludo
   setInterval(checkPlan, 30 * 60_000);
   watchWhatsapp();
+  if (telegram.status().token) telegram.start();
   setTimeout(refreshTrelloIfStale, 90_000); // después de arrancar, para no competir con el inicio
   setInterval(refreshTrelloIfStale, 15 * 60_000); // reintentos, y por si el PC queda prendido varios días
   setInterval(checkReminders, 15_000);
