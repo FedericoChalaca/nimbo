@@ -1,6 +1,6 @@
 // Nimbo: ventana transparente arriba de la pantalla + servidor local que recibe
 // los hooks de Claude Code y se los pasa al personaje.
-const { app, BrowserWindow, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer, Tray, nativeImage, safeStorage } = require("electron");
+const { app, BrowserWindow, powerMonitor, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer, Tray, nativeImage, safeStorage } = require("electron");
 const { execFile } = require("child_process");
 const { pathToFileURL } = require("url");
 const crypto = require("crypto");
@@ -16,7 +16,10 @@ const { searchSpotify, TRACK_URI } = require("../integrations/spotify");
 const { watchMedia } = require("../integrations/media");
 const { askInterview } = require("./interview");
 const { createMusicBar } = require("./musicbar");
-const { createTelegram } = require("../integrations/telegram");
+const { createAlerts } = require("./alerts");
+const { createMail, threadUrl } = require("../integrations/mail");
+const { createAi, KEYED, KEY_FORMAT } = require("../integrations/ai");
+const { createTelegram, parseInbox } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
 const { createWhatsapp } = require("../integrations/whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
@@ -192,6 +195,12 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
   spotifyClientId: "",
   // Entrenador de entrevistas: modelo de tu claude ("" = haiku, el más barato; "sonnet" para un entrenador más exigente).
   interviewModel: "",
+  // Correo (mail.js): Nimbo revisa tu Gmail con el conector de tu claude. Apagado hasta que lo actives en Conexiones.
+  mailRead: false,
+  // Avisos al celular por Telegram (alerts.js): qué categorías mandan aviso y si solo cuando estás lejos del PC.
+  telegramAlerts: { claude: true, reminders: true, mail: true, whatsapp: false, onlyAway: true },
+  // Otras IAs en el chat (ai.js): cuál se usa ("claude", "ollama", "gemini", "openai") y, si quieres, el modelo de cada una.
+  chatProvider: "claude", aiModels: {},
   // Barra flotante de música (musicbar.js): aparece cuando Spotify tiene algo cargado; se mueve y su sitio se guarda.
   musicBar: true, musicBarPos: null,
   // Modelo del chat de Nimbo, en la isla y en Telegram ("" = el de tu claude; "sonnet" o "haiku" gastan mucho menos).
@@ -275,6 +284,7 @@ ipcMain.on("reminder-snooze", (_e, id, min) => { reminders.snooze(String(id), Ma
 function checkReminders() {
   for (const r of reminders.takeDue()) {
     win?.webContents.send("reminder", r);
+    alerts.notify("reminders", t("⏰ Recordatorio: {0}", r.text));
     if (Notification.isSupported()) new Notification({ title: t("Nimbo · recordatorio"), body: r.text, silent: mini }).show();
   }
 }
@@ -289,7 +299,81 @@ async function doAsk(msg) {
   return { ...r, added };
 }
 const askNimbo = (msg) => (askChain = askChain.then(() => doAsk(msg), () => doAsk(msg)));
-ipcMain.handle("ask", (_e, msg) => askNimbo(msg));
+// --- Otras IAs (ai.js): Ollama local, Gemini, OpenAI. Solo conversación; los adjuntos y las herramientas son de Claude. ---
+const aiKeysFile = path.join(app.getPath("userData"), "ai-keys.bin");
+let aiKeys; // undefined = aún no se leyó del disco
+const aiLoad = () => {
+  if (aiKeys === undefined) { try { aiKeys = JSON.parse(safeStorage.decryptString(fs.readFileSync(aiKeysFile))); } catch { aiKeys = {}; } }
+  return aiKeys;
+};
+const aiSave = () => {
+  try {
+    if (Object.keys(aiLoad()).length && safeStorage.isEncryptionAvailable()) fs.writeFileSync(aiKeysFile, safeStorage.encryptString(JSON.stringify(aiKeys)));
+    else fs.rmSync(aiKeysFile, { force: true });
+  } catch {}
+};
+const ai = createAi({ getKey: (id) => aiLoad()[id] ?? "", models: () => prefs.aiModels ?? {} });
+const aiHistory = new Map(); // id → mensajes de la conversación con esa IA (solo en memoria)
+async function aiState() {
+  const st = await ai.status();
+  const providers = [{ id: "claude", label: "Claude" }, ...st.providers];
+  return { providers, current: providers.some((p) => p.id === prefs.chatProvider) ? prefs.chatProvider : "claude", ollama: st.ollama, keyed: st.keyed };
+}
+const aiSystem = () => `Eres Nimbo, el compañero de escritorio del usuario (una nube pequeña arriba de su pantalla). Responde en el idioma del usuario, claro y breve (máximo 4 frases salvo que pidan más). No tienes acceso a sus archivos, recordatorios, chats ni a internet: si te lo piden, dilo en una frase y sugiere cambiar a Claude en el selector del chat. Hoy es ${new Date().toLocaleDateString(lang() === "es" ? "es-CO" : "en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`;
+async function askOther(provider, text) {
+  const history = aiHistory.get(provider.id) ?? [];
+  const r = await ai.chat(provider.id, history, text, aiSystem());
+  if (r.error) {
+    const why = { key: "{0} no aceptó la clave. Pégala de nuevo en Conexiones → Otras IAs.", limit: "{0} dice que llegaste a su límite. Espera un rato o cambia de IA.",
+      model: "{0} no tiene el modelo que se necesita. Instálalo o revisa su nombre.", offline: "No pude conectarme con {0}." }[r.error] ?? "{0} no pudo responder.";
+    return { text: t(why, provider.label), dispatch: [], added: [] };
+  }
+  aiHistory.set(provider.id, [...history, { role: "user", content: text }, { role: "assistant", content: r.text }].slice(-24));
+  return { text: r.text, dispatch: [], added: [] };
+}
+// Los adjuntos (imágenes y archivos) y todo lo que usa herramientas son de Claude: con una de estas IAs elegida,
+// un mensaje con adjuntos igual va a Claude.
+ipcMain.handle("ask", async (_e, msg) => {
+  if (!msg?.images?.length && !msg?.files?.length && prefs.chatProvider && prefs.chatProvider !== "claude") {
+    const st = await aiState();
+    const provider = st.providers.find((p) => p.id === st.current);
+    if (provider && provider.id !== "claude") return askOther(provider, String(msg?.text ?? ""));
+  }
+  return askNimbo(msg);
+});
+ipcMain.handle("ai-providers", () => aiState());
+ipcMain.on("ai-select", async (_e, id) => {
+  if ((await aiState()).providers.some((p) => p.id === String(id))) { prefs.chatProvider = String(id); savePrefs(); }
+});
+// --- Correo (opcional, mail.js): tu Gmail por el conector de tu claude, solo lectura. Cada 4 h y al pedirlo. ---
+const mail = createMail(path.join(app.getPath("userData"), "mail.json"));
+async function refreshMail({ quiet = false } = {}) {
+  win?.webContents.send("mail-busy", true);
+  let r;
+  try { r = await mail.refresh(); } finally { win?.webContents.send("mail-busy", false); }
+  win?.webContents.send("mail", { on: prefs.mailRead === true, ...mail.cached() });
+  // A tu celular solo llegan los importantes nuevos (la primera vez, al activar, no: ya los ves en la isla).
+  if (r?.ok && !quiet) for (const e of r.fresh.slice(0, 3)) alerts.notify("mail", t("✉️ Correo de {0}: {1}", e.from, e.subject));
+  return r;
+}
+ipcMain.handle("mail", () => ({ on: prefs.mailRead === true, ...mail.cached() }));
+ipcMain.on("mail-refresh", () => { if (prefs.mailRead === true) refreshMail(); });
+ipcMain.on("mail-open", (_e, id) => { const url = threadUrl(id); if (url) shell.openExternal(url); });
+const MAIL_MAX_AGE = 4 * 3600_000;
+let mailTried = 0;
+let mailTries = 0;
+function refreshMailIfStale() {
+  if (prefs.mailRead !== true || mini) return;
+  const at = Date.parse(mail.cached().at || "");
+  if (Date.now() - (Number.isFinite(at) ? at : 0) < MAIL_MAX_AGE) { mailTries = 0; return; }
+  const since = Date.now() - mailTried;
+  if (since < 10 * 60_000 || (mailTries >= 3 && since < 6 * 3600_000)) return; // si falla: 3 intentos y luego espera 6 h
+  if (since >= 6 * 3600_000) mailTries = 0;
+  mailTried = Date.now();
+  mailTries++;
+  refreshMail();
+}
+
 // --- Telegram (opcional, telegram.js): hablar con Nimbo desde el celular. El token del bot va cifrado por Windows. ---
 const telegramTokenFile = path.join(app.getPath("userData"), "telegram.bin");
 let telegramToken; // undefined = aún no se leyó del disco
@@ -301,7 +385,33 @@ const telegramSaveToken = (value) => {
   } catch {}
 };
 async function telegramReply(text) {
-  if (/^\/(start|help|ayuda)\b/i.test(text)) return t("Soy Nimbo. Escríbeme como en el chat de la isla. /plan te da el plan de hoy.");
+  if (/^\/(start|help|ayuda)\b/i.test(text)) return t("Soy Nimbo. Escríbeme como en el chat de la isla. /plan te da el plan de hoy. /pendiente <texto> anota un pendiente (aunque mi PC esté apagado, lo anoto al encender), /pendientes los lista /hecho <n> marca uno y /correo te dice qué correos importan.");
+  if (/^\/correo\b/i.test(text)) {
+    if (prefs.mailRead !== true) return t("El correo está apagado: actívalo en Conexiones de Nimbo.");
+    if (!(Date.now() - Date.parse(mail.cached().at || 0) < 30 * 60_000)) await refreshMail({ quiet: true }); // la lista tiene más de 30 min: se revisa
+    const list = mail.cached().emails;
+    const important = list.filter((e) => e.important);
+    return list.length ? `${t("✉ {0} sin leer ({1} importantes):", list.length, important.length)}\n${[...important, ...list.filter((e) => !e.important)].slice(0, 8).map((e) => `${e.important ? "★" : "•"} ${e.from}: ${e.summary || e.subject}`).join("\n")}` : t("No tienes correos sin leer. 📭");
+  }
+  const note = parseInbox(text);
+  if (note !== null) {
+    if (!note) return t("Escribe /pendiente seguido de lo que quieras anotar.");
+    reminders.add({ text: note, due: "" });
+    remindersChanged();
+    return t("Anotado ✔ ({0} pendientes): {1}", reminders.pending().length, note);
+  }
+  if (/^\/pendientes\b/i.test(text)) {
+    const list = reminders.pending();
+    return list.length ? `${t("Tus pendientes:")}\n${list.map((r, i) => `${i + 1}. ${r.text}${r.due ? " ⏰" : ""}`).join("\n")}` : t("No tienes pendientes. 🎉");
+  }
+  const done = /^\/hecho\s+(\d{1,3})\b/i.exec(text);
+  if (done) {
+    const target = reminders.pending()[Number(done[1]) - 1];
+    if (!target) return t("No encuentro el pendiente {0}.", done[1]);
+    reminders.complete(target.id);
+    remindersChanged();
+    return t("Hecho ✔: {0}", target.text);
+  }
   if (/^\/plan\b/i.test(text)) {
     if (prefs.planRepo) plan = await readPlan(prefs);
     return plan ? [planSpeech(plan, t), ...plan.proyectos.filter((p) => p.propuesta).slice(0, 8).map((p) => `• ${p.nombre}: ${p.propuesta.titulo}`)].join("\n") : t("No tengo el plan de hoy: no está configurado, no hay conexión o todavía no ha salido.");
@@ -321,10 +431,18 @@ const telegram = createTelegram({
   chatId: () => Number(prefs.telegramChat) || 0,
   setChatId: (id) => { prefs.telegramChat = id; savePrefs(); },
   onMessage: telegramReply,
+  // Las notas /pendiente que le mandaste con el PC apagado se anotan al encender (lo demás se descarta).
+  onBacklog: async (notes) => {
+    const added = notes.map((x) => parseInbox(x)).filter(Boolean).map((x) => reminders.add({ text: x, due: "" })).filter(Boolean);
+    remindersChanged();
+    return added.length ? `${t("Estaba apagado y anoté {0} pendiente(s) que me mandaste:", added.length)}\n${added.map((r) => `• ${r.text}`).join("\n")}` : "";
+  },
   texts: () => ({ welcome: t("¡Listo! Ya estás vinculado con Nimbo. Escríbeme lo que quieras."), failed: t("No pude responder. Revisa Nimbo en tu PC."), backlog: t("Estaba apagado: ignoré tus mensajes anteriores. Reenvía lo que sea importante.") }),
   onChange: () => win?.webContents.send("telegram", telegram.status()),
 });
 app.on("before-quit", () => telegram.stop());
+const alertCfg = () => ({ claude: true, reminders: true, mail: true, whatsapp: false, onlyAway: true, ...(prefs.telegramAlerts ?? {}) });
+const alerts = createAlerts({ send: (text) => telegram.notify(text), enabled: (k) => alertCfg()[k] === true, idle: () => powerMonitor.getSystemIdleTime(), t });
 ipcMain.handle("dispatch", (_e, id, prompt) => orchestrator.dispatch(String(id), String(prompt)));
 
 // --- GitHub: notificaciones con la sesión que ya tiene `gh` (Nimbo no guarda claves) ---
@@ -359,6 +477,7 @@ const wa = createWhatsapp({
     if (!win || win.isDestroyed()) return;
     win.webContents.send("whatsapp", state, alert);
     // Lo urgente también sale como notificación de Windows: se ve en mini o jugando.
+    if (alert) alerts.notify("whatsapp", t("WhatsApp urgente · {0}", alert.name)); // apagado por defecto; solo el nombre del chat
     if (alert && Notification.isSupported()) new Notification({ title: t("WhatsApp urgente · {0}", alert.name), body: alert.summary }).show();
   },
 });
@@ -497,6 +616,8 @@ async function setupStatus() {
     github: await ghStatus(),
     trello: t && t.boards.length ? t.boards.length : null,
     telegram: telegram.status(),
+    ai: await aiState(),
+    mail: { on: prefs.mailRead === true, count: mail.cached().emails.length, important: mail.cached().emails.filter((e) => e.important).length },
     spotify: !spotifyApi.configured() ? null : spotifyApi.connected(), // null = sin Client ID · false = falta entrar
     theme: prefs.theme,
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
@@ -595,11 +716,38 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         telegram.start();
         break;
       }
+      case "mail-on": {
+        const r = await refreshMail({ quiet: true }); // se comprueba de verdad antes de dejarlo activo (15–45 s)
+        if (!r.ok) throw new Error(r.reason === "connector" ? t("No encuentro el conector de Gmail en tu Claude: actívalo en claude.ai y vuelve a intentar.") : t("No pude revisar el correo. Inténtalo de nuevo."));
+        prefs.mailRead = true;
+        savePrefs();
+        win?.webContents.send("mail", { on: true, ...mail.cached() });
+        break;
+      }
+      case "mail-off": prefs.mailRead = false; savePrefs(); mail.clear(); win?.webContents.send("mail", { on: false, ...mail.cached() }); break;
+      case "mail-refresh": if (prefs.mailRead === true) await refreshMail(); break;
+      case "ai-key": {
+        const text = String(value ?? "");
+        const id = text.slice(0, text.indexOf(":"));
+        const key = text.slice(text.indexOf(":") + 1).trim();
+        if (!KEYED.includes(id) || !KEY_FORMAT.test(key)) throw new Error(t("Esa clave no tiene el formato esperado."));
+        if (!safeStorage.isEncryptionAvailable()) throw new Error(t("Windows no puede cifrar el token en este equipo."));
+        if (!(await ai.verify(id, key))) throw new Error(t("{0} no aceptó esa clave.", id === "gemini" ? "Gemini" : "OpenAI"));
+        aiLoad()[id] = key;
+        aiSave();
+        break;
+      }
+      case "ai-key-clear": {
+        const id = String(value ?? "");
+        if (KEYED.includes(id)) { delete aiLoad()[id]; aiSave(); aiHistory.delete(id); }
+        break;
+      }
       case "telegram-pair": if (telegram.pair()) telegram.start(); break;
       case "telegram-logout": telegram.stop(); telegram.logout(); telegramSaveToken(""); prefs.telegramChat = 0; savePrefs(); break;
       case "open":
         // "guide" = la guía de conexiones del README, en el idioma de la interfaz.
-        if (value === "telegram-bot") { const b = telegram.status().bot; if (/^[A-Za-z0-9_]{4,32}$/.test(b)) shell.openExternal(`https://t.me/${b}`); }
+        if (value === "ai-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#12-otras-ias-opcional" : "README.md#12-other-ais-optional"}`);
+        else if (value === "telegram-bot") { const b = telegram.status().bot; if (/^[A-Za-z0-9_]{4,32}$/.test(b)) shell.openExternal(`https://t.me/${b}`); }
         else if (value === "telegram-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#11-telegram-opcional" : "README.md#11-telegram-optional"}`);
         else if (value === "spotify-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#10-spotify-opcional" : "README.md#10-spotify-optional"}`);
         else if (value === "guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#conectar-todo" : "README.md#connect-everything"}`);
@@ -610,7 +758,9 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
   } catch (e) {
     error = String(e?.message ?? e).slice(0, 160);
   }
-  return { ...(await setupStatus()), error };
+  const status = { ...(await setupStatus()), error };
+  if (String(action).startsWith("ai-")) win?.webContents.send("ai", status.ai); // el selector del chat se actualiza solo
+  return status;
 });
 
 // El menú de opciones. Sale con clic derecho sobre Nimbo, con el botón ⋮ de la isla y con el
@@ -686,8 +836,19 @@ function buildMenu() {
       },
     },
     { label: t("Reglas de WhatsApp…"), enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
-    { label: t("Nueva conversación"), click: () => orchestrator.reset() },
+    { label: t("Nueva conversación"), click: () => { orchestrator.reset(); aiHistory.clear(); } },
     { type: "separator" },
+    {
+      label: t("Avisos al celular (Telegram)"),
+      enabled: telegram.status().paired,
+      submenu: [
+        ["claude", "Claude Code: terminó un trabajo o te necesita"], ["reminders", "Recordatorios"], ["mail", "Correo importante"],
+        ["whatsapp", "WhatsApp urgente (solo el nombre del chat)"], ["onlyAway", "Solo si estoy lejos del PC"],
+      ].map(([key, label]) => ({
+        label: t(label), type: "checkbox", checked: alertCfg()[key] === true,
+        click: (item) => { prefs.telegramAlerts = { ...alertCfg(), [key]: item.checked }; savePrefs(); },
+      })),
+    },
     {
       label: t("Barra de música flotante"),
       type: "checkbox",
@@ -800,6 +961,7 @@ http
       // Qué chat es: el título de la barra lateral (o la carpeta si no tiene título).
       payload.title = sessionTitle(payload.transcript_path) ||
         (path.resolve(String(payload.cwd ?? "")) === CHAT_DIR ? "Nimbo" : path.basename(String(payload.cwd ?? "")));
+      try { alerts.onHook(payload); } catch {} // avisos al celular (solo el título del chat y el nombre de la herramienta)
       if (req.url === "/permission") return askPermission(payload, nonce, res);
       res.writeHead(204).end();
       if (win && !win.isDestroyed()) win.webContents.send("hook", payload);
@@ -820,6 +982,8 @@ app.whenReady().then(() => {
   watchWhatsapp();
   if (telegram.status().token) telegram.start();
   musicBar.sync(); // si Spotify ya estaba sonando al arrancar
+  setTimeout(refreshMailIfStale, 120_000); // el correo va después de Trello
+  setInterval(refreshMailIfStale, 15 * 60_000);
   setTimeout(refreshTrelloIfStale, 90_000); // después de arrancar, para no competir con el inicio
   setInterval(refreshTrelloIfStale, 15 * 60_000); // reintentos, y por si el PC queda prendido varios días
   setInterval(checkReminders, 15_000);

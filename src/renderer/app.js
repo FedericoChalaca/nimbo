@@ -422,6 +422,8 @@ const appView = document.getElementById("appview");
 let trelloData = null; // { at, boards: [{name, url}], byBoard: { [url]: { at, cards: [{name, list, due, url, done}] } } }
 let trelloBusy = []; // consultas en curso: "boards" o la dirección de un tablero
 let trelloBoard = null; // el tablero abierto (su dirección) o null = la lista de tableros
+let mailData = null; // { on, at, emails: [{id, from, subject, summary, important}] } (mail.js)
+let mailBusy = false;
 let media = null; // lo que suena en Spotify: { title, artist, album, playing, art } (media.js)
 let openApp = null; // la app cuya tarjeta está abierta
 let lastApps = "";
@@ -441,6 +443,7 @@ function appsList() {
   if (dayPlan) out.push({ id: "plan", name: t("Plan"), color: "#2dd4bf", count: dayPlan.solos + dayPlan.teNecesitan });
   if (github !== null) out.push({ id: "github", name: "GitHub", color: "#a371f7", count: github.length });
   if (media) out.push({ id: "spotify", name: "Spotify", color: "#1db954", count: 1, badge: media.playing ? "♪" : "❚❚" });
+  if (mailData?.on && mailData.emails.length) out.push({ id: "mail", name: t("Correo"), color: "#ea4335", count: mailData.emails.length });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
   return out.filter((a) => a.count > 0);
@@ -554,6 +557,24 @@ function renderAppView() {
     }
     const idle = dayPlan.proyectos.length - withProposal.length;
     if (idle > 0) rows.push(el("div", "afoot", t("{0} sin propuesta hoy", idle)));
+  } else if (app.id === "mail") {
+    const imp = mailData.emails.filter((e) => e.important).length;
+    head.append(el("span", "sub", t("{0} sin leer · {1} importantes", mailData.emails.length, imp)));
+    const again = el("button", "", mailBusy ? t("Revisando…") : t("Actualizar"));
+    again.type = "button";
+    again.onclick = () => api.mailRefresh();
+    head.append(again);
+    const list = el("div", "alist");
+    for (const e of mailData.emails) {
+      const r = el("div", "arow link");
+      r.title = e.subject;
+      r.onclick = () => api.mailOpen(e.id);
+      const name = el("span", "name");
+      name.append(el("b", "", e.from || "?"), el("i", "", e.summary || e.subject));
+      r.append(el("span", `chip2 cnt ${e.important ? "amber" : ""}`, e.important ? "★" : "·"), name);
+      list.append(r);
+    }
+    rows.push(list, el("div", "afoot", t("Actualizado {0}", fmtDue(mailData.at))));
   } else if (app.id === "spotify") {
     head.append(el("span", "sub", media.album));
     const find = el("button", "", t("Buscar"));
@@ -784,6 +805,34 @@ api.onSpotify((ok) => {
   if (!setupBox.classList.contains("hidden")) api.setup().then(renderSetup);
 });
 api.media().then(onMedia);
+// Correo: llega la lista (y si hay un importante que no habías visto, la isla lo dice).
+const seenMail = new Set();
+function onMail(d) {
+  const fresh = d?.on ? d.emails.find((e) => e.important && !seenMail.has(e.id)) : null;
+  const first = mailData === null; // lo primero que llega al abrir Nimbo no se anuncia: ya lo habías visto
+  mailData = d;
+  for (const e of d?.emails ?? []) seenMail.add(e.id);
+  if (fresh && !first && !mini) setState(state, `✉ ${fresh.from}: ${fresh.subject}`.slice(0, 80), { labelFor: 6000 });
+  renderApps();
+  if (openApp === "mail") renderAppView();
+}
+api.mail().then(onMail);
+api.onMail(onMail);
+api.onMailBusy((b) => { mailBusy = b; if (openApp === "mail") renderAppView(); });
+// "revisa mi correo": abre la lista (y la vuelve a pedir si tiene más de 30 min).
+const MAIL_ASK = /^\W*(?:(?:revisa|mira|abre|dame|mu[eé]strame|c[oó]mo (?:va|est[aá])n?)\s+(?:mi\s+|mis\s+|el\s+|los\s+)?(?:correos?|e-?mails?|mail|gmail|bandeja de entrada)|(?:check|show)\s+(?:my\s+)?(?:e-?mail|mail|gmail|inbox))\W*$/i;
+function answerMail() {
+  if (!mailData?.on) {
+    answer.replaceChildren(el("div", "reply", t("El correo está apagado: actívalo en Conexiones (necesita el conector de Gmail de tu Claude).")));
+    return answerBox.classList.remove("hidden");
+  }
+  if (!(Date.now() - Date.parse(mailData.at || 0) < 30 * 60_000)) api.mailRefresh();
+  appsBox.classList.remove("hidden");
+  openApp = mailData.emails.length ? "mail" : null;
+  answer.replaceChildren(el("div", "reply", mailData.emails.length ? t("Estos son tus correos sin leer:") : t("No tienes correos sin leer. 📭")));
+  answerBox.classList.remove("hidden");
+  renderApps(); renderAppView();
+}
 api.onMedia(onMedia);
 // Entrenador de entrevistas (src/main/interview.js): "entrenar entrevista para <puesto>". Nimbo pregunta, tú
 // contestas escribiendo o dictando (🎤) y tu Claude evalúa y hace la siguiente. Mientras dura, lo que escribes
@@ -1112,7 +1161,26 @@ function renderSetup(s) {
   const telegramRow = tg.paired ? row(true, "Telegram", t("Conectado con @{0}: escríbele a tu bot desde el celular.", tg.bot || "bot"), btn(t("Desconectar"), "telegram-logout"))
     : tg.token ? row(false, "Telegram", tg.pairing ? (tg.bot ? t("Envíale este código a @{0} en Telegram: {1}", tg.bot, tg.pairing) : t("Envíale este código a tu bot en Telegram: {0}", tg.pairing)) : t("Falta vincular tu cuenta: pulsa Vincular y te doy un código."), ...(tg.bot ? [btn(t("Abrir bot"), "open", "telegram-bot")] : []), btn(t("Quitar"), "telegram-logout"), btn(t("Vincular"), "telegram-pair", null, "allow"))
     : row(null, "Telegram", t("Opcional: habla con Nimbo desde el celular. Crea un bot con @BotFather y pega aquí su token."), tgToken, btn(t("Guía"), "open", "telegram-guide"));
-  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, spotify, telegramRow, wa, look, voiceRow, auto];
+  // Otras IAs: Ollama (local, gratis) se detecta solo; Gemini y OpenAI piden su clave, que se guarda cifrada en tu PC.
+  const ai = s.ai ?? { providers: [], keyed: {}, ollama: "off" };
+  const aiProv = el("select");
+  for (const [id, label] of [["gemini", "Gemini"], ["openai", "OpenAI"]]) aiProv.append(Object.assign(document.createElement("option"), { value: id, textContent: label }));
+  const aiKey = el("input");
+  aiKey.type = "password";
+  aiKey.placeholder = t("Clave de API");
+  aiKey.spellcheck = false;
+  aiKey.autocomplete = "off";
+  aiKey.onchange = () => { if (aiKey.value.trim()) act("ai-key", `${aiProv.value}:${aiKey.value.trim()}`); };
+  const others = ai.providers.filter((p) => p.id !== "claude");
+  const aiText = others.length ? t("Disponibles: {0}. Elige cuál usar en el selector del chat.", others.map((p) => `${p.label} (${p.model})`).join(", "))
+    : ai.ollama === "empty" ? t("Ollama no tiene ningún modelo: instala uno con `ollama pull llama3.2:3b`. O pega una clave de Gemini u OpenAI.")
+    : t("Opcional: otras IAs en el chat. Instala Ollama (gratis, local) o pega una clave de Gemini u OpenAI.");
+  const aiRow = row(others.length ? true : null, t("Otras IAs"), aiText, aiProv, aiKey,
+    ...["gemini", "openai"].filter((id) => ai.keyed?.[id]).map((id) => btn(t("Quitar {0}", id === "gemini" ? "Gemini" : "OpenAI"), "ai-key-clear", id)), btn(t("Guía"), "open", "ai-guide"));
+  // Correo: tu Gmail por el conector de tu Claude (solo lectura). Apagado hasta que lo activas; al activarlo se comprueba de verdad.
+  const mailRow = s.mail?.on ? row(true, t("Correo"), t("Revisa tus correos sin leer cada 4 horas y te dice cuáles importan: {0} sin leer, {1} importantes.", s.mail.count, s.mail.important), btn(t("Revisar ahora"), "mail-refresh"), btn(t("Apagar"), "mail-off"))
+    : row(null, t("Correo"), t("Opcional: Nimbo revisa tu Gmail (solo lectura, con el conector de Gmail de tu Claude) y te dice cuáles correos importan."), btn("claude.ai", "open", "connectors"), btn(t("Activar"), "mail-on", null, "allow"));
+  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, mailRow, spotify, telegramRow, aiRow, wa, look, voiceRow, auto];
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));
   setupBox.replaceChildren(...rows);
 }
@@ -1479,6 +1547,24 @@ function swallow(dropped, x, y) {
   });
 }
 
+// --- Otras IAs: el selector del chat (Claude siempre; las demás, si están instaladas o tienen clave) ---
+const aiSelect = document.getElementById("ai");
+let aiLabel = "Claude";
+function resetPlaceholder() {
+  msg.placeholder = aiLabel === "Claude" ? t("Escríbele a Claude… (suelta archivos sobre mí)") : t("Escríbele a {0}… (los adjuntos van a Claude)", aiLabel);
+}
+function applyAi(r) {
+  if (!r?.providers) return;
+  aiSelect.replaceChildren(...r.providers.map((p) => Object.assign(document.createElement("option"), { value: p.id, textContent: p.label })));
+  aiSelect.value = r.current;
+  aiSelect.classList.toggle("hidden", r.providers.length < 2);
+  aiLabel = r.providers.find((p) => p.id === r.current)?.label ?? "Claude";
+  resetPlaceholder();
+}
+aiSelect.onchange = () => { api.aiSelect(aiSelect.value); aiLabel = aiSelect.selectedOptions[0]?.textContent ?? "Claude"; resetPlaceholder(); };
+api.aiProviders().then(applyAi);
+api.onAi(applyAi);
+
 chat.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = msg.value.trim() || (images.some((i) => i.screen) ? t("Mira mi pantalla y dime qué ves.") : images.length ? t("¿Qué ves en esta imagen?") : files.length ? t("Revisa estos archivos.") : "");
@@ -1491,12 +1577,13 @@ chat.addEventListener("submit", async (e) => {
   files = [];
   renderThumbs();
   msg.value = "";
-  msg.placeholder = t("Escríbele a Claude… (suelta archivos sobre mí)");
+  resetPlaceholder();
   if (interview && !sent.length && !paths.length) {
     if (INTERVIEW_END.test(text)) interviewEnd();
     else if (INTERVIEW_SKIP.test(text) && !interview.awaitingRole) await interviewTurn("");
     else await interviewTurn(text);
   } else if (!sent.length && !paths.length && interviewStart(text)) await interviewBegin(interviewStart(text).role);
+  else if (!sent.length && !paths.length && MAIL_ASK.test(text)) answerMail();
   else if (!sent.length && !paths.length && PLAN_ASK.test(text) && /plan/i.test(text)) await answerPlan();
   else if (!sent.length && !paths.length && musicQuery(text)) await answerMusic(musicQuery(text));
   else await askAndShow({ text, images: sent, files: paths });

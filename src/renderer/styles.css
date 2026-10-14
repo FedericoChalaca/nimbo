@@ -277,6 +277,9 @@
     outline: none; border-radius: 999px; padding: 0 13px; color: #eceef2; background: #0b0c0e;
     font: 13px "Segoe UI Variable Text", "Segoe UI", sans-serif; transition: border-color .2s; }
   #chat input:focus { border-color: color-mix(in srgb, var(--accent-a) 60%, transparent); }
+  #chat select, .crow select { flex: 0 0 auto; max-width: 104px; height: 32px; padding: 0 8px; border: 0; border-radius: 999px; outline: none;
+    background: #2a2c31; color: #eceef2; font: 600 11.5px "Segoe UI Variable Text", "Segoe UI", sans-serif; cursor: pointer; }
+  #chat select option, .crow select option { background: #1b1d21; }
   #chat button { flex: 0 0 32px; height: 32px; padding: 0; font-family: "Segoe UI Emoji", sans-serif; font-size: 14px; }
   #chat button[type="submit"] { background: #f5f6f8; color: #0b0c0e; }
   #chat button.live { background: #e5484d; animation: live 1s ease-in-out infinite; }

@@ -212,7 +212,30 @@ Qué conviene saber:
 - **Los encargos para otros chats no se envían desde Telegram.** Si Nimbo redacta una tarea para otro chat, Telegram solo te avisa que existe; la confirmas en la isla.
 - **Telegram ve el texto.** Los chats con bots no están cifrados de punta a punta: no envíes por ahí lo que no enviarías normalmente por Telegram. Nimbo guarda el token cifrado en tu PC (`%APPDATA%\nimbo\telegram.bin`) y nada más.
 - **Con Nimbo apagado no responde.** Al arrancar descarta lo que enviaste mientras tanto (un mensaje viejo no debe ejecutarse horas después) y te avisa; reenvía lo importante.
+- **Bandeja de pendientes.** `/pendiente comprar pan` (o `/p …`) agrega un pendiente a la lista de Pendientes de Nimbo. Si tu PC estaba apagado, Nimbo anota lo que le enviaste apenas enciende y te lo confirma en Telegram. `/pendientes` los lista y `/hecho 2` marca uno. Telegram guarda los mensajes 24 horas, y solo estas notas se conservan: todo lo demás que enviaste con Nimbo apagado se descarta.
+- **Avisos al celular.** Clic derecho → **Avisos al celular (Telegram)** elige qué te llega: un chat de Claude Code terminó un trabajo de un minuto o más o te necesita, recordatorios, correos importantes y (apagado por defecto) WhatsApp urgente. Solo se manda el título del chat y el nombre de la herramienta, nunca un comando ni el texto de un mensaje, y por defecto solo cuando llevas 2 minutos lejos del PC.
+- `/correo` te dice qué correos importan (paso 13).
 - **Cada mensaje cuesta como uno en el chat de Nimbo**, con el modelo por defecto de tu Claude. Para gastar mucho menos, pon `"chatModel": "sonnet"` (o `"haiku"`) en `%APPDATA%\nimbo\prefs.json`; también aplica al chat de la isla.
+
+### 12. Otras IAs (opcional)
+
+Además de Claude, el chat puede hablar con otros modelos. Junto al cuadro del chat aparece un selector cuando hay más de uno. Son solo conversación: no leen tus archivos, no crean recordatorios ni ven tus otros chats, y los adjuntos siempre van a Claude.
+
+- **Ollama (gratis, local).** Instala [Ollama](https://ollama.com) y un modelo pequeño, por ejemplo `ollama pull llama3.2:3b` (unos 2 GB). Nimbo lo detecta solo; nada sale de tu PC. Tu tarjeta de video decide qué tan grande puede ser cómodo el modelo.
+- **Gemini.** Crea una clave en [Google AI Studio](https://aistudio.google.com/apikey) (Google decide sus límites gratuitos). En Nimbo: clic derecho → **Conexiones** → fila **Otras IAs** → elige Gemini, pega la clave y pulsa Enter.
+- **OpenAI.** Igual, con una clave de tu cuenta de OpenAI (de pago).
+
+Las claves se comprueban con el proveedor y se guardan cifradas por Windows (`%APPDATA%\nimbo\ai-keys.bin`). Para cambiar un modelo, fíjalo en `prefs.json`, por ejemplo `"aiModels": { "gemini": "gemini-2.5-flash" }`. Lo que escribes (y los últimos mensajes de esa conversación) va al proveedor que elegiste.
+
+### 13. Correo (opcional)
+
+Nimbo revisa tu Gmail sin leer y te dice cuáles correos importan, con un resumen de una línea de cada uno. Es solo lectura: al conector de Gmail de tu Claude se le permite una sola cosa, buscar, y todo lo que envía, responde, reenvía, borra o etiqueta está prohibido por nombre. Nimbo nunca abre el cuerpo de un mensaje.
+
+1. Abre [claude.ai → Ajustes → Conectores](https://claude.ai/settings/connectors), busca **Gmail**, pulsa **Conectar** y autoriza tu cuenta.
+2. En el panel Conexiones de Nimbo, busca **Correo** y pulsa **Activar**. Lo comprueba de verdad (cerca de un minuto) antes de dejarlo encendido.
+3. Cuando haya algo sin leer aparece una píldora roja **Correo**; tócala para ver la lista, los importantes primero, y toca una fila para abrirla en Gmail. Escribe `revisa mi correo` en el chat o `/correo` en Telegram para verla.
+
+Se actualiza cada 4 horas (unos 5 centavos de dólar cada vez con Haiku), o cuando lo pides. El remitente, el asunto y una vista previa van a Anthropic a través de tu propio Claude, como todo lo del chat. Al apagarlo se borra lo que Nimbo había guardado.
 
 ### Si algo no funciona
 
@@ -231,6 +254,9 @@ Qué conviene saber:
 - **Aprueba permisos desde la isla.** Permitir, Denegar, Siempre o mandarlo a la terminal. La tarjeta muestra el comando completo.
 - **Chatea con tu Claude.** Escribe, dicta (Whisper local, el audio no sale de tu PC), pega imágenes o suéltale archivos encima.
 - **Ve tu pantalla cuando se lo pides.** Pulsa 🖥 en el chat: toma un pantallazo, te muestra la miniatura y le preguntas lo que necesites ("¿qué significa este error?", "¿dónde hago clic para exportar?"). No hay vista en vivo ni nada automático: una sola foto, solo cuando pulsas el botón, y se envía a tu Claude solo cuando mandas el mensaje.
+- **Otras IAs.** Junto a Claude, el chat puede hablar con un modelo local por Ollama (gratis, nada sale de tu PC), con Gemini o con OpenAI usando tu propia clave. En el chat aparece un selector pequeño. Ver el paso 12.
+- **Correo.** Opcional: Nimbo revisa tu Gmail sin leer (solo lectura, con el conector de Gmail de tu Claude) y te dice cuáles correos importan. Ver el paso 13.
+- **Avisos al celular.** Por tu propio bot de Telegram, Nimbo te avisa cuando un chat de Claude Code termina un trabajo largo o te necesita, además de recordatorios y correos importantes, solo cuando estás lejos del PC. Telegram también tiene una bandeja de pendientes que se llena aunque tu PC esté apagado. Ver el paso 11.
 - **Una barra flotante de música.** Mientras Spotify tenga algo cargado aparece sola una barrita, separada de la isla: carátula, canción, anterior / pausa / siguiente y un cuadro de búsqueda. Arrástrala a donde quieras (recuerda dónde la dejaste). Ciérrala con la ✕ (vuelve con la siguiente canción), se esconde en modo mini, o apágala en el menú ("Barra de música flotante").
 - **Te entrena para entrevistas.** Escribe `entrenar entrevista para desarrollador junior` (o `practice interview for …`): Nimbo hace una pregunta a la vez, tú contestas escribiendo o dictando, y tu Claude califica la respuesta, te da un consejo y una versión mejor que nunca inventa experiencia, y hace la siguiente pregunta. Di "terminar" para ver tu promedio. Es solo práctica: no se guarda nada. Cada pregunta cuesta cerca de un centavo de tu uso de Claude (Haiku, sin herramientas).
 - **Orquesta.** Conoce tus chats: si pides algo que le toca a otro proyecto, redacta el prompt para ese chat y lo envía solo cuando tú confirmas.
@@ -262,13 +288,13 @@ Nimbo se sienta entre tú y los permisos de Claude Code, así que esto importa:
 - La tarjeta de permiso muestra el comando o el cambio completo. Lee antes de permitir.
 - El chat de Nimbo solo puede leer archivos. Para cambiar algo en un proyecto, te propone un prompt y lo envía únicamente cuando haces clic.
 - Los resúmenes de Trello y WhatsApp corren sin herramientas: un texto ajeno no puede hacer que un modelo ejecute nada.
-- Nimbo no guarda contraseñas, tokens ni API keys. GitHub usa tu sesión de `gh`; Trello, el conector de tu Claude. Las excepciones son opcionales y van cifradas por Windows: el token de renovación de Spotify Premium y el token de tu bot de Telegram.
+- Nimbo no guarda contraseñas, tokens ni API keys. GitHub usa tu sesión de `gh`; Trello, el conector de tu Claude. Las excepciones son opcionales y van cifradas por Windows: el token de renovación de Spotify Premium, el token de tu bot de Telegram y las claves de Gemini u OpenAI que pegues.
 
 Si encuentras un problema de seguridad, abre un issue.
 
 ## Firma del instalador
 
-El instalador **todavía no está firmado**. Esa es la única razón por la que Windows muestra "Windows protegió su PC" al abrirlo: no conoce al autor. Firmarlo requiere un certificado de una autoridad reconocida, y ya lo solicitamos a la [SignPath Foundation](https://signpath.org), que firma gratis proyectos de código abierto.
+El instalador **todavía no está firmado**. Esa es la única razón por la que Windows muestra "Windows protegió su PC" al abrirlo: no conoce al autor. Firmarlo requiere un certificado de una autoridad reconocida, y lo solicitamos a la [SignPath Foundation](https://signpath.org), que firma gratis proyectos de código abierto. Por ahora dijo que no: el proyecto es muy nuevo para mostrar la visibilidad pública que pide el programa (estrellas, menciones, actividad sostenida). Volveremos a solicitarlo cuando crezca. Si Nimbo te sirve, una estrella en GitHub es justo el tipo de señal que cuenta.
 
 Mientras tanto, hay dos cosas que te permiten confiar en lo que descargas:
 

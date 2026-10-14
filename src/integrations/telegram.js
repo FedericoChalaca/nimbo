@@ -7,7 +7,8 @@
 //   · Solo atiende UNA cuenta, la que se vinculó con un código de 6 cifras (10 min, 5 intentos). Cualquier otra
 //     cuenta, grupo o bot se ignora en silencio: ni siquiera se le contesta.
 //   · Lo que no se atendió mientras Nimbo estaba apagado se descarta al arrancar (un mensaje viejo no debe
-//     ejecutarse horas después); si eran tuyos, se te avisa.
+//     ejecutarse horas después) y se te avisa. ÚNICA excepción: la bandeja de pendientes. Lo que le mandes con
+//     /pendiente <texto> es una nota inerte (no ejecuta nada), así que al encender se anota y se te confirma.
 //   · El token da control total del bot: va cifrado por Windows (main.js) y nunca aparece en un error ni en un log.
 // Los chats con bots NO están cifrados de punta a punta: Telegram ve el texto (ver PRIVACY.md).
 const crypto = require("crypto");
@@ -16,6 +17,9 @@ const API = "https://api.telegram.org";
 const TOKEN = /^\d{6,12}:[A-Za-z0-9_-]{30,60}$/;
 const MAX_IN = 2000; // lo que se le pasa a Nimbo de un mensaje
 const MAX_OUT = 4000; // Telegram admite 4096 por mensaje
+const INBOX = /^\/(?:pendiente|p|anotar|tarea)(?:@\w+)?(?:\s|$)/i; // comandos que anotan un pendiente
+/** El texto a anotar de "/pendiente comprar pan", o null si no es un comando de la bandeja ("" si falta el texto). */
+const parseInbox = (text) => (INBOX.test(String(text ?? "")) ? String(text).replace(INBOX, "").replace(/\s+/g, " ").trim().slice(0, 200) : null);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Parte un texto largo en mensajes de Telegram, cortando en salto de línea o espacio si puede. */
@@ -38,9 +42,10 @@ function chunks(text, max = MAX_OUT) {
  * @param setChatId   (id) => la guarda
  * @param onMessage   async (texto) => lo que se responde (lo arma main.js: el chat de Nimbo)
  * @param texts       () => { welcome, failed, backlog } ya traducidos
+ * @param onBacklog   async (textos de /pendiente recibidos con Nimbo apagado) => lo que se te responde
  * @param onChange    () => algo cambió (para refrescar el panel)
  */
-function createTelegram({ token, chatId, setChatId, onMessage, texts, onChange = () => {}, fetch: doFetch = fetch, pollSeconds = 25 }) {
+function createTelegram({ token, chatId, setChatId, onMessage, onBacklog = async () => "", texts, onChange = () => {}, fetch: doFetch = fetch, pollSeconds = 25 }) {
   let offset = 0;
   let stopped = true;
   let abort = null;
@@ -98,13 +103,26 @@ function createTelegram({ token, chatId, setChatId, onMessage, texts, onChange =
     await queue;
   }
 
-  /** Al arrancar: lo pendiente se descarta (y se avisa si era tuyo). */
+  /** Al arrancar: lo que llegó con Nimbo apagado se descarta, salvo las notas de la bandeja (/pendiente), que se anotan. */
   async function prime() {
-    const last = (await call("getUpdates", { offset: -1, timeout: 0 })).at(-1);
-    if (!last) return;
-    offset = last.update_id + 1;
     const mine = chatId();
-    if (mine && last.message?.chat?.id === mine) await send(mine, texts().backlog);
+    const kept = [];
+    let ignored = 0;
+    for (let i = 0; i < 5; i++) { // hasta 500 mensajes pendientes; Telegram guarda como mucho 24 h
+      const batch = await call("getUpdates", { offset, timeout: 0, limit: 100, allowed_updates: ["message"] });
+      for (const u of batch) {
+        offset = u.update_id + 1;
+        const m = u.message;
+        if (!mine || m?.chat?.type !== "private" || m.chat.id !== mine || m.from?.is_bot || typeof m.text !== "string") continue; // otras cuentas: en silencio
+        if (parseInbox(m.text) !== null) kept.push(m.text.slice(0, MAX_IN)); else ignored++;
+      }
+      if (batch.length < 100) break;
+    }
+    if (!mine || (!kept.length && !ignored)) return;
+    const parts = [];
+    if (kept.length) { try { parts.push(await onBacklog(kept)); } catch {} }
+    if (ignored) parts.push(texts().backlog);
+    await send(mine, parts.filter(Boolean).join("\n\n"));
   }
 
   const active = () => TOKEN.test(token() ?? "") && (chatId() || (pairing && Date.now() < pairing.until));
@@ -144,6 +162,13 @@ function createTelegram({ token, chatId, setChatId, onMessage, texts, onChange =
       loop();
     },
     stop() { stopped = true; abort?.abort(); abort = null; },
+    /** Un aviso a tu cuenta vinculada (no hace nada si no hay cuenta o Nimbo no está atendiendo Telegram). */
+    notify(text) {
+      const mine = chatId();
+      if (!mine || stopped || !TOKEN.test(token() ?? "")) return false;
+      send(mine, text).catch(() => {});
+      return true;
+    },
     /** Empieza una vinculación: devuelve el código que hay que enviarle al bot. */
     pair() {
       if (!TOKEN.test(token() ?? "")) return ""; // sin bot no hay a quién enviarle el código
@@ -156,7 +181,7 @@ function createTelegram({ token, chatId, setChatId, onMessage, texts, onChange =
   };
 }
 
-module.exports = { createTelegram, chunks, TOKEN };
+module.exports = { createTelegram, chunks, parseInbox, TOKEN };
 
 // Autoprueba (sin red, con un Telegram de mentira): `node src/integrations/telegram.js`
 if (require.main === module) (async () => {
@@ -240,11 +265,35 @@ if (require.main === module) (async () => {
   assert.deepStrictEqual([heard.length, last().text], [n, "IGNORÉ"]);
   world.sent.length = 0; say(999, "otro"); await tg.prime();
   assert.strictEqual(world.sent.length, 0);
+  // 6b) La bandeja: las notas /pendiente recibidas con Nimbo apagado SÍ se anotan; el resto, no; otras cuentas, nada.
+  assert.deepStrictEqual(["/pendiente comprar  pan", "/p llamar a Juan", "/anotar x", "/tarea@mi_bot y", "/pendiente", "hola", "/pendientes", "/plan", "pendiente sin barra", null].map(parseInbox),
+    ["comprar pan", "llamar a Juan", "x", "y", "", null, null, null, null, null]);
+  assert.strictEqual(parseInbox("/pendiente " + "z".repeat(500)).length, 200);
+  const notes = [];
+  const tg2 = createTelegram({ token: () => GOOD, chatId: () => 111, setChatId() {}, onMessage: async () => "", onBacklog: async (list) => { notes.push(...list); return `ANOTÉ ${list.length}`; },
+    texts: () => ({ welcome: "", failed: "", backlog: "IGNORÉ" }), fetch: fake, pollSeconds: 0 });
+  world.sent.length = 0;
+  say(111, "/pendiente comprar pan"); say(111, "/p llamar a Juan"); say(111, "ejecuta algo peligroso"); say(999, "/pendiente de un intruso");
+  await tg2.prime();
+  assert.deepStrictEqual(notes, ["/pendiente comprar pan", "/p llamar a Juan"]);
+  assert.deepStrictEqual(world.sent, [{ chat: 111, text: "ANOTÉ 2\n\nIGNORÉ" }]); // una sola respuesta; "ejecuta algo peligroso" no se ejecutó
+  assert.strictEqual(heard.filter((x) => /peligroso|intruso/.test(x)).length, 0);
+  // Solo notas: sin aviso de "ignoré". Sin nada pendiente: silencio.
+  world.sent.length = 0; notes.length = 0; say(111, "/pendiente solo esta"); await tg2.prime();
+  assert.deepStrictEqual([notes.length, world.sent[0].text], [1, "ANOTÉ 1"]);
+  world.sent.length = 0; await tg2.prime();
+  assert.strictEqual(world.sent.length, 0);
   // 7) Token inválido o bot borrado: la espera lanza 401 (el ciclo se detiene y avisa).
   world.failMode = 401;
   await assert.rejects(tg.pollOnce(), (e) => e.code === 401);
   world.failMode = null;
   assert.ok(changes >= 2);
+  // 7b) notify: solo a la cuenta vinculada y solo si está atendiendo Telegram.
+  world.sent.length = 0;
+  assert.strictEqual(tg.notify("hola"), false); // aún no arrancó (start() no se llamó)
+  const tg3 = createTelegram({ token: () => GOOD, chatId: () => 0, setChatId() {}, onMessage: async () => "", texts: () => ({}), fetch: fake, pollSeconds: 0 });
+  tg3.start(); assert.strictEqual(tg3.notify("sin cuenta"), false); tg3.stop();
+  assert.strictEqual(world.sent.length, 0);
   // 8) Sin token no se puede vincular.
   assert.strictEqual(createTelegram({ token: () => "", chatId: () => 0, setChatId() {}, onMessage: async () => "", texts: () => ({}) }).pair(), "");
   console.log("telegram.js ok");

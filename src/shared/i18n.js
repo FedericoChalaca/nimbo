@@ -105,6 +105,48 @@ const NIMBO_EN = {
   "{0} sin propuesta hoy": "{0} with no proposal today",
   "hoy": "today",
   "No tengo el plan de hoy: no está configurado, no hay conexión o todavía no ha salido.": "I do not have today's plan: it is not set up, there is no connection, or it has not come out yet.",
+  // — Correo —
+  "Correo": "Email",
+  "{0} sin leer · {1} importantes": "{0} unread · {1} important",
+  "Revisando…": "Checking…",
+  "Estos son tus correos sin leer:": "These are your unread emails:",
+  "No tienes correos sin leer. 📭": "You have no unread emails. 📭",
+  "El correo está apagado: actívalo en Conexiones (necesita el conector de Gmail de tu Claude).": "Email is off: turn it on in Connections (it needs your Claude's Gmail connector).",
+  "El correo está apagado: actívalo en Conexiones de Nimbo.": "Email is off: turn it on in Nimbo's Connections.",
+  "✉ {0} sin leer ({1} importantes):": "✉ {0} unread ({1} important):",
+  "✉️ Correo de {0}: {1}": "✉️ Email from {0}: {1}",
+  "No encuentro el conector de Gmail en tu Claude: actívalo en claude.ai y vuelve a intentar.": "I cannot find the Gmail connector in your Claude: turn it on in claude.ai and try again.",
+  "No pude revisar el correo. Inténtalo de nuevo.": "I could not check your email. Try again.",
+  "Revisa tus correos sin leer cada 4 horas y te dice cuáles importan: {0} sin leer, {1} importantes.": "Checks your unread emails every 4 hours and tells you which matter: {0} unread, {1} important.",
+  "Opcional: Nimbo revisa tu Gmail (solo lectura, con el conector de Gmail de tu Claude) y te dice cuáles correos importan.": "Optional: Nimbo checks your Gmail (read-only, with your Claude's Gmail connector) and tells you which emails matter.",
+  "Revisar ahora": "Check now",
+  "Recordatorios": "Reminders",
+  // — Avisos al celular —
+  "✅ {0} terminó ({1} min)": "✅ {0} finished ({1} min)",
+  "⏳ {0} te pide permiso para usar {1}.": "⏳ {0} asks permission to use {1}.",
+  "🔔 {0} te necesita.": "🔔 {0} needs you.",
+  "⚠️ {0} falló.": "⚠️ {0} failed.",
+  "⏰ Recordatorio: {0}": "⏰ Reminder: {0}",
+  "Avisos al celular (Telegram)": "Phone alerts (Telegram)",
+  "Claude Code: terminó un trabajo o te necesita": "Claude Code: finished a job or needs you",
+  "Correo importante": "Important email",
+  "WhatsApp urgente (solo el nombre del chat)": "Urgent WhatsApp (chat name only)",
+  "Solo si estoy lejos del PC": "Only when I am away from the PC",
+  // — Otras IAs —
+  "Escríbele a {0}… (los adjuntos van a Claude)": "Write to {0}… (attachments go to Claude)",
+  "Esa clave no tiene el formato esperado.": "That key does not have the expected format.",
+  "{0} no aceptó esa clave.": "{0} did not accept that key.",
+  "{0} no aceptó la clave. Pégala de nuevo en Conexiones → Otras IAs.": "{0} did not accept the key. Paste it again in Connections → Other AIs.",
+  "{0} dice que llegaste a su límite. Espera un rato o cambia de IA.": "{0} says you reached its limit. Wait a while or switch AI.",
+  "{0} no tiene el modelo que se necesita. Instálalo o revisa su nombre.": "{0} does not have the model it needs. Install it or check its name.",
+  "No pude conectarme con {0}.": "I could not connect to {0}.",
+  "{0} no pudo responder.": "{0} could not answer.",
+  "Otras IAs": "Other AIs",
+  "Clave de API": "API key",
+  "Quitar {0}": "Remove {0}",
+  "Disponibles: {0}. Elige cuál usar en el selector del chat.": "Available: {0}. Pick which one to use in the chat selector.",
+  "Ollama no tiene ningún modelo: instala uno con `ollama pull llama3.2:3b`. O pega una clave de Gemini u OpenAI.": "Ollama has no model: install one with `ollama pull llama3.2:3b`. Or paste a Gemini or OpenAI key.",
+  "Opcional: otras IAs en el chat. Instala Ollama (gratis, local) o pega una clave de Gemini u OpenAI.": "Optional: other AIs in the chat. Install Ollama (free, local) or paste a Gemini or OpenAI key.",
   // — Barra de música flotante —
   "Barra de música flotante": "Floating music bar",
   "Buscar canción…": "Search for a song…",
@@ -113,7 +155,14 @@ const NIMBO_EN = {
   "Sin resultados": "No results",
   "Se abrirá en Spotify.": "It will open in Spotify.",
   // — Telegram —
-  "Soy Nimbo. Escríbeme como en el chat de la isla. /plan te da el plan de hoy.": "I am Nimbo. Write to me like in the island's chat. /plan gives you today's plan.",
+  "Soy Nimbo. Escríbeme como en el chat de la isla. /plan te da el plan de hoy. /pendiente <texto> anota un pendiente (aunque mi PC esté apagado, lo anoto al encender), /pendientes los lista /hecho <n> marca uno y /correo te dice qué correos importan.": "I am Nimbo. Write to me like in the island's chat. /plan gives you today's plan. /pendiente <text> adds a to-do (even if my PC is off, I add it when it turns on), /pendientes lists them, /hecho <n> checks one off and /correo tells you which emails matter.",
+  "Escribe /pendiente seguido de lo que quieras anotar.": "Write /pendiente followed by what you want to note down.",
+  "Anotado ✔ ({0} pendientes): {1}": "Noted ✔ ({0} to-dos): {1}",
+  "Tus pendientes:": "Your to-dos:",
+  "No tienes pendientes. 🎉": "You have no to-dos. 🎉",
+  "No encuentro el pendiente {0}.": "I cannot find to-do {0}.",
+  "Hecho ✔: {0}": "Done ✔: {0}",
+  "Estaba apagado y anoté {0} pendiente(s) que me mandaste:": "I was off and I noted {0} to-do(s) you sent me:",
   "Tengo {0} encargo(s) para otros chats; no se envían desde Telegram, confírmalos en Nimbo:": "I have {0} task(s) for other chats; they are not sent from Telegram, confirm them in Nimbo:",
   "¡Listo! Ya estás vinculado con Nimbo. Escríbeme lo que quieras.": "Done! You are now linked to Nimbo. Write me anything.",
   "No pude responder. Revisa Nimbo en tu PC.": "I could not answer. Check Nimbo on your PC.",
@@ -274,7 +323,7 @@ if (typeof module !== "undefined" && require.main === module) {
   const fs = require("fs");
   const path = require("path");
   const missing = [];
-  for (const file of ["src/renderer/app.js", "src/renderer/player.js", "src/renderer/index.html", "src/main/main.js", "src/renderer/voice.js", "src/main/orchestrator.js", "src/main/plan.js"]) {
+  for (const file of ["src/renderer/app.js", "src/renderer/player.js", "src/main/alerts.js", "src/renderer/index.html", "src/main/main.js", "src/renderer/voice.js", "src/main/orchestrator.js", "src/main/plan.js"]) {
     const code = fs.readFileSync(path.join(__dirname, "..", "..", file), "utf8");
     // t("clave"…  y también  t(cond ? "clave uno" : "clave dos"…
     for (const m of code.matchAll(/\bt\((?:[^"()]*\? )?"((?:\\.|[^"\\])*)"(?: : "((?:\\.|[^"\\])*)")?/g)) {

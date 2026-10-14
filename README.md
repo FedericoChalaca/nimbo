@@ -212,7 +212,30 @@ What to know:
 - **Commands for other chats are not sent from Telegram.** If Nimbo drafts a task for another chat, Telegram only tells you it exists; you confirm it on the island.
 - **Telegram sees the text.** Bot chats are not end-to-end encrypted, so do not send there what you would not send through Telegram normally. Nimbo stores the token encrypted on your PC (`%APPDATA%\nimbo\telegram.bin`) and nothing else.
 - **While Nimbo is off, it does not answer.** On start it discards what you sent meanwhile (a stale message must not run hours later) and tells you, so resend what matters.
+- **To-do inbox.** `/pendiente buy bread` (or `/p …`) adds a to-do to Nimbo's Pending list. If your PC was off, Nimbo adds what you sent as soon as it turns on and confirms in Telegram. `/pendientes` lists them and `/hecho 2` checks one off. Telegram keeps messages for 24 hours, and only these notes are kept: everything else you sent while Nimbo was off is discarded.
+- **Phone alerts.** Right-click → **Phone alerts (Telegram)** chooses what reaches you: a Claude Code chat finished a job of a minute or more or needs you, reminders, important emails, and (off by default) urgent WhatsApp. Only the chat title and the tool name are sent, never a command or a message text, and by default only when you have been away from the PC for 2 minutes.
+- `/correo` tells you which emails matter (step 13).
 - **Each message costs like a message in Nimbo's chat**, with your Claude's default model. To spend much less, set `"chatModel": "sonnet"` (or `"haiku"`) in `%APPDATA%\nimbo\prefs.json`; it applies to the island chat too.
+
+### 12. Other AIs (optional)
+
+Besides Claude, the chat can talk to other models. A selector appears next to the chat box when there is more than one. They are chat only: they cannot read your files, make reminders or see your other chats, and attachments always go to Claude.
+
+- **Ollama (free, local).** Install [Ollama](https://ollama.com) and a small model, for example `ollama pull llama3.2:3b` (about 2 GB). Nimbo detects it by itself; nothing leaves your PC. Your graphics card decides how big a model is comfortable.
+- **Gemini.** Create a key in [Google AI Studio](https://aistudio.google.com/apikey) (Google decides its free limits). In Nimbo: right-click → **Connections** → **Other AIs** row → pick Gemini, paste the key, press Enter.
+- **OpenAI.** Same, with a key from your OpenAI account (paid).
+
+Keys are checked with the provider and stored encrypted by Windows (`%APPDATA%\nimbo\ai-keys.bin`). To change a model, set it in `prefs.json`, for example `"aiModels": { "gemini": "gemini-2.5-flash" }`. What you write (and the last few messages of that conversation) goes to the provider you chose.
+
+### 13. Email (optional)
+
+Nimbo checks your unread Gmail and tells you which emails matter, with a one-line summary of each. It is read-only: your Claude's Gmail connector is allowed to do exactly one thing, search, and everything that sends, replies, forwards, deletes or labels is forbidden by name. Nimbo never opens the body of a message.
+
+1. Open [claude.ai → Settings → Connectors](https://claude.ai/settings/connectors), find **Gmail**, click **Connect**, and authorize your account.
+2. In Nimbo's Connections panel, find **Email** and click **Activate**. It checks for real (about a minute) before staying on.
+3. A red **Email** pill appears when there is something unread; click it to see the list, most important first, and click a row to open it in Gmail. Type `check my email` in the chat or `/correo` in Telegram to see it.
+
+It refreshes every 4 hours (about 5 US cents each with Haiku), or when you ask. Sender, subject and a preview go to Anthropic through your own Claude, like everything else in the chat. Turning it off deletes what Nimbo saved.
 
 ### If something does not work
 
@@ -231,6 +254,9 @@ What to know:
 - **Approves permissions from the island.** Allow, Deny, Always, or send it back to the terminal. The card shows the full command.
 - **Chats with your Claude.** Type, dictate (local Whisper, no audio leaves your PC), paste images, or drop files on it.
 - **Sees your screen when you ask.** Click 🖥 in the chat: it takes one screenshot, shows you the thumbnail, and you ask what you need ("what does this error mean?", "where do I click to export?"). No live view and nothing automatic: one picture, only when you press the button, sent to your Claude only when you send the message.
+- **Other AIs.** Next to Claude, the chat can talk to a local model through Ollama (free, nothing leaves your PC), to Gemini or to OpenAI with your own key. A small selector appears in the chat. See step 12.
+- **Email.** Optional: Nimbo checks your unread Gmail (read-only, with your Claude's Gmail connector) and tells you which emails matter. See step 13.
+- **Phone alerts.** Through your own Telegram bot, Nimbo tells you when a Claude Code chat finishes a long job or needs you, plus reminders and important emails, only when you are away from the PC. Telegram also has a to-do inbox that fills even while your PC is off. See step 11.
 - **A floating music bar.** While Spotify has something loaded, a small bar appears on its own, separate from the island: cover, song, previous / pause / next, and a search box. Drag it anywhere (it remembers where). Close it with the ✕ (it comes back with the next song), it hides in mini mode, or turn it off in the menu ("Floating music bar").
 - **Trains you for interviews.** Type `practice interview for junior developer` (or `entrenar entrevista para …`): Nimbo asks one question at a time, you answer by typing or dictating, and your Claude scores the answer, gives one tip and a better version that never invents experience, then asks the next question. Say "end" to see your average. It is practice only: nothing is saved. Each question costs about a cent of your Claude usage (Haiku, no tools).
 - **Orchestrates.** It knows your chats: ask for something that belongs to another project and it drafts the prompt for that chat, and sends it only when you confirm.
@@ -262,13 +288,13 @@ Nimbo sits between you and Claude Code's permission prompts, so this matters:
 - The permission card shows the full command or change. Read before you allow.
 - Nimbo's own chat can only read files. To change something in a project it proposes a prompt and sends it only when you click.
 - The Trello and WhatsApp summaries run with no tools: text written by someone else cannot make a model execute anything.
-- Nimbo stores no passwords, tokens, or API keys. GitHub uses your `gh` session; Trello uses your Claude connector. The exceptions are optional and encrypted by Windows: Spotify Premium's refresh token, and your Telegram bot's token.
+- Nimbo stores no passwords, tokens, or API keys. GitHub uses your `gh` session; Trello uses your Claude connector. The exceptions are optional and encrypted by Windows: Spotify Premium's refresh token, your Telegram bot's token, and the Gemini or OpenAI keys you paste.
 
 Found a security problem? Please open an issue.
 
 ## Code signing
 
-The installer is **not code-signed yet**. That is the only reason Windows shows "Windows protected your PC" when you open it: Windows does not know the publisher. Signing needs a certificate from a recognized authority, and we have applied to the [SignPath Foundation](https://signpath.org), which provides free code signing for open-source projects.
+The installer is **not code-signed yet**. That is the only reason Windows shows "Windows protected your PC" when you open it: Windows does not know the publisher. Signing needs a certificate from a recognized authority, and we applied to the [SignPath Foundation](https://signpath.org), which signs open-source projects for free. It declined for now: the project is too new to show the public visibility the program asks for (stars, mentions, sustained activity). We plan to reapply as the project grows. If Nimbo helps you, a star on GitHub is exactly the kind of signal that matters.
 
 In the meantime, two things let you trust what you download:
 

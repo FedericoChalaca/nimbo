@@ -6,23 +6,24 @@ de cada chat), deja aprobar permisos, chatear con Claude (imágenes, archivos so
 dictado), avisa de notificaciones de GitHub y tiene personalidad: saludo, gestos y sonidos.
 Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `README.md`.
 
-## Estado y siguiente paso (2026-10-13)
+## Estado y siguiente paso (2026-10-14)
 Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el contexto del dueño y lo que está abierto.
-- **Publicado:** 0.7.0 (release de GitHub con instalador, compilado por CI). En `main`, después de esa versión y aún sin
-  versión nueva: el reordenamiento en carpetas y el reintento de la consulta diaria de Trello.
-- **Hecho:** hooks y permisos, chat y orquestador, recordatorios, GitHub, Trello por tableros (lista una vez al día; tarjetas
-  al abrir un tablero), WhatsApp de solo lectura con modelo local, voz con servicio propio y una voz por tema, plan del día,
-  ver la pantalla, Spotify (tarjeta con botones, búsqueda, y con Premium la canción suena; probado con Spotify real),
-  instalador, CI, español e inglés.
-- **Sin verificar con uso real:** el instalador instalado (último probado de verdad: 0.3.2), la bandeja y el botón ⋮ con clic
-  real, dictado/chat/WhatsApp en inglés, el sonido de las dos voces, `scripts/promo/promo-main.js` con las rutas nuevas.
-- **Abierto:** firma del instalador (solicitud enviada a SignPath Foundation, sin respuesta); `app.js` tiene ~1.670 líneas y
-  conviene partirlo (ver "Carpetas": hacerlo por piezas y probando).
-- **Entrenador de entrevistas:** hecho (ver su párrafo en "Flujos"); falta usarlo de verdad con la voz y decidir si vale un "copiloto de reuniones".
-- **Siguiente paso, en este orden (cada uno se acuerda con el dueño antes):** (1) copiloto de
-  reuniones: capturar el audio del sistema con `desktopCapturer`/`setDisplayMediaRequestHandler` (`audio: "loopback"`), pasarlo
-  por el Whisper local de `stt-worker.js` en trozos y resumir con `claude -p`; SIN modo oculto para entrevistas reales;
-  (2) chat con otras IAs empezando por Ollama (sin claves); (3) web app para iPhone sobre Tailscale (no hay Mac: nada nativo ni TestFlight). Telegram ya cubre hablar con Nimbo desde el celular.
+- **Publicado:** 0.7.0 (release de GitHub con instalador, compilado por CI). En `main`, después y SIN versión nueva: carpetas, reintento
+  de Trello, entrenador de entrevistas y Telegram. En local y SIN subir (el dueño pidió esperar): barra flotante de música, bandeja de
+  pendientes y avisos de Telegram, otras IAs y correo. Sería la 0.8.0.
+- **Hecho:** hooks y permisos, chat y orquestador, recordatorios, GitHub, Trello por tableros, WhatsApp de solo lectura, voz, plan del día,
+  ver la pantalla, Spotify (tarjeta, búsqueda, Premium), barra flotante de música, entrenador de entrevistas, Telegram (chat, bandeja, avisos),
+  otras IAs (Ollama/Gemini/OpenAI), correo de Gmail, instalador, CI, español e inglés.
+- **Sin verificar con uso real:** el instalador instalado (último probado de verdad: 0.3.2), la bandeja de Windows y el botón ⋮, arrastrar la barra
+  de música y que recuerde su sitio, dictado/chat/WhatsApp en inglés, el sonido de las dos voces, `scripts/promo/promo-main.js`; las otras IAs
+  con un modelo REAL (el Ollama del dueño no tiene ninguno instalado y no hay claves), y los avisos al celular y `/correo`/`/pendiente` con su
+  bot real (probados solo con un Telegram de mentira).
+- **Abierto:** firma del instalador (SignPath la RECHAZÓ el 2026-10-13: proyecto muy nuevo; ver "Firma del instalador"); `app.js` tiene ~1.830
+  líneas y conviene partirlo por piezas y probando; regenerar el GIF y el video del README con la interfaz nueva.
+- **Ideas que el dueño dejó para después:** copiloto de reuniones y clases (capturar el audio del sistema con `setDisplayMediaRequestHandler`
+  `audio: "loopback"`, trozos por el Whisper de `stt-worker.js`, resumir con `claude -p`; SIN modo oculto para entrevistas reales), aprobar permisos
+  de Claude Code desde Telegram, vigilar otros agentes (Codex, Cursor, Gemini CLI), uso del plan de Claude, atajos editables y más idiomas, web app para
+  iPhone sobre Tailscale (no hay Mac). Wazend/WhatsApp automático: DESCARTADO (cuesta).
 
 ## Convenciones del dueño
 - Nada de claves ni datos personales en el repo (es público); lo suyo va en `%APPDATA%\nimbo\prefs.json`.
@@ -80,6 +81,9 @@ assets/ build/ examples/ .github/
 | `trello.js` | Tableros y tarjetas de Trello vía el conector de tu `claude` (solo lectura, bajo demanda). |
 | `spotify.js` | Buscar canciones vía el conector de Spotify de tu `claude` (solo búsqueda). |
 | `spotify-api.js` | Spotify con Premium (opcional): Web API con PKCE para buscar al instante y poner a sonar la canción elegida. |
+| `ai.js` | Otras IAs en el chat: Ollama, Gemini, OpenAI con un solo adaptador. |
+| `mail.js` | Correo importante de tu Gmail por el conector de tu `claude` (solo lectura). |
+| `alerts.js` | Avisos al celular por Telegram (filtrados: trabajos largos, lejos del PC). |
 | `musicbar.js` | Barra flotante de música (ventana propia) que aparece mientras suena Spotify. |
 | `media.js` + `media-watch.ps1` | Lo que suena en Spotify y sus botones, con los controles multimedia de Windows. |
 | `whatsapp.js` + `wa-watch.ps1` | WhatsApp de escritorio en solo lectura (`node whatsapp.js` = autoprueba). |
@@ -186,6 +190,28 @@ el modelo por defecto; Haiku elegía peor. Caché `%APPDATA%\nimbo\trello.json` 
 descarta). En la página: píldora con los tableros → lista → tablero (volver, Actualizar); `trello-busy` manda las claves
 en curso. El aviso de "vence en < 24 h" solo mira tableros ya abiertos. El video/GIF de `scripts/promo/` usa el formato viejo
 (`window.__trello`): al regenerarlos, actualizar ese dato.
+**Otras IAs** (`src/integrations/ai.js`, `node src/integrations/ai.js` = autoprueba con servidores de mentira en tu PC): UN solo adaptador del protocolo
+"chat/completions" de OpenAI para Ollama (`http://127.0.0.1:11434/v1`, sin clave, modelo = `pickLocal` o `prefs.aiModels.ollama`), Gemini
+(`.../v1beta/openai`, modelo por defecto `gemini-2.5-flash`) y OpenAI (`gpt-4o-mini`): los nombres de modelo envejecen, se cambian en `prefs.aiModels`.
+`prefs.chatProvider` elige cuál habla; el selector del chat (`#ai`) aparece cuando hay más de uno y `ask` (main) enruta: con adjuntos SIEMPRE va a
+Claude; sin ellos, a la IA elegida (historial solo en memoria, 12 mensajes, se borra con "Nueva conversación"). Solo conversación: ni archivos, ni
+recordatorios, ni `dispatch`. Las claves de Gemini/OpenAI van cifradas con `safeStorage` en `ai-keys.bin` (JSON), se verifican con `GET /models` antes de
+guardarse y nunca salen en un error. Probado con el adaptador y servidores falsos, la UI y rechazo de claves; SIN probar con un modelo real porque el Ollama del
+dueño NO tiene ningún modelo instalado (ya no está llama3.2:3b: los resúmenes de WhatsApp caen a Claude) y no hay claves.
+**Bandeja de pendientes de Telegram:** `/pendiente <texto>` (o `/p`, `/anotar`, `/tarea`; `parseInbox` en telegram.js) agrega a `reminders` sin fecha (la píldora
+Pendientes); `/pendientes` lista y `/hecho <n>` completa. Con Nimbo apagado Telegram guarda los mensajes 24 h; al arrancar `prime()` los lee TODOS (hasta 500):
+las notas `/pendiente` de la cuenta vinculada se anotan (`onBacklog`) y se confirma; el resto se descarta (sigue la regla de no ejecutar nada viejo) y se avisa.
+**Avisos al celular** (`src/main/alerts.js`, autoprueba `node src/main/alerts.js`): los hooks que llegan al servidor local pasan por `alerts.onHook`: "terminó" solo
+si el trabajo duró ≥ 1 min (se mide desde `UserPromptSubmit`), permiso/necesita (un permiso dispara PermissionRequest y Notification: un solo aviso por chat en 90 s)
+y fallos; `notify` sirve a recordatorios, correo y WhatsApp urgente (APAGADO por defecto). Por defecto solo avisa con ≥ 120 s sin tocar el PC
+(`powerMonitor.getSystemIdleTime`). A Telegram solo va el título del chat y el nombre de la herramienta (validado con regex), nunca comando ni texto.
+Se configura en el menú "Avisos al celular (Telegram)" → `prefs.telegramAlerts`.
+**Correo** (`src/integrations/mail.js`, autoprueba sin red; `... live` revisa tu Gmail de verdad y solo imprime cantidades, CUESTA ~0,05 USD): como Trello pero con
+Gmail. Al `claude -p` solo se le permite `search_threads` (ya devuelve remitente, asunto y vista previa: nunca se abre el cuerpo) y se prohíben por nombre las otras
+27 herramientas de Gmail (enviar, responder, reenviar, borrar, etiquetar, borradores); los demás conectores se excluyen con `connectors()`; Haiku, `--effort low`, tope
+0,15 USD. `prefs.mailRead` (apagado hasta activarlo en Conexiones; al activar se revisa de verdad 15–60 s). Cada 4 h (`refreshMailIfStale`, 3 intentos y luego 6 h) y al
+pedirlo (píldora "Correo", "revisa mi correo", `/correo`). Importantes nuevos → `alerts.notify("mail")` (la primera revisión al activar no avisa). `mail-open` abre
+`https://mail.google.com/mail/u/0/#inbox/<id>` solo con un id hexadecimal. Apagar borra `mail.json`. Probado con Gmail real: 6 sin leer, 3 importantes, 47–56 s.
 **Barra flotante de música** (`src/main/musicbar.js` + `player-preload.js` + `src/renderer/player.{html,css,js}`; `node src/main/musicbar.js` = autoprueba
 sin Electron): una SEGUNDA ventana (sin marco, transparente, siempre arriba en nivel "floating", `showInactive` para no robar el foco)
 que sale mientras `media` (lo que suena, media.js) no sea null, `prefs.musicBar` esté activo y no haya modo mini; en pausa se queda; la ✕
@@ -372,7 +398,9 @@ del extremo derecho de la barra (`#menuBtn`, visible al pasar el mouse) y con el
 `assets/icon.png`; Windows 11 lo deja en el desbordamiento, la flechita). `NIMBO_DEBUG=1` imprime dónde quedó.
 
 **Firma del instalador.** Sin firmar, Windows muestra SmartScreen; no hay atajo. Camino elegido: SignPath
-Foundation (gratis para código abierto; el certificado sale a nombre de ellos). Requisitos ya cubiertos: licencia
+Foundation (gratis para código abierto; el certificado sale a nombre de ellos). **RECHAZADO el 2026-10-13**: piden señales públicas (estrellas,
+forks, menciones, actividad sostenida) y el proyecto tenía 8 días; invitan a volver a solicitar o a una suscripción de pago. Opciones: reintentar con más
+visibilidad, la Microsoft Store (registro único de unos 19 USD, a verificar) o seguir con el aviso de SmartScreen. Requisitos que ya estaban cubiertos: licencia
 MIT, compilación automática (`.github/workflows/build.yml`: al publicar una versión arma el instalador y lo
 adjunta), nombre y versión en el ejecutable, `PRIVACY.md` y la sección "Firma del instalador" del README. Falta
 lo que solo puede hacer el autor: activar la verificación en dos pasos en GitHub y enviar la solicitud. Al
@@ -428,13 +456,13 @@ la página sin `?lang` (español).
   En la página no se usa `innerHTML`: todo texto externo entra con `textContent`/`el()`.
 - Permisos del navegador: solo micrófono (audio); cámara y lo demás, denegados.
 - Nimbo no guarda claves ni tokens de nadie: GitHub vía `gh`, Trello vía el conector de `claude`. Excepciones, opcionales y
-  cifradas por Windows (`safeStorage`): el token de renovación de Spotify Premium (`spotify.bin`) y el token del bot de Telegram
-  (`telegram.bin`).
+  cifradas por Windows (`safeStorage`): el token de renovación de Spotify Premium (`spotify.bin`), el token del bot de Telegram
+  (`telegram.bin`) y las claves de Gemini/OpenAI (`ai-keys.bin`).
 - El CSP ya no permite JavaScript en línea (`script-src 'self' 'wasm-unsafe-eval' blob:`): el código de la página está en
   `app.js`. Los estilos sí llevan `'unsafe-inline'` (el código pone variables CSS con `style`).
 
 ## Estado en disco
-`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `interviewModel`, `chatModel`, `telegramChat`, `musicBar`, `musicBarPos`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
+`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `interviewModel`, `chatModel`, `telegramChat`, `musicBar`, `musicBarPos`, `chatProvider`, `aiModels`, `telegramAlerts`, `mailRead`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
 caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
 
 ## Lecciones (cosas que ya fallaron)
