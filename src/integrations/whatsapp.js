@@ -184,25 +184,6 @@ async function askClaude(rules, groups, lang = "es") {
   return groups.map((g, i) => [g, out.chats.find((c) => c?.n === i + 1)]).filter(([, v]) => v).map(([g, v]) => label(g, v));
 }
 
-// Kimi (Moonshot): todos los chats nuevos en una llamada, como con Claude, pero por la API de Kimi (la clave la guarda main.js). El texto de los mensajes
-// SALE a los servidores de Moonshot: solo se usa si el dueño lo eligió en el menú. Kimi no tiene herramientas: lo único que hace es devolver un JSON que label() valida.
-const KIMI_SYSTEM = SYSTEM + `
-
-Formato: responde SOLO un objeto JSON {"chats":[{"n":1,"summary":"…","kind":"…","ignore":false,"urgent":false,"reply":"…"}]} con una entrada por cada chat numerado, sin texto fuera del JSON.`;
-function parseKimi(text, groups) {
-  let out;
-  try { out = JSON.parse(String(text).slice(String(text).indexOf("{"), String(text).lastIndexOf("}") + 1)); } catch { return null; }
-  if (!Array.isArray(out?.chats)) return null;
-  return groups.map((g, i) => [g, out.chats.find((c) => c?.n === i + 1)]).filter(([, v]) => v).map(([g, v]) => label(g, v));
-}
-/** ask(system, usuario) → { text } | { error }. Devuelve { labels } o { error: "key" | "limit" | "model" | "offline" | "fail" }. */
-async function askKimi(ask, rules, groups, lang = "es") {
-  const r = await ask(KIMI_SYSTEM, header(rules, lang) + groups.map((g, i) => `[${i + 1}] ${chatBlock(g)}`).join("\n\n"));
-  if (r?.error) return { error: r.error };
-  const labels = parseKimi(r?.text ?? "", groups);
-  return labels ? { labels } : { error: "fail" };
-}
-
 /** Clasifica UN chat con un modelo local de Ollama. El texto no sale del equipo. null si falla. */
 async function askOllama(model, rules, group, lang = "es") {
   try {
@@ -278,7 +259,7 @@ const saveSeen = (file, seen) => {
   try { fs.writeFileSync(file, JSON.stringify({ dismissed: last(seen.dismissed), alerted: last(seen.alerted) })); } catch {}
 };
 
-function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", model = () => "", paused = () => false, kimi = null, onError = () => {} }) {
+function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", model = () => "", paused = () => false }) {
   let seen = { running: false, count: 0, access: false, msgs: [] };
   const kept = new Map(); // id → mensaje, lo que sigue sin leer (ver remember)
   let chats = []; // lo ya clasificado, con los ids de cada chat
@@ -299,7 +280,6 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
   /** Quién va a resumir: el nombre del modelo local, o "claude". */
   const brain = async () => {
     const wanted = String(model() ?? "");
-    if (wanted === "kimi") return kimi?.has() ? "kimi" : "claude"; // sin clave de Kimi, vuelve a Claude
     return wanted === "claude" ? "claude" : wanted || (await localModel()) || "claude";
   };
   const schedule = () => {
@@ -339,12 +319,7 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
     onChange(state(), null); // la isla muestra "resumiendo…"
     const finish = () => { working = false; busy = false; onChange(state(), null); quiet = false; };
     let pending = groups;
-    if (who === "kimi") {
-      const r = await askKimi(kimi.ask, rules, groups, lang());
-      if (r.labels?.length) publish(r.labels, batch);
-      else onError(r.error ?? "fail"); // sin etiqueta: se reintenta con el próximo mensaje; nunca se manda a otro proveedor
-      pending = [];
-    } else if (who !== "claude") {
+    if (who !== "claude") {
       // Modelo local: un chat a la vez, y cada uno aparece en la isla apenas está listo.
       // Lo que falle NO se manda a Claude: con modelo local la promesa es que nada sale del
       // equipo. Ese chat queda sin etiqueta y se reintenta con el próximo mensaje.
@@ -450,10 +425,10 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
   };
 }
 
-module.exports = { createWhatsapp, askClaude, askOllama, askKimi, parseKimi, parseLine, view, remember, groupChats, label, mergeChats, pickLocal };
+module.exports = { createWhatsapp, askClaude, askOllama, parseLine, view, remember, groupChats, label, mergeChats, pickLocal };
 
 // Prueba rápida: `node whatsapp.js`
-if (require.main === module) (async () => {
+if (require.main === module) {
   const assert = require("assert");
   const p = parseLine(JSON.stringify({ title: "(3) WhatsApp", access: true, msgs: [
     { id: 2, t: 20, texts: ["Ana", "¿puedes hoy?"] }, { id: 1, t: 10, texts: ["Grupo Fútbol", "Leo: jaja"] },
@@ -481,17 +456,6 @@ if (require.main === module) (async () => {
     { name: "Leo", kind: "personal", urgent: false, ignore: false, summary: "saluda", ids: [8] }], new Set([2, 7, 8]));
   assert.deepStrictEqual(merged.map((c) => [c.name, c.urgent, c.ids]), [["Ana", false, [2, 7]], ["Leo", false, [8]]]);
   assert.deepStrictEqual(mergeChats(chats, [], new Set([99])), []);
-  // Kimi: el JSON puede venir envuelto en texto; cada veredicto vuelve a su chat por número y se valida; basura = null.
-  const kg = groupChats(p.msgs);
-  const kv = parseKimi('Claro:\n```json\n{"chats":[{"n":2,"summary":"pide reunión","kind":"trabajo","ignore":false,"urgent":true,"reply":"Voy"},{"n":1,"summary":"x","kind":"raro","ignore":true,"urgent":true}]}\n```', kg);
-  assert.deepStrictEqual(kv.map((c) => [c.name, c.kind, c.urgent, c.ignore]), [["Grupo Fútbol", "otro", false, true], ["Ana", "trabajo", true, false]]);
-  assert.strictEqual(parseKimi("no es json", kg), null);
-  assert.strictEqual(parseKimi('{"chats":"x"}', kg), null);
-  const seenArgs = [];
-  assert.deepStrictEqual((await askKimi(async (s, u) => { seenArgs.push([s, u]); return { text: '{"chats":[{"n":1,"summary":"ok","kind":"personal","ignore":false,"urgent":false,"reply":""}]}' }; }, "mis reglas", kg.slice(0, 1))).labels.map((c) => c.summary), ["ok"]);
-  assert.ok(seenArgs[0][0].includes("responde SOLO un objeto JSON") && seenArgs[0][1].includes("mis reglas") && seenArgs[0][1].includes("[1] Chat"));
-  assert.deepStrictEqual(await askKimi(async () => ({ error: "limit" }), "", kg), { error: "limit" });
-  assert.deepStrictEqual(await askKimi(async () => ({ text: "basura" }), "", kg), { error: "fail" });
   // Modelo local: de la familia preferida, el más capaz que quepa en 4 GB; nunca uno de visión ni uno enorme.
   assert.strictEqual(pickLocal([{ name: "minicpm-v:latest", size: 5.5e9 }, { name: "moondream:latest", size: 1.7e9 }]), null);
   assert.strictEqual(pickLocal([{ name: "gemma3:4b", size: 3.3e9 }, { name: "llama3.2:3b", size: 2e9 }, { name: "llama3.2:1b", size: 1.3e9 }, { name: "qwen3:32b", size: 20e9 }]), "llama3.2:3b");
@@ -512,4 +476,4 @@ if (require.main === module) (async () => {
   remember(kept, { running: false, count: 0, msgs: [] }, T + 25 * 3600_000);
   assert.deepStrictEqual([...kept.keys()], []); // con WhatsApp cerrado, caduca al día
   console.log("whatsapp.js ok");
-})();
+}

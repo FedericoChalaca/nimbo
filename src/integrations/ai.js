@@ -12,10 +12,8 @@ const PRESETS = {
   ollama: { label: "Ollama", base: "http://127.0.0.1:11434/v1", keyless: true },
   gemini: { label: "Gemini", base: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash" },
   openai: { label: "OpenAI", base: "https://api.openai.com/v1", model: "gpt-4o-mini" },
-  // Kimi (Moonshot AI): mismo protocolo que OpenAI. Su plataforma pide recargar saldo; el nombre del modelo se ajusta solo al guardar la clave (bestKimiModel).
-  kimi: { label: "Kimi", base: "https://api.moonshot.ai/v1", model: "kimi-k2.6" },
 };
-const KEYED = ["gemini", "openai", "kimi"];
+const KEYED = ["gemini", "openai"];
 // Imágenes: la API nativa de Gemini (la compatible con OpenAI no las genera bien). Los nombres de modelo envejecen: se cambia en prefs.aiModels.geminiImage.
 const GEMINI_NATIVE = "https://generativelanguage.googleapis.com/v1beta";
 const IMAGE_MODEL = "gemini-2.5-flash-image";
@@ -35,16 +33,7 @@ function trimHistory(history, max = MAX_HISTORY) {
   while (last.length && last[0].role !== "user") last.shift();
   return last;
 }
-const buildMessages = (system, history, text, max = 6000) => [{ role: "system", content: system }, ...trimHistory(history), { role: "user", content: str(text, max) }];
-
-/** El modelo de Kimi que conviene entre los que ofrece su cuenta: kimi-k2.6 si está; si no el k2 más nuevo (más barato que el k3); si no el más nuevo. Sin variantes de código, visión ni "thinking". */
-function bestKimiModel(ids) {
-  const ok = (Array.isArray(ids) ? ids : []).filter((id) => typeof id === "string" && /^kimi-k\d/.test(id) && !/code|vision|thinking|highspeed|preview|turbo|latest/.test(id));
-  if (ok.includes("kimi-k2.6")) return "kimi-k2.6";
-  const ver = (id) => { const m = id.match(/^kimi-k(\d+)(?:[.-](\d+))?/); return [Number(m[1]), Number(m[2] ?? 0)]; };
-  const newest = (list) => [...list].sort((a, b) => { const [a1, a2] = ver(a), [b1, b2] = ver(b); return b1 - a1 || b2 - a2 || a.length - b.length; })[0] ?? null;
-  return newest(ok.filter((id) => ver(id)[0] === 2)) ?? newest(ok);
-}
+const buildMessages = (system, history, text) => [{ role: "system", content: system }, ...trimHistory(history), { role: "user", content: str(text, 6000) }];
 
 /** El texto de la respuesta, o null si no tiene la forma esperada. */
 function cleanReply(j) {
@@ -97,7 +86,7 @@ function createAi({ getKey, models = () => ({}), bases = {}, fetch: doFetch = fe
     },
 
     /** Un mensaje. { text, model } o { error: "key" | "limit" | "model" | "offline" | "fail" }. */
-    async chat(id, history, text, system, { json = false } = {}) {
+    async chat(id, history, text, system) {
       const preset = PRESETS[id];
       if (!preset) return { error: "fail" };
       const model = id === "ollama" ? (await ollama()).model : str(models()[id], 80) || preset.model;
@@ -109,7 +98,7 @@ function createAi({ getKey, models = () => ({}), bases = {}, fetch: doFetch = fe
         r = await doFetch(`${base(id)}/chat/completions`, {
           method: "POST",
           headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
-          body: JSON.stringify({ model, messages: buildMessages(system, history, text, json ? 14_000 : 6000), temperature: json ? 0.2 : 0.7, max_tokens: json ? 2000 : 900, stream: false, ...(json ? { response_format: { type: "json_object" } } : {}) }),
+          body: JSON.stringify({ model, messages: buildMessages(system, history, text), temperature: 0.7, max_tokens: 900, stream: false }),
           signal: AbortSignal.timeout(id === "ollama" ? 120_000 : 60_000), // un modelo local tarda en cargar la primera vez
         });
       } catch { return { error: "offline" }; }
@@ -151,15 +140,6 @@ function createAi({ getKey, models = () => ({}), bases = {}, fetch: doFetch = fe
       const img = cleanImage(j);
       if (img) return img;
       return { error: j?.promptFeedback?.blockReason || j?.candidates?.[0]?.finishReason === "IMAGE_SAFETY" ? "blocked" : "fail" };
-    },
-
-    /** Los nombres de modelo que ofrece la cuenta (GET /models). [] si falla. */
-    async listModels(id, key = getKey(id)) {
-      if (!KEYED.includes(id) || !key) return [];
-      try {
-        const j = await (await doFetch(`${base(id)}/models`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) })).json();
-        return (Array.isArray(j?.data) ? j.data : []).map((m) => m?.id).filter((x) => typeof x === "string").slice(0, 200);
-      } catch { return []; }
     },
 
     /** ¿Acepta el proveedor esta clave? (pide su lista de modelos: no gasta nada). */
@@ -212,7 +192,7 @@ async function pullModel({ base = PRESETS.ollama.base, name = RECOMMENDED, onPro
   return ended ? { ok: true } : { error: "fail" };
 }
 
-module.exports = { createAi, pullModel, parsePullLine, cleanImage, bestKimiModel, RECOMMENDED, IMAGE_MODEL, trimHistory, buildMessages, cleanReply, KEYED, KEY_FORMAT, PRESETS };
+module.exports = { createAi, pullModel, parsePullLine, cleanImage, RECOMMENDED, IMAGE_MODEL, trimHistory, buildMessages, cleanReply, KEYED, KEY_FORMAT, PRESETS };
 
 // Autoprueba (sin internet, con servidores de mentira en tu PC): `node src/integrations/ai.js`
 if (require.main === module) (async () => {
@@ -251,10 +231,6 @@ if (require.main === module) (async () => {
       }
       const key = (req.headers.authorization ?? "").replace("Bearer ", "");
       if (req.url.startsWith("/gem/")) { if (key !== "GOOD-KEY-1234567890-abcdef") return send(401, { error: "no" }); if (req.url.endsWith("/models")) return send(200, { data: [] }); }
-      if (req.url.startsWith("/kim/")) {
-        if (req.url.endsWith("/models")) return send(200, { data: [{ id: "kimi-k3" }, { id: "kimi-k2.7-code" }, { id: "kimi-k2.6" }, { id: 5 }] });
-        return send(200, { choices: [{ message: { role: "assistant", content: JSON.stringify({ json: !!JSON.parse(body).response_format, temp: JSON.parse(body).temperature }) } }] });
-      }
       if (req.url.startsWith("/lim/")) return send(429, {});
       if (req.url.startsWith("/nomodel/")) return send(404, {});
       if (req.url.startsWith("/rota/")) return send(200, { nada: true });
@@ -270,7 +246,7 @@ if (require.main === module) (async () => {
   // Ollama: sin clave, con el modelo local detectado.
   const s1 = await ai.status();
   assert.deepStrictEqual(s1.providers.map((p) => `${p.id}:${p.model}`), ["ollama:llama3.2:3b", "gemini:gemini-2.5-flash"]);
-  assert.deepStrictEqual(s1.keyed, { gemini: true, openai: false, kimi: false });
+  assert.deepStrictEqual(s1.keyed, { gemini: true, openai: false });
   const r1 = await ai.chat("ollama", turns("user", "assistant"), "hola", "SISTEMA");
   assert.deepStrictEqual(r1, { text: "respuesta de llama3.2:3b", model: "llama3.2:3b" });
   const call = seen.find((x) => x.url === "/ol/chat/completions");
@@ -293,17 +269,6 @@ if (require.main === module) (async () => {
   assert.deepStrictEqual(await make({ gemini: "http://127.0.0.1:1/x" }).chat("gemini", [], "x", "S"), { error: "offline" });
   assert.deepStrictEqual(await ai.chat("openai", [], "x", "S"), { error: "key" }); // sin clave de OpenAI
   assert.deepStrictEqual(await ai.chat("otra", [], "x", "S"), { error: "fail" });
-  // Kimi: mismo protocolo; con { json: true } pide respuesta en JSON y baja la temperatura; el modelo lo elige la cuenta.
-  const kimi = createAi({ getKey: (id) => (id === "kimi" ? "KIMI-KEY-1234567890-abcdefg" : ""), bases: { kimi: `${origin}/kim` } });
-  assert.deepStrictEqual(JSON.parse((await kimi.chat("kimi", [], "hola", "S", { json: true })).text), { json: true, temp: 0.2 });
-  assert.deepStrictEqual(JSON.parse((await kimi.chat("kimi", [], "hola", "S")).text), { json: false, temp: 0.7 });
-  assert.deepStrictEqual(await kimi.listModels("kimi"), ["kimi-k3", "kimi-k2.7-code", "kimi-k2.6"]);
-  assert.deepStrictEqual(await createAi({ getKey: () => "" }).listModels("kimi"), []);
-  assert.strictEqual(bestKimiModel(["kimi-k3", "kimi-k2.7-code", "kimi-k2.6"]), "kimi-k2.6");
-  assert.strictEqual(bestKimiModel(["kimi-k3", "kimi-k2.7-code", "kimi-k2.5", "kimi-latest", "moonshot-v1-8k"]), "kimi-k2.5"); // el k2 más nuevo, no el k3 (más caro) ni uno de código
-  assert.strictEqual(bestKimiModel(["kimi-k3", "kimi-k4-vision"]), "kimi-k3");
-  assert.strictEqual(bestKimiModel(["moonshot-v1-8k", null]), null);
-  assert.ok(KEYED.includes("kimi") && PRESETS.kimi.base.startsWith("https://api.moonshot.ai"));
   // Imágenes de Gemini (API nativa): la clave va en un encabezado y la dirección nunca la lleva.
   const nat = make({ geminiNative: `${origin}/nat` });
   const im = await nat.image("un gato");
