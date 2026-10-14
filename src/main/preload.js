@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld("nimbo", {
   onTrelloBusy: (fn) => ipcRenderer.on("trello-busy", (_e, b) => fn(b)),
   trelloRefresh: () => ipcRenderer.send("trello-refresh"),
   trelloBoard: (url) => ipcRenderer.send("trello-board", url),
+  interview: (req) => ipcRenderer.invoke("interview", req),
   spotifySearch: (query) => ipcRenderer.invoke("spotify-search", query),
   spotifyPlay: (uri) => ipcRenderer.invoke("spotify-play", uri),
   onSpotify: (fn) => ipcRenderer.on("spotify", (_e, ok) => fn(ok)),

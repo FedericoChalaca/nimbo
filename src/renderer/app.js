@@ -784,6 +784,63 @@ api.onSpotify((ok) => {
 });
 api.media().then(onMedia);
 api.onMedia(onMedia);
+// Entrenador de entrevistas (src/main/interview.js): "entrenar entrevista para <puesto>". Nimbo pregunta, tú
+// contestas escribiendo o dictando (🎤) y tu Claude evalúa y hace la siguiente. Mientras dura, lo que escribes
+// en el chat es la respuesta; "terminar" sale. El estado vive aquí: no se guarda nada.
+const INTERVIEW_START = /^\W*(?:(?:entrenar|practicar|simular|hacer)\s+(?:una\s+|mi\s+)?entrevistas?|entrenador de entrevistas?)(?:\s+(?:de|para|como|sobre)\s+(.+?))?\W*$|^\W*entrev[ií]stame(?:\s+(?:de|para|como)\s+(.+?))?\W*$|^\W*(?:interview me|mock interview|practice (?:an? )?interview)(?:\s+(?:for|as)\s+(.+?))?\W*$/i;
+const INTERVIEW_END = /^\W*(?:terminar|termina|salir|fin|basta|stop|end|exit|quit|finish)\W*$/i;
+const INTERVIEW_SKIP = /^\W*(?:siguiente|otra|pasar|skip|next|pass)\W*$/i;
+const interviewStart = (text) => { const m = INTERVIEW_START.exec(text); return m ? { role: (m[1] ?? m[2] ?? m[3] ?? "").trim() } : null; };
+let interview = null; // { role, awaitingRole, asked: [preguntas ya hechas], current, notes: [{ score, tip }] }
+
+function interviewShow(lines) {
+  answer.classList.remove("wait");
+  answer.replaceChildren(...lines.map(([cls, text]) => el("div", cls, text)));
+  answerBox.classList.remove("hidden");
+  answer.scrollTop = 0;
+}
+async function interviewBegin(role) {
+  interview = { role, awaitingRole: !role, asked: [], current: "", notes: [] };
+  if (!role) return interviewShow([["reply", t("¿Para qué puesto quieres practicar? Escríbelo (por ejemplo: desarrollador junior).")]]);
+  await interviewTurn(null);
+}
+// `text`: tu respuesta · "" = pasar a otra pregunta · null = la primera pregunta (o el puesto, si faltaba).
+async function interviewTurn(text) {
+  const s = interview;
+  if (s.awaitingRole) { s.role = text.slice(0, 80); s.awaitingRole = false; text = null; }
+  stopSpeaking();
+  answer.replaceChildren(el("div", "", t("Pensando…")));
+  answer.classList.add("wait");
+  answerBox.classList.remove("hidden");
+  progressStart(12_000);
+  const r = await api.interview({ role: s.role, asked: s.asked, current: s.current, answer: text ?? "" }).catch(() => null);
+  progressEnd();
+  // Si falla se queda en la misma pregunta: puedes volver a enviar tu respuesta.
+  if (!r || r.error) return interviewShow([["reply", t("No pude hablar con Claude.")]]);
+  const lines = [];
+  if (text && r.feedback !== undefined) {
+    s.notes.push({ score: r.score, tip: r.tip });
+    lines.push(["reply", `${"★".repeat(r.score)}${"☆".repeat(5 - r.score)}  ${r.feedback}`]);
+    if (r.tip) lines.push(["afoot", `💡 ${r.tip}`]);
+    if (r.better) lines.push(["afoot", `✍ ${t("Mejor así")}: ${r.better}`]);
+  }
+  if (s.current) s.asked.push(s.current);
+  s.current = r.next;
+  const n = s.asked.length + 1;
+  lines.push(["reply", `${t("Pregunta {0}", n)}: ${r.next}`], ["afoot", t("Responde escribiendo o dictando 🎤. Di «terminar» para salir o «siguiente» para otra pregunta.")]);
+  interviewShow(lines);
+  setState(state, t("Entrevista · pregunta {0}", n), { labelFor: 3500 });
+  speak(r.next); // solo la pregunta: cada letra dicha gasta cuota de voz
+}
+function interviewEnd() {
+  const s = interview;
+  interview = null;
+  const n = s.notes.length;
+  if (!n) return interviewShow([["reply", t("Entrevista terminada.")]]);
+  const tips = [...new Set(s.notes.map((x) => x.tip).filter(Boolean))].slice(-3);
+  interviewShow([["reply", t("Entrevista terminada: {0} respuestas, promedio {1}/5.", n, (s.notes.reduce((a, x) => a + x.score, 0) / n).toFixed(1))], ...tips.map((x) => ["afoot", `💡 ${x}`])]);
+}
+
 const MUSIC_ASK =/^\W*(?:spotify[:,]?\s+(.+)|(?:pon(?:me)?|reproduce|toca|busca(?:me)?|play|search|find)\s+(.+?)\s+(?:en|on|in)\s+spotify|(?:reproduce|play)\s+(.+))$/i;
 const musicQuery = (text) => {
   const m = MUSIC_ASK.exec(text);
@@ -1423,7 +1480,12 @@ chat.addEventListener("submit", async (e) => {
   renderThumbs();
   msg.value = "";
   msg.placeholder = t("Escríbele a Claude… (suelta archivos sobre mí)");
-  if (!sent.length && !paths.length && PLAN_ASK.test(text) && /plan/i.test(text)) await answerPlan();
+  if (interview && !sent.length && !paths.length) {
+    if (INTERVIEW_END.test(text)) interviewEnd();
+    else if (INTERVIEW_SKIP.test(text) && !interview.awaitingRole) await interviewTurn("");
+    else await interviewTurn(text);
+  } else if (!sent.length && !paths.length && interviewStart(text)) await interviewBegin(interviewStart(text).role);
+  else if (!sent.length && !paths.length && PLAN_ASK.test(text) && /plan/i.test(text)) await answerPlan();
   else if (!sent.length && !paths.length && musicQuery(text)) await answerMusic(musicQuery(text));
   else await askAndShow({ text, images: sent, files: paths });
   asking = false;

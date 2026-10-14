@@ -215,6 +215,7 @@ Si la app de Spotify estaba cerrada, la primera canción solo la abre: cuando ca
 - **Aprueba permisos desde la isla.** Permitir, Denegar, Siempre o mandarlo a la terminal. La tarjeta muestra el comando completo.
 - **Chatea con tu Claude.** Escribe, dicta (Whisper local, el audio no sale de tu PC), pega imágenes o suéltale archivos encima.
 - **Ve tu pantalla cuando se lo pides.** Pulsa 🖥 en el chat: toma un pantallazo, te muestra la miniatura y le preguntas lo que necesites ("¿qué significa este error?", "¿dónde hago clic para exportar?"). No hay vista en vivo ni nada automático: una sola foto, solo cuando pulsas el botón, y se envía a tu Claude solo cuando mandas el mensaje.
+- **Te entrena para entrevistas.** Escribe `entrenar entrevista para desarrollador junior` (o `practice interview for …`): Nimbo hace una pregunta a la vez, tú contestas escribiendo o dictando, y tu Claude califica la respuesta, te da un consejo y una versión mejor que nunca inventa experiencia, y hace la siguiente pregunta. Di "terminar" para ver tu promedio. Es solo práctica: no se guarda nada. Cada pregunta cuesta cerca de un centavo de tu uso de Claude (Haiku, sin herramientas).
 - **Orquesta.** Conoce tus chats: si pides algo que le toca a otro proyecto, redacta el prompt para ese chat y lo envía solo cuando tú confirmas.
 - **Recordatorios.** "Recuérdame mañana a las 9 enviar la factura": avisa en la isla y con una notificación de Windows.
 - **Dos apariencias.** Una nube con cara o una esfera de puntos estilo JARVIS.

@@ -14,6 +14,7 @@ const { createReminders } = require("./reminders");
 const { createTrello } = require("../integrations/trello");
 const { searchSpotify, TRACK_URI } = require("../integrations/spotify");
 const { watchMedia } = require("../integrations/media");
+const { askInterview } = require("./interview");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
 const { createWhatsapp } = require("../integrations/whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
@@ -187,6 +188,8 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
   speak: false, ttsUrl: "",
   // Spotify con Premium (opcional): el Client ID de TU app de developer.spotify.com (ver spotify-api.js).
   spotifyClientId: "",
+  // Entrenador de entrevistas: modelo de tu claude ("" = haiku, el más barato; "sonnet" para un entrenador más exigente).
+  interviewModel: "",
   // Plan del día (ver plan.js): dónde está, y la fecha del último plan que ya te mostró.
   planRepo: "", planBranch: "", planFile: "", planSeen: "" };
 try {
@@ -388,6 +391,8 @@ const spotifyApi = createSpotifyApi({
   open: (url) => { clipboard.writeText(url); shell.openExternal(url); },
 });
 // "plays" le dice a la página que la canción elegida va a sonar (y no solo abrirse).
+// Entrenador de entrevistas (interview.js): un turno por llamada, sin guardar nada.
+ipcMain.handle("interview", (_e, req) => askInterview(req, { lang: lang(), model: prefs.interviewModel }));
 ipcMain.handle("spotify-search", async (_e, query) => (spotifyApi.connected() ? { ...(await spotifyApi.search(query)), plays: true } : searchSpotify(query)));
 // Con Premium la canción suena; sin eso (o si Spotify está cerrado) se abre su página en la app.
 ipcMain.handle("spotify-play", async (_e, uri) => {

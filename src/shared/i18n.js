@@ -105,6 +105,14 @@ const NIMBO_EN = {
   "{0} sin propuesta hoy": "{0} with no proposal today",
   "hoy": "today",
   "No tengo el plan de hoy: no está configurado, no hay conexión o todavía no ha salido.": "I do not have today's plan: it is not set up, there is no connection, or it has not come out yet.",
+  // — Entrenador de entrevistas —
+  "¿Para qué puesto quieres practicar? Escríbelo (por ejemplo: desarrollador junior).": "What job do you want to practice for? Type it (for example: junior developer).",
+  "Mejor así": "Better",
+  "Pregunta {0}": "Question {0}",
+  "Responde escribiendo o dictando 🎤. Di «terminar» para salir o «siguiente» para otra pregunta.": "Answer by typing or dictating 🎤. Say “end” to leave or “next” for another question.",
+  "Entrevista · pregunta {0}": "Interview · question {0}",
+  "Entrevista terminada.": "Interview over.",
+  "Entrevista terminada: {0} respuestas, promedio {1}/5.": "Interview over: {0} answers, average {1}/5.",
   // — Spotify —
   "Buscando en Spotify…": "Searching Spotify…",
   "Buscar": "Search",

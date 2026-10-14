@@ -215,6 +215,7 @@ If the Spotify app was closed, the first song only opens it: once it loads, clic
 - **Approves permissions from the island.** Allow, Deny, Always, or send it back to the terminal. The card shows the full command.
 - **Chats with your Claude.** Type, dictate (local Whisper, no audio leaves your PC), paste images, or drop files on it.
 - **Sees your screen when you ask.** Click 🖥 in the chat: it takes one screenshot, shows you the thumbnail, and you ask what you need ("what does this error mean?", "where do I click to export?"). No live view and nothing automatic: one picture, only when you press the button, sent to your Claude only when you send the message.
+- **Trains you for interviews.** Type `practice interview for junior developer` (or `entrenar entrevista para …`): Nimbo asks one question at a time, you answer by typing or dictating, and your Claude scores the answer, gives one tip and a better version that never invents experience, then asks the next question. Say "end" to see your average. It is practice only: nothing is saved. Each question costs about a cent of your Claude usage (Haiku, no tools).
 - **Orchestrates.** It knows your chats: ask for something that belongs to another project and it drafts the prompt for that chat, and sends it only when you confirm.
 - **Reminders.** "Remind me tomorrow at 9 to send the invoice": it alerts on the island and with a Windows notification.
 - **Two looks.** A cloud with a face, or a JARVIS-style sphere of connected dots.

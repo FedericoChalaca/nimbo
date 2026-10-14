@@ -18,7 +18,8 @@ Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el con
   real, dictado/chat/WhatsApp en inglés, el sonido de las dos voces, `scripts/promo/promo-main.js` con las rutas nuevas.
 - **Abierto:** firma del instalador (solicitud enviada a SignPath Foundation, sin respuesta); `app.js` tiene ~1.670 líneas y
   conviene partirlo (ver "Carpetas": hacerlo por piezas y probando).
-- **Siguiente paso, en este orden (cada uno se acuerda con el dueño antes):** (1) entrenador de entrevistas y copiloto de
+- **Entrenador de entrevistas:** hecho (ver su párrafo en "Flujos"); falta usarlo de verdad con la voz y decidir si vale un "copiloto de reuniones".
+- **Siguiente paso, en este orden (cada uno se acuerda con el dueño antes):** (1) copiloto de
   reuniones: capturar el audio del sistema con `desktopCapturer`/`setDisplayMediaRequestHandler` (`audio: "loopback"`), pasarlo
   por el Whisper local de `stt-worker.js` en trozos y resumir con `claude -p`; SIN modo oculto para entrevistas reales;
   (2) chat con otras IAs empezando por Ollama (sin claves); (3) web app para iPhone sobre Tailscale.
@@ -184,6 +185,16 @@ el modelo por defecto; Haiku elegía peor. Caché `%APPDATA%\nimbo\trello.json` 
 descarta). En la página: píldora con los tableros → lista → tablero (volver, Actualizar); `trello-busy` manda las claves
 en curso. El aviso de "vence en < 24 h" solo mira tableros ya abiertos. El video/GIF de `scripts/promo/` usa el formato viejo
 (`window.__trello`): al regenerarlos, actualizar ese dato.
+**Entrenador de entrevistas** (`src/main/interview.js`, `node src/main/interview.js` = autoprueba; `... live` hace 2 turnos de verdad y
+CUESTA centavos): en el chat, "entrenar entrevista para <puesto>" / "interview me for …" (`INTERVIEW_START` en `app.js`; si falta el
+puesto lo pregunta). Mientras `interview` (variable de la página) está activo, lo que se escribe es la respuesta; "terminar" sale
+con promedio y consejos, "siguiente" pasa a otra pregunta. Cada turno es una llamada `claude -p` SIN estado: puesto + últimas 6
+preguntas recortadas + la respuesta; `--model haiku` (`prefs.interviewModel` lo cambia), `--tools ""`, `--strict-mcp-config`,
+`--setting-sources project`, `--effort low` y `--max-budget-usd 0.10`. Medido el 2026-10-13: pregunta ~8–10 s y ~0,006 USD;
+evaluación 14–70 s y 0,009–0,05 USD (sin `--effort low` llegó a 71 s y 0,052: el modelo "pensaba" de más). El modelo devuelve
+`{feedback, tip, score, better, next}` y `cleanTurn` lo valida; "better" conserva los hechos del candidato y deja [dato] donde falta.
+Solo se dice en voz alta la pregunta (la cuota de voz se paga por letra). Decisión del dueño: es práctica; NO se construye ningún
+modo oculto para entrevistas reales. El dictado existente (🎤) sirve para contestar hablando.
 **Conectores de más = tokens de más.** Cada `claude -p` carga las herramientas de TODOS los conectores del
 usuario: con 9 conectores eran 355.000 tokens por llamada (y Haiku respondía "Prompt is too long"). Por eso
 `connectors()` (`orchestrator.js`, lee `claude mcp list`, ~4 s, sin modelo, caché 10 min) da los prefijos
@@ -400,7 +411,7 @@ la página sin `?lang` (español).
   `app.js`. Los estilos sí llevan `'unsafe-inline'` (el código pone variables CSS con `style`).
 
 ## Estado en disco
-`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
+`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `interviewModel`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
 caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
 
 ## Lecciones (cosas que ya fallaron)
