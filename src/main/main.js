@@ -19,7 +19,8 @@ const { createMusicBar } = require("./musicbar");
 const { extraBinDirs, findInPath, ollamaLocations, userDataDir } = require("./platform");
 const { createAlerts } = require("./alerts");
 const { createMail, threadUrl } = require("../integrations/mail");
-const { createAi, pullModel, RECOMMENDED, KEYED, KEY_FORMAT } = require("../integrations/ai");
+const { createAi, pullModel, RECOMMENDED, KEYED, KEY_FORMAT, bestKimiModel } = require("../integrations/ai");
+const AI_LABEL = { gemini: "Gemini", openai: "OpenAI", kimi: "Kimi" };
 const { cleanDelegates, imageFileName, insideDir } = require("./delegate");
 const { createTelegram, parseInbox } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
@@ -515,7 +516,10 @@ const wa = createWhatsapp({
   rulesFile: path.join(app.getPath("userData"), "whatsapp-reglas.txt"),
   seenFile: path.join(app.getPath("userData"), "whatsapp-vistos.json"), // solo números de notificación, sin texto
   lang,
-  model: () => prefs.waModel, // "" automático · "claude" · o un modelo de Ollama
+  model: () => prefs.waModel, // "" automático · "claude" · "kimi" · o un modelo de Ollama
+  kimi: { has: () => !!aiLoad().kimi, ask: (system, user) => ai.chat("kimi", [], user, system, { json: true }) },
+  onError: (code) => win?.webContents.send("ai-error", t({ key: "Kimi no aceptó la clave. Pégala de nuevo en Conexiones → Otras IAs.", limit: "Kimi dice que llegaste a su límite o te quedaste sin saldo.",
+    model: "Kimi no tiene el modelo que se necesita. Revisa su nombre.", offline: "No pude conectarme con Kimi." }[code] ?? "Kimi no pudo resumir los mensajes de WhatsApp.")),
   paused: () => mini,
   onChange(state, alert) {
     whatsapp = state;
@@ -810,9 +814,14 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         const key = text.slice(text.indexOf(":") + 1).trim();
         if (!KEYED.includes(id) || !KEY_FORMAT.test(key)) throw new Error(t("Esa clave no tiene el formato esperado."));
         if (!safeStorage.isEncryptionAvailable()) throw new Error(t("Windows no puede cifrar el token en este equipo."));
-        if (!(await ai.verify(id, key))) throw new Error(t("{0} no aceptó esa clave.", id === "gemini" ? "Gemini" : "OpenAI"));
+        if (!(await ai.verify(id, key))) throw new Error(t("{0} no aceptó esa clave.", AI_LABEL[id] ?? id));
         aiLoad()[id] = key;
         aiSave();
+        // Kimi cambia de modelos seguido: se elige el adecuado entre los que ofrece tu cuenta (si tú no fijaste uno en prefs.aiModels).
+        if (id === "kimi" && !prefs.aiModels?.kimi) {
+          const best = bestKimiModel(await ai.listModels("kimi", key));
+          if (best) { prefs.aiModels = { ...prefs.aiModels, kimi: best }; savePrefs(); }
+        }
         break;
       }
       case "ollama-open": openOllama(); break;
@@ -934,6 +943,19 @@ function buildMenu() {
       },
     },
     { label: t("Reglas de WhatsApp…"), enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
+    {
+      label: t("Quién resume WhatsApp"),
+      enabled: prefs.whatsappRead === true,
+      submenu: [
+        ["", t("Automático (un modelo local si hay; si no, tu Claude)")],
+        ["claude", t("Tu Claude")],
+        ["kimi", aiLoad().kimi ? t("Kimi (sus servidores ven el texto de los mensajes)") : t("Kimi (primero pega su clave en Conexiones → Otras IAs)")],
+      ].map(([value, label]) => ({
+        label, type: "radio", checked: (prefs.waModel || "") === value || (value === "" && !["claude", "kimi"].includes(prefs.waModel || "")),
+        enabled: value !== "kimi" || !!aiLoad().kimi,
+        click: () => { prefs.waModel = value; savePrefs(); wa.poke(); },
+      })),
+    },
     { label: t("Nueva conversación"), click: () => { orchestrator.reset(); aiHistory.clear(); } },
     { type: "separator" },
     {

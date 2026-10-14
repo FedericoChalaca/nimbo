@@ -326,6 +326,14 @@ el flujo crudo con StreamReader) y el flujo de la carátula hay que convertirlo 
   `remember()` las conserva en memoria hasta que el contador del título llega a 0 (con 1 min de gracia) o
   pasan 24 h. Solo se ve lo que dejó notificación (chats silenciados o con WhatsApp en primer plano no).
 - Probado de punta a punta con un mensaje real (2026-10-05): visto a los 2 s, clasificado a los 23 s.
+- **Kimi como resumidor** (2026-10-14, pedido del dueño: "así no gasta tanto"): `prefs.waModel = "kimi"` (menú "Quién resume WhatsApp": Automático / Tu Claude / Kimi; Kimi
+  solo se puede elegir con su clave guardada). `askKimi` (whatsapp.js) manda TODOS los chats nuevos numerados en una sola llamada a la API de Moonshot (`ai.chat("kimi", …, { json: true })`:
+  `response_format json_object`, temperatura 0,2), `parseKimi` saca el JSON aunque venga envuelto y `label()` lo valida igual que con Claude (Kimi no tiene herramientas). El texto de los
+  mensajes SALE a Moonshot: solo si el dueño lo eligió, y está en PRIVACY.md. Si falla NO se reintenta con otro proveedor (queda sin etiqueta y avisa con `onError` → `ai-error`);
+  sin clave, `brain()` vuelve a Claude. Preset en `ai.js`: `https://api.moonshot.ai/v1`, modelo por defecto `kimi-k2.6`; al guardar la clave, `bestKimiModel(listModels)` fija en
+  `prefs.aiModels.kimi` el modelo adecuado de los que ofrece la cuenta (los nombres cambian: el original kimi-k2 se retiró). Precios de terceros (sin verificar en la página oficial): k2.6 ≈ 0,95 USD
+  por millón de tokens de entrada y 4 USD de salida, o sea una llamada de WhatsApp (~4.000 de entrada, ~900 de salida) ≈ 0,007 USD: casi igual que Haiku por API; el ahorro real es no gastar tu cupo de Claude.
+  La cuenta de Moonshot pide recargar saldo. NO probado con una clave real (el dueño aún no la tiene): lo probado es el adaptador, el JSON y el menú con servidores falsos.
 - Quién resume (`brain()`): si Ollama responde en `127.0.0.1:11434` y tiene un modelo de TEXTO pequeño
   (`pickLocal`: llama3.2, qwen, gemma, phi, mistral; el más liviano, < 6 GB), lo hace ese modelo local: sin
   tokens y sin que el texto salga del equipo. Si no, el Claude del usuario (Haiku por el CLI: ~9 s y
@@ -361,7 +369,7 @@ imbowhatsapp-vistos.json` (solo números, sin texto;
   eso, aun con `--no-session-persistence`, cada llamada dejaba un "chat" con título en `~/.claude/projects`
   (y gastaba otra llamada al modelo para titularlo). El usuario lo veía como "cada mensaje se manda a un chat".
 - Privacidad, no negociable: sigue APAGADO hasta que el usuario lo active (un clic, sin diálogos extra). Lo
-  único que ve los textos es el `claude` del propio usuario; Nimbo no tiene servidores ni telemetría.
+  único que ve los textos es el `claude` del propio usuario (o Kimi, solo si el usuario lo eligió en el menú); Nimbo no tiene servidores ni telemetría.
   Al depurar, imprimir solo estructura (cuántos chats, tipo, urgente), nunca nombres ni textos.
 - Nunca envía, ni marca como leído, ni toca la sesión. Nada de puentes no oficiales tipo
   whatsapp-web.js/Baileys: arriesgan el bloqueo del número. No pasar estos resúmenes al orquestador.
