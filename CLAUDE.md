@@ -73,6 +73,7 @@ assets/ build/ examples/ .github/
 | `platform.js` | Lo que cambia por sistema operativo: carpeta de datos, dónde están `claude` y `ollama`, PATH. |
 | `ai.js` | Otras IAs en el chat: Ollama, Gemini, OpenAI con un solo adaptador (+ imágenes de Gemini). |
 | `delegate.js` | Encargos de Claude a Gemini: validación y carpeta de imágenes. |
+| `claude-api.js` | Motor API de Claude (SDK oficial): salida estructurada, adjuntos, errores; lo usan el chat y los resúmenes de WhatsApp si eliges ese motor. |
 | `mail.js` | Correo importante de tu Gmail por el conector de tu `claude` (solo lectura). |
 | `alerts.js` | Avisos al celular por Telegram (filtrados: trabajos largos, lejos del PC). |
 | `remote-api.js` | API para Nimbo en el iPhone (la app del asistente, por su puente): estado de los chats, permiso pendiente, pendientes, hablar con Nimbo y mandar sus encargos (`node remote-api.js` = autoprueba). |
@@ -215,6 +216,16 @@ el Dock/Spaces, y que Gatekeeper deje abrir el .dmg descargado.
 Claude; sin ellos, a la IA elegida (historial solo en memoria, 12 mensajes, se borra con "Nueva conversación"). Solo conversación: ni archivos, ni
 recordatorios, ni `dispatch`. Las claves de Gemini/OpenAI van cifradas con `safeStorage` en `ai-keys.bin` (JSON), se verifican con `GET /models` antes de
 guardarse y nunca salen en un error. Probado con el adaptador y servidores falsos, la UI y rechazo de claves; **Ollama de un clic para quien llega nuevo** (fila "Otras IAs"): sin Ollama → "Instalar Ollama" (abre ollama.com/download, nunca ejecuta nada); instalado y cerrado → "Abrir Ollama" (`ollama app.exe` en `%LOCALAPPDATA%\Programs\Ollama`); sin modelo → "Descargar modelo gratis (≈2 GB)": `pullModel` (`POST /api/pull`, avance en NDJSON, % en el panel, cancelable) SOLO con el clic y SOLO el modelo `RECOMMENDED` = llama3.2:3b (el nombre lo fija main, nunca la página). Probado el protocolo con un servidor falso y contra el Ollama real con un modelo inexistente (entiende el error, no descarga). SIN probar una descarga completa ni una respuesta de un modelo real: el Ollama del dueño NO tiene ningún modelo (ya no está llama3.2:3b: los resúmenes de WhatsApp caen a Claude) y no hay claves; él pidió NO descargarlo por él.
+**Motor API de Claude** (`src/integrations/claude-api.js`, autoprueba `node src/integrations/claude-api.js` con un servidor de mentira + el bloque final de `node src/main/orchestrator.js`; 2026-10-21; el dueño tiene
+Claude Max 20x con 200 USD/mes en créditos de API, que hay que vincular a una organización de la Consola): `prefs.engine` = "" (Suscripción: `claude -p`, lo de siempre) o "api" (menú "Motor de Nimbo"; solo se puede elegir con la clave guardada).
+Usa el SDK OFICIAL `@anthropic-ai/sdk` (1.x; manda la clave como `Authorization: Bearer`, el servidor de mentira acepta eso y `x-api-key`). La clave va en `ai-keys.bin` con id `"anthropic"` (la fila "Otras IAs" tiene la opción
+"Claude (API)"; `verify` = `models.list`, no gasta). Dónde actúa: (1) el chat del orquestador (`askApi` en `orchestrator.js`; ahí también entran Telegram y la API del celular porque todos pasan por `askNimbo`): Sonnet 5.5
+(`chatModelId(prefs.chatModel)`: "haiku" → Haiku 5.5, "opus" → Opus 5.5, si no Sonnet), `output_config.format` json_schema con el MISMO `SCHEMA` (con `additionalProperties:false`: `strictSchema`), `effort: "low"`, SIN `thinking` ni
+`temperature` (400 en 5.5), historial solo de texto en memoria (24 mensajes, "Nueva conversación" lo borra), `systemPrompt(..., { api: true })` cambia la parte del vault ("no tienes herramientas"); ve imágenes, texto/código ≤100 KB y PDF ≤10 MB adjuntos
+(`userContent`), el resto lo avisa; Cancelar usa `AbortController`. (2) los resúmenes de WhatsApp (`askApi` en `whatsapp.js`, Haiku 5.5, salida estructurada `SCHEMA_MANY`; `brain()` devuelve "api" si `waModel` está en automático y el motor es api).
+NO cambia de motor solo si falla (créditos agotados → mensaje claro). Trello, correo, Spotify y el entrenador siguen con `claude -p` (los conectores solo existen ahí). Se omitió `fallbacks` (reintento en otro modelo tras un rechazo
+de seguridad): un `stop_reason: "refusal"` sale como "Claude no quiso responder eso". Precios del caché de la skill (2026-10-06): Sonnet 5.5 2/10 USD por millón, Haiku 5.5 0,10/0,50 → un resumen de WhatsApp ≈ 0,0005 USD. NO probado con una clave real
+(el dueño todavía no vincula la organización): lo probado es el módulo, el orquestador y WhatsApp con servidores falsos y la interfaz.
 **Encargos a otras IAs** (`src/main/delegate.js`, autoprueba `node src/main/delegate.js`; 2026-10-14): el orquestador devuelve `delegate: [{ai:"gemini", kind:"image"|"text", prompt}]`
 (SCHEMA + regla "OTRAS IAs" en `systemPrompt`; `cleanDelegates` deja solo Gemini, imagen/texto, ≤3, prompt ≤1500). Probado con Sonnet real: "genérame un logo…" → un encargo
 `image` con prompt en inglés; "¿cuánto es 15 por 4?" → ninguno. La página lo muestra con `delegateCard` (como `proposal`): **Abrir en Gemini** (IPC `delegate-open`: copia el
@@ -494,12 +505,12 @@ la página sin `?lang` (español).
 - Permisos del navegador: solo micrófono (audio); cámara y lo demás, denegados.
 - Nimbo no guarda claves ni tokens de nadie: GitHub vía `gh`, Trello vía el conector de `claude`. Excepciones, opcionales y
   cifradas por Windows (`safeStorage`): el token de renovación de Spotify Premium (`spotify.bin`), el token del bot de Telegram
-  (`telegram.bin`) y las claves de Gemini/OpenAI (`ai-keys.bin`).
+  (`telegram.bin`) y las claves de Gemini/OpenAI/Claude API (`ai-keys.bin`).
 - El CSP ya no permite JavaScript en línea (`script-src 'self' 'wasm-unsafe-eval' blob:`): el código de la página está en
   `app.js`. Los estilos sí llevan `'unsafe-inline'` (el código pone variables CSS con `style`).
 
 ## Estado en disco
-`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `interviewModel`, `chatModel`, `telegramChat`, `musicBar`, `musicBarPos`, `chatProvider`, `aiModels`, `telegramAlerts`, `mailRead`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
+`%APPDATA%\nimbo\`: `token`, `prefs.json` (`corner`, `theme`, `pos`, `name`, `vault`, `lang`, `whatsappRead`, `waModel`, `onboarded`, `speak`, `ttsUrl`, `spotifyClientId`, `interviewModel`, `chatModel`, `telegramChat`, `musicBar`, `musicBarPos`, `chatProvider`, `aiModels`, `telegramAlerts`, `mailRead`, `engine`, `planRepo`, `planBranch`, `planFile`, `planSeen`), `reminders.json`, `trello.json`, `whatsapp-reglas.txt`, `chat\` (cwd del orquestador),
 caché del modelo Whisper (Cache Storage del origen `nimbo://app`, ~76 MB).
 
 ## Lecciones (cosas que ya fallaron)

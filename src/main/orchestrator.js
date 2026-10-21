@@ -10,6 +10,7 @@ const path = require("path");
 // Se busca donde lo dejan npm y el instalador nativo; NIMBO_CLAUDE permite indicar otra ruta.
 const { claudeCandidates, findInPath, extraBinDirs } = require("./platform");
 const { cleanDelegates } = require("./delegate");
+const { userContent, trimHistory, chatModelId } = require("../integrations/claude-api");
 const CLAUDE_EXE = [
   ...claudeCandidates(),
   findInPath(process.platform === "win32" ? ["claude.exe"] : ["claude"], { extra: extraBinDirs() }),
@@ -271,7 +272,7 @@ const SCHEMA = JSON.stringify({
   required: ["reply", "dispatch"],
 });
 
-function systemPrompt(sessions, pending = []) {
+function systemPrompt(sessions, pending = [], { api = false } = {}) {
   const now = new Date();
   const off = -now.getTimezoneOffset();
   const tz = `${off >= 0 ? "+" : "-"}${String(Math.floor(Math.abs(off) / 60)).padStart(2, "0")}:${String(Math.abs(off) % 60).padStart(2, "0")}`;
@@ -292,7 +293,9 @@ ${require("./plan").planForPrompt(PLAN())}
 
 Tu propio código (la app Nimbo) está en ${path.resolve(__dirname, "..", "..")}. Si el usuario pide cambios a Nimbo, mándalos al chat cuya carpeta contenga esa ruta.
 
-${VAULT ? `El vault de notas del usuario está en ${VAULT} y tú puedes leerlo (Read, Glob, Grep).
+${api ? `MODO API: no tienes herramientas, así que no puedes leer archivos, el código ni el vault de notas. Si el usuario pide algo que exige leerlos, dile en una frase que cambie el motor a «Suscripción» en el menú de Nimbo (Motor de Nimbo). Los archivos de texto, los PDF y las imágenes que adjunte sí los ves en el mensaje.
+${VAULT ? `- CREAR o CAMBIAR algo del vault (${VAULT}): va por "dispatch" al chat de esa carpeta. Tú nunca editas.
+` : ""}` : VAULT ? `El vault de notas del usuario está en ${VAULT} y tú puedes leerlo (Read, Glob, Grep).
 - PREGUNTAS sobre sus proyectos, notas o personas ("¿qué proyectos tengo pausados?"): respóndelas TÚ leyendo el vault (si existe, empieza por su nota de inicio). No las delegues.
 - CREAR o CAMBIAR algo (notas, proyectos, personas, el second brain): eso va por "dispatch" al chat de ${VAULT}, que sigue las reglas de su CLAUDE.md. Tú nunca editas.
 ` : ""}
@@ -324,7 +327,21 @@ function userMessage({ text, images = [] }) {
   return JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
 }
 
-function createOrchestrator(chatDir, { vault, lang, plan, model } = {}) {
+/** Lo que se le dice al usuario cuando la API de Claude falla. */
+function apiErrorText(code) {
+  switch (code) {
+    case "key": return t("La clave de la API de Claude no sirve. Pégala de nuevo en Conexiones → Otras IAs.");
+    case "limit": return t("La API de Claude dice que vas muy rápido o está saturada. Espera un momento y vuelve a intentar.");
+    case "billing": return t("A la API de Claude se le acabaron los créditos. Cambia a «Suscripción» en el menú → Motor de Nimbo.");
+    case "model": return t("La API de Claude no tiene el modelo que se necesita.");
+    case "offline": return t("No pude conectarme con la API de Claude.");
+    case "refusal": return t("Claude no quiso responder eso.");
+    case "cancelled": return t("Cancelado.");
+    default: return t("La API de Claude no pudo responder.");
+  }
+}
+
+function createOrchestrator(chatDir, { vault, lang, plan, model, engine, claudeApi } = {}) {
   if (typeof model === "function") MODEL = model;
   if (typeof lang === "function") LANG = lang;
   if (typeof plan === "function") PLAN = plan;
@@ -333,48 +350,74 @@ function createOrchestrator(chatDir, { vault, lang, plan, model } = {}) {
   VAULT = typeof vault === "string" && fs.statSync(vault, { throwIfNoEntry: false })?.isDirectory() ? vault : "";
   let sessionId = null;
   let askChild = null; // el `claude -p` de la pregunta en curso
+  let askAbort = null; // la pregunta en curso por la API (se corta con Cancelar)
+  const apiHistory = []; // la conversación del motor API (solo texto, en memoria; el motor Suscripción usa su propia sesión con --resume)
+  const useApi = () => typeof engine === "function" && engine() === "api" && !!claudeApi?.has();
   let known = new Map(); // id → chat, de la última lista que vio el orquestador
+
+  /** Archivos soltados sobre Nimbo: solo rutas que existen (hasta 10). */
+  const validFiles = (msg) => (Array.isArray(msg?.files) ? msg.files : []).filter((f) => typeof f === "string" && fs.statSync(f, { throwIfNoEntry: false })?.isFile()).slice(0, 10);
+
+  /** El motor Suscripción: `claude -p`. → { plan, raw } o { error }. */
+  async function askCli(msg, sessions, reminders) {
+    const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+      "--append-system-prompt", systemPrompt(sessions, reminders), "--json-schema", SCHEMA];
+    if (VAULT) args.push("--add-dir", VAULT);
+    if (MODEL()) args.push("--model", String(MODEL()).slice(0, 40));
+    if (sessionId) args.push("--resume", sessionId);
+
+    // Archivos soltados sobre Nimbo: su carpeta se abre en lectura (el orquestador no puede escribir) y se le listan en el mensaje.
+    const files = validFiles(msg);
+    for (const dir of new Set(files.map((f) => path.dirname(f)))) args.push("--add-dir", dir);
+    let text = String(msg?.text ?? "");
+    if (files.length) text += `\n\nArchivos adjuntos (léelos con Read):\n${files.map((f) => `- ${f}`).join("\n")}`;
+    // El orquestador solo lee: una lista CERRADA de herramientas (leer y buscar archivos) y
+    // ningún conector MCP. Así ni una imagen o un PDF con instrucciones escondidas puede
+    // hacerle escribir, ejecutar, navegar ni usar tus conectores; los cambios van por "dispatch".
+    // --setting-sources project: sin los plugins, hooks y habilidades de tu usuario cada pregunta tarda la mitad (medido 2026-10-14: ~11 s → ~5 s con
+    // una pregunta trivial). Por eso estas preguntas ya no disparan los hooks de Nimbo: la isla pone sus propios gestos (ver askAndShow).
+    args.push("--tools", "Read,Glob,Grep", "--strict-mcp-config", "--setting-sources", "project");
+    const r = await runClaude(args, { cwd: chatDir, input: userMessage({ text, images: msg?.images }), timeoutMs: 3 * 60_000, onChild: (c) => { askChild = c; } });
+    askChild = null;
+    if (r.error) return { error: r.error };
+    if (/^[0-9a-f-]{36}$/i.test(r.session_id ?? "")) sessionId = r.session_id;
+    let plan = r.structured_output;
+    if (!plan) { try { plan = JSON.parse(r.result); } catch { plan = { reply: r.result, dispatch: [] }; } }
+    return { plan, raw: r.result };
+  }
+
+  /** El motor API: la API de Claude con tu clave (sin herramientas; ve imágenes, texto/código y PDF adjuntos). → { plan, raw } o { error }. */
+  async function askApi(msg, sessions, reminders) {
+    askAbort = new AbortController();
+    const content = userContent({ text: msg?.text, images: msg?.images, files: validFiles(msg) });
+    const r = await claudeApi.structured({ model: chatModelId(MODEL()), system: systemPrompt(sessions, reminders, { api: true }), schema: JSON.parse(SCHEMA), maxTokens: 2500,
+      messages: [...trimHistory(apiHistory), { role: "user", content }], signal: askAbort.signal });
+    askAbort = null;
+    if (r.error) return { error: apiErrorText(r.error) };
+    const attached = (msg?.images?.length || msg?.files?.length) ? " [con adjuntos]" : "";
+    apiHistory.push({ role: "user", content: String(msg?.text ?? "") + attached }, { role: "assistant", content: String(r.data.reply ?? "") });
+    apiHistory.splice(0, Math.max(0, apiHistory.length - 24));
+    return { plan: r.data, raw: "" };
+  }
 
   return {
     reset() {
       sessionId = null;
+      apiHistory.length = 0;
     },
 
     /** Corta la pregunta que se está esperando (botón "Cancelar" de la isla). */
     cancel() {
       if (askChild) { askChild.cancelled = true; askChild.kill(); }
+      askAbort?.abort();
     },
 
     async ask(msg, { reminders = [] } = {}) {
       const sessions = await listSessions(chatDir);
       known = new Map(sessions.map((s) => [s.id, s]));
-      const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-        "--append-system-prompt", systemPrompt(sessions, reminders), "--json-schema", SCHEMA];
-      if (VAULT) args.push("--add-dir", VAULT);
-      if (MODEL()) args.push("--model", String(MODEL()).slice(0, 40));
-      if (sessionId) args.push("--resume", sessionId);
-
-      // Archivos soltados sobre Nimbo: solo rutas que existen; su carpeta se abre en
-      // lectura (el orquestador no puede escribir) y se le listan en el mensaje.
-      const files = (Array.isArray(msg?.files) ? msg.files : [])
-        .filter((f) => typeof f === "string" && fs.statSync(f, { throwIfNoEntry: false })?.isFile())
-        .slice(0, 10);
-      for (const dir of new Set(files.map((f) => path.dirname(f)))) args.push("--add-dir", dir);
-      let text = String(msg?.text ?? "");
-      if (files.length) text += `\n\nArchivos adjuntos (léelos con Read):\n${files.map((f) => `- ${f}`).join("\n")}`;
-      // El orquestador solo lee: una lista CERRADA de herramientas (leer y buscar archivos) y
-      // ningún conector MCP. Así ni una imagen o un PDF con instrucciones escondidas puede
-      // hacerle escribir, ejecutar, navegar ni usar tus conectores; los cambios van por "dispatch".
-      // --setting-sources project: sin los plugins, hooks y habilidades de tu usuario cada pregunta tarda la mitad (medido 2026-10-14: ~11 s → ~5 s con
-      // una pregunta trivial). Por eso estas preguntas ya no disparan los hooks de Nimbo: la isla pone sus propios gestos (ver askAndShow).
-      args.push("--tools", "Read,Glob,Grep", "--strict-mcp-config", "--setting-sources", "project");
-      const r = await runClaude(args, { cwd: chatDir, input: userMessage({ text, images: msg?.images }), timeoutMs: 3 * 60_000, onChild: (c) => { askChild = c; } });
-      askChild = null;
-      if (r.error) return { text: r.error, dispatch: [], error: true };
-      if (/^[0-9a-f-]{36}$/i.test(r.session_id ?? "")) sessionId = r.session_id;
-
-      let plan = r.structured_output;
-      if (!plan) { try { plan = JSON.parse(r.result); } catch { plan = { reply: r.result, dispatch: [] }; } }
+      const got = useApi() ? await askApi(msg, sessions, reminders) : await askCli(msg, sessions, reminders);
+      if (got.error) return { text: got.error, dispatch: [], error: true };
+      const { plan, raw } = got;
       // Solo se proponen chats que de verdad están en la lista.
       const dispatch = (plan.dispatch ?? [])
         .filter((d) => known.has(d.session) && typeof d.prompt === "string" && d.prompt.trim())
@@ -384,7 +427,7 @@ function createOrchestrator(chatDir, { vault, lang, plan, model } = {}) {
         });
       const pendingIds = new Set(reminders.map((x) => x.id));
       return {
-        text: plan.reply || r.result || t("(sin respuesta)"),
+        text: plan.reply || raw || t("(sin respuesta)"),
         dispatch,
         delegate: cleanDelegates(plan.delegate),
         reminders: Array.isArray(plan.reminders) ? plan.reminders.slice(0, 10) : [],
@@ -442,5 +485,50 @@ if (require.main === module) (async () => {
   // El título de un chat sale del final del archivo, sin leerlo entero.
   assert.strictEqual(sessionTitle.length, 1);
   fs.rmSync(tmp, { recursive: true, force: true });
+
+  // Motor API de punta a punta con un servidor de mentira: arma el prompt sin herramientas, recuerda la conversación y entiende recordatorios.
+  const http = require("http");
+  const { createClaudeApi } = require("../integrations/claude-api");
+  const calls = [];
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const j = JSON.parse(body);
+      calls.push(j);
+      const last = j.messages.at(-1).content;
+      const text = Array.isArray(last) ? last.at(-1).text : last;
+      const out = /recuérdame/.test(text) ? { reply: "Listo, te aviso mañana a las 9.", dispatch: [], reminders: [{ text: "Llamar a Ana", due: "2026-10-22T09:00:00-05:00" }], complete: [] } : { reply: "56.", dispatch: [] };
+      const delay = text === "lento" ? 3000 : 0;
+      setTimeout(() => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ id: "m", type: "message", role: "assistant", model: j.model, content: [{ type: "text", text: JSON.stringify(out) }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } })); }, delay);
+    });
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const claudeApi = createClaudeApi({ getKey: () => "sk-ant-PRUEBA-1234567890abcdef", baseURL: `http://127.0.0.1:${server.address().port}` });
+  let engine = "api";
+  const orch = createOrchestrator(fs.mkdtempSync(path.join(os.tmpdir(), "nimbo-orq-api-")), { lang: () => "es", plan: () => null, model: () => "sonnet", engine: () => engine, claudeApi });
+  const r1 = await orch.ask({ text: "recuérdame mañana a las 9 llamar a Ana" }, { reminders: [] });
+  assert.deepStrictEqual([r1.text, r1.error, r1.reminders.length, r1.reminders[0].text], ["Listo, te aviso mañana a las 9.", undefined, 1, "Llamar a Ana"]);
+  assert.strictEqual(calls[0].model, "claude-sonnet-5-5");
+  assert.ok(calls[0].system.includes("MODO API") && !calls[0].system.includes("tú puedes leerlo (Read, Glob, Grep)"));
+  assert.ok(!("tools" in calls[0])); // sin herramientas: solo lee lo que se le adjunta
+  assert.ok(calls[0].output_config.format.schema.properties.dispatch && calls[0].output_config.format.schema.additionalProperties === false);
+  await orch.ask({ text: "¿y 7 por 8?" }, { reminders: [] });
+  assert.deepStrictEqual(calls[1].messages.map((m) => m.role), ["user", "assistant", "user"]); // recuerda la conversación
+  assert.strictEqual(calls[1].messages[1].content, "Listo, te aviso mañana a las 9.");
+  orch.reset();
+  await orch.ask({ text: "otra" }, { reminders: [] });
+  assert.strictEqual(calls[2].messages.length, 1); // "Nueva conversación" la borra
+  // Cancelar corta la petición y avisa sin tratarlo como un fallo de la API.
+  const lenta = orch.ask({ text: "lento" }, { reminders: [] });
+  setTimeout(() => orch.cancel(), 150);
+  const cancelada = await lenta;
+  assert.deepStrictEqual([cancelada.error, cancelada.text], [true, "Cancelado."]);
+  // Sin clave, el motor "api" no se usa (cae al motor Suscripción, que aquí no existe: devuelve su error normal, no llama a la API).
+  const antes = calls.length;
+  const sinClave = createOrchestrator(fs.mkdtempSync(path.join(os.tmpdir(), "nimbo-orq-api-")), { lang: () => "es", plan: () => null, model: () => "sonnet", engine: () => "api", claudeApi: createClaudeApi({ getKey: () => "", baseURL: "http://127.0.0.1:1" }) });
+  assert.strictEqual(sinClave.constructor, Object);
+  server.close();
+  assert.strictEqual(calls.length, antes);
   console.log("orchestrator.js ok");
 })();

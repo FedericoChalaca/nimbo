@@ -184,6 +184,18 @@ async function askClaude(rules, groups, lang = "es") {
   return groups.map((g, i) => [g, out.chats.find((c) => c?.n === i + 1)]).filter(([, v]) => v).map(([g, v]) => label(g, v));
 }
 
+/**
+ * Clasifica varios chats con la API de Claude (Haiku, con tus créditos de API): todos numerados en una sola llamada y la respuesta con forma fija
+ * (salida estructurada). `ask({ system, user, schema })` → { data } | { error }. Devuelve { labels } o { error: "key" | "limit" | "billing" | ... }.
+ * Es Anthropic, igual que con `claude`: el texto no va a ningún otro proveedor.
+ */
+async function askApi(ask, rules, groups, lang = "es") {
+  const r = await ask({ system: SYSTEM, user: header(rules, lang) + groups.map((g, i) => `[${i + 1}] ${chatBlock(g)}`).join("\n\n"), schema: SCHEMA_MANY });
+  if (r?.error) return { error: r.error };
+  if (!Array.isArray(r?.data?.chats)) return { error: "fail" };
+  return { labels: groups.map((g, i) => [g, r.data.chats.find((c) => c?.n === i + 1)]).filter(([, v]) => v).map(([g, v]) => label(g, v)) };
+}
+
 /** Clasifica UN chat con un modelo local de Ollama. El texto no sale del equipo. null si falla. */
 async function askOllama(model, rules, group, lang = "es") {
   try {
@@ -259,7 +271,7 @@ const saveSeen = (file, seen) => {
   try { fs.writeFileSync(file, JSON.stringify({ dismissed: last(seen.dismissed), alerted: last(seen.alerted) })); } catch {}
 };
 
-function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", model = () => "", paused = () => false }) {
+function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", model = () => "", paused = () => false, api = null, onError = () => {} }) {
   let seen = { running: false, count: 0, access: false, msgs: [] };
   const kept = new Map(); // id → mensaje, lo que sigue sin leer (ver remember)
   let chats = []; // lo ya clasificado, con los ids de cada chat
@@ -280,6 +292,7 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
   /** Quién va a resumir: el nombre del modelo local, o "claude". */
   const brain = async () => {
     const wanted = String(model() ?? "");
+    if (wanted === "" && api?.active()) return "api"; // motor API elegido en el menú: gana sobre el modelo local automático
     return wanted === "claude" ? "claude" : wanted || (await localModel()) || "claude";
   };
   const schedule = () => {
@@ -319,7 +332,12 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
     onChange(state(), null); // la isla muestra "resumiendo…"
     const finish = () => { working = false; busy = false; onChange(state(), null); quiet = false; };
     let pending = groups;
-    if (who !== "claude") {
+    if (who === "api") {
+      const r = await askApi(api.ask, rules, groups, lang());
+      if (r.labels?.length) publish(r.labels, batch);
+      else onError(r.error ?? "fail"); // sin etiqueta: se reintenta con el próximo mensaje (no se cambia solo de motor)
+      pending = [];
+    } else if (who !== "claude") {
       // Modelo local: un chat a la vez, y cada uno aparece en la isla apenas está listo.
       // Lo que falle NO se manda a Claude: con modelo local la promesa es que nada sale del
       // equipo. Ese chat queda sin etiqueta y se reintenta con el próximo mensaje.
@@ -425,7 +443,7 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
   };
 }
 
-module.exports = { createWhatsapp, askClaude, askOllama, parseLine, view, remember, groupChats, label, mergeChats, pickLocal };
+module.exports = { createWhatsapp, askClaude, askOllama, askApi, parseLine, view, remember, groupChats, label, mergeChats, pickLocal };
 
 // Prueba rápida: `node whatsapp.js`
 if (require.main === module) {
@@ -456,6 +474,17 @@ if (require.main === module) {
     { name: "Leo", kind: "personal", urgent: false, ignore: false, summary: "saluda", ids: [8] }], new Set([2, 7, 8]));
   assert.deepStrictEqual(merged.map((c) => [c.name, c.urgent, c.ids]), [["Ana", false, [2, 7]], ["Leo", false, [8]]]);
   assert.deepStrictEqual(mergeChats(chats, [], new Set([99])), []);
+  // API de Claude: cada veredicto vuelve a su chat por número y se valida; un error se devuelve tal cual.
+  (async () => {
+    const kg = groupChats(p.msgs);
+    const seenCalls = [];
+    const r = await askApi(async (req) => { seenCalls.push(req); return { data: { chats: [{ n: 2, summary: "pide reunión", kind: "trabajo", ignore: false, urgent: true, reply: "Voy" }, { n: 1, summary: "x", kind: "raro", ignore: true, urgent: true, reply: "" }] } }; }, "mis reglas", kg);
+    assert.deepStrictEqual(r.labels.map((c) => [c.name, c.kind, c.urgent, c.ignore]), [["Grupo Fútbol", "otro", false, true], ["Ana", "trabajo", true, false]]);
+    assert.ok(seenCalls[0].user.includes("mis reglas") && seenCalls[0].user.includes("[1] Chat") && seenCalls[0].system.includes("Clasificas mensajes") && seenCalls[0].schema.required[0] === "chats");
+    assert.deepStrictEqual(await askApi(async () => ({ error: "billing" }), "", kg), { error: "billing" });
+    assert.deepStrictEqual(await askApi(async () => ({ data: { chats: "x" } }), "", kg), { error: "fail" });
+    console.log("whatsapp.js (API) ok");
+  })().catch((e) => { console.error(e); process.exit(1); });
   // Modelo local: de la familia preferida, el más capaz que quepa en 4 GB; nunca uno de visión ni uno enorme.
   assert.strictEqual(pickLocal([{ name: "minicpm-v:latest", size: 5.5e9 }, { name: "moondream:latest", size: 1.7e9 }]), null);
   assert.strictEqual(pickLocal([{ name: "gemma3:4b", size: 3.3e9 }, { name: "llama3.2:3b", size: 2e9 }, { name: "llama3.2:1b", size: 1.3e9 }, { name: "qwen3:32b", size: 20e9 }]), "llama3.2:3b");

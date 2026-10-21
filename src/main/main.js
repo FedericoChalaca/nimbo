@@ -20,6 +20,7 @@ const { extraBinDirs, findInPath, ollamaLocations, userDataDir } = require("./pl
 const { createAlerts } = require("./alerts");
 const { createMail, threadUrl } = require("../integrations/mail");
 const { createAi, pullModel, RECOMMENDED, KEYED, KEY_FORMAT } = require("../integrations/ai");
+const { createClaudeApi, HAIKU } = require("../integrations/claude-api");
 const { cleanDelegates, imageFileName, insideDir } = require("./delegate");
 const { createTelegram, parseInbox } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
@@ -261,7 +262,9 @@ ipcMain.on("toggle-mini", () => setMini(!mini));
 
 // --- Chat + orquestador: usa tu Claude Code, sin API key aparte ---
 const CHAT_DIR = path.join(app.getPath("userData"), "chat");
-const orchestrator = createOrchestrator(CHAT_DIR, { vault: prefs.vault, lang, plan: () => plan, model: () => prefs.chatModel });
+// La API de Claude (opcional, con tu clave de la Consola): motor alterno para el chat y los resúmenes de WhatsApp. La clave vive cifrada en ai-keys.bin (id "anthropic").
+const claudeApi = createClaudeApi({ getKey: () => aiLoad().anthropic ?? "" });
+const orchestrator = createOrchestrator(CHAT_DIR, { vault: prefs.vault, lang, plan: () => plan, model: () => prefs.chatModel, engine: () => prefs.engine, claudeApi });
 
 // --- Plan del día: se lee al arrancar y cada 30 min; si trae fecha nueva, la isla lo anuncia ---
 let plan = null; // el último plan leído (ya validado) o null
@@ -336,7 +339,7 @@ let aiPull = null; // la descarga del modelo recomendado en curso: { percent, co
 async function aiState() {
   const st = await ai.status();
   const providers = [{ id: "claude", label: "Claude" }, ...st.providers];
-  return { installed: ollamaInstalled(), recommended: RECOMMENDED, pull: aiPull ? { percent: aiPull.percent } : null, providers, current: providers.some((p) => p.id === prefs.chatProvider) ? prefs.chatProvider : "claude", ollama: st.ollama, keyed: st.keyed };
+  return { installed: ollamaInstalled(), recommended: RECOMMENDED, pull: aiPull ? { percent: aiPull.percent } : null, providers, current: providers.some((p) => p.id === prefs.chatProvider) ? prefs.chatProvider : "claude", ollama: st.ollama, keyed: { ...st.keyed, anthropic: !!aiLoad().anthropic }, engine: prefs.engine === "api" ? "api" : "" };
 }
 const aiSystem = () => `Eres Nimbo, el compañero de escritorio del usuario (una nube pequeña arriba de su pantalla). Responde en el idioma del usuario, claro y breve (máximo 4 frases salvo que pidan más). No tienes acceso a sus archivos, recordatorios, chats ni a internet: si te lo piden, dilo en una frase y sugiere cambiar a Claude en el selector del chat. Hoy es ${new Date().toLocaleDateString(lang() === "es" ? "es-CO" : "en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`;
 async function askOther(provider, text) {
@@ -516,6 +519,11 @@ const wa = createWhatsapp({
   seenFile: path.join(app.getPath("userData"), "whatsapp-vistos.json"), // solo números de notificación, sin texto
   lang,
   model: () => prefs.waModel, // "" automático · "claude" · o un modelo de Ollama
+  api: { active: () => prefs.engine === "api" && claudeApi.has(), ask: ({ system, user, schema }) => claudeApi.structured({ model: HAIKU, system, schema, messages: [{ role: "user", content: user }], maxTokens: 3000 }) },
+  onError: (code) => win?.webContents.send("ai-error", t(code === "key" ? "La clave de la API de Claude no sirve. Pégala de nuevo en Conexiones → Otras IAs."
+    : code === "billing" ? "A la API de Claude se le acabaron los créditos. Cambia a «Suscripción» en el menú → Motor de Nimbo."
+    : code === "limit" ? "La API de Claude dice que vas muy rápido o está saturada. Espera un momento y vuelve a intentar."
+    : code === "offline" ? "No pude conectarme con la API de Claude." : "La API de Claude no pudo resumir los mensajes de WhatsApp.")),
   paused: () => mini,
   onChange(state, alert) {
     whatsapp = state;
@@ -808,9 +816,10 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         const text = String(value ?? "");
         const id = text.slice(0, text.indexOf(":"));
         const key = text.slice(text.indexOf(":") + 1).trim();
-        if (!KEYED.includes(id) || !KEY_FORMAT.test(key)) throw new Error(t("Esa clave no tiene el formato esperado."));
+        if (![...KEYED, "anthropic"].includes(id) || !KEY_FORMAT.test(key)) throw new Error(t("Esa clave no tiene el formato esperado."));
         if (!safeStorage.isEncryptionAvailable()) throw new Error(t("Windows no puede cifrar el token en este equipo."));
-        if (!(await ai.verify(id, key))) throw new Error(t("{0} no aceptó esa clave.", id === "gemini" ? "Gemini" : "OpenAI"));
+        const accepted = id === "anthropic" ? await claudeApi.verify(key) : await ai.verify(id, key);
+        if (!accepted) throw new Error(t("{0} no aceptó esa clave.", id === "gemini" ? "Gemini" : id === "anthropic" ? "Claude (API)" : "OpenAI"));
         aiLoad()[id] = key;
         aiSave();
         break;
@@ -836,7 +845,10 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
       case "ollama-pull-cancel": aiPull?.controller.abort(); break;
       case "ai-key-clear": {
         const id = String(value ?? "");
-        if (KEYED.includes(id)) { delete aiLoad()[id]; aiSave(); aiHistory.delete(id); }
+        if ([...KEYED, "anthropic"].includes(id)) {
+          delete aiLoad()[id]; aiSave(); aiHistory.delete(id);
+          if (id === "anthropic" && prefs.engine === "api") { prefs.engine = ""; savePrefs(); } // sin clave no hay motor API
+        }
         break;
       }
       case "telegram-pair": if (telegram.pair()) telegram.start(); break;
@@ -934,6 +946,16 @@ function buildMenu() {
       },
     },
     { label: t("Reglas de WhatsApp…"), enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
+    {
+      label: t("Motor de Nimbo"),
+      submenu: [
+        ["", t("Suscripción de Claude (usa tu plan; un poco más lento)")],
+        ["api", aiLoad().anthropic ? t("API de Claude (más rápido; gasta tus créditos de API)") : t("API de Claude (primero pega tu clave en Conexiones → Otras IAs)")],
+      ].map(([value, label]) => ({
+        label, type: "radio", checked: (prefs.engine === "api" ? "api" : "") === value, enabled: value === "" || !!aiLoad().anthropic,
+        click: () => { prefs.engine = value; savePrefs(); },
+      })),
+    },
     { label: t("Nueva conversación"), click: () => { orchestrator.reset(); aiHistory.clear(); } },
     { type: "separator" },
     {

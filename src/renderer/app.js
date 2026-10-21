@@ -1157,6 +1157,7 @@ function renderSetup(s) {
     : row(null, "Trello", t("Opcional: activa el conector de Trello en claude.ai y pulsa Probar (tarda 1 min)."), btn("claude.ai", "open", "connectors"), btn(t("Probar"), "trello"));
   const wa = s.platform && s.platform !== "win32" ? row(null, "WhatsApp", t("Solo funciona en Windows: lee las notificaciones de Windows."))
     : s.whatsappRead ? row(true, "WhatsApp", s.whatsappBrain === "claude" ? t("Lo resume tu propio Claude. Con Ollama lo haría un modelo local, sin gastar tokens.")
+      : s.whatsappBrain === "api" ? t("Lo resume Claude por la API (Haiku, con tus créditos de API). Cámbialo en el menú → Motor de Nimbo.")
       : t("Lo resume un modelo local ({0}): nada sale de tu equipo.", s.whatsappBrain), btn(t("Reglas"), "whatsapp-rules"), btn(t("Apagar"), "whatsapp", false))
     : row(null, "WhatsApp", t("Opcional: tu propio Claude resume tus mensajes. Nada pasa por Nimbo ni por su autor."), btn(t("Activar"), "whatsapp", true));
   const auto = row(s.autostart ? true : null, (!s.platform || s.platform === "win32" ? t("Iniciar con Windows") : t("Iniciar con el sistema")), s.autostart ? t("Nimbo arranca al prender el equipo.") : t("Que Nimbo arranque solo al prender el equipo."),
@@ -1190,7 +1191,8 @@ function renderSetup(s) {
   // Otras IAs: Ollama (local, gratis) se detecta solo; Gemini y OpenAI piden su clave, que se guarda cifrada en tu PC.
   const ai = s.ai ?? { providers: [], keyed: {}, ollama: "off" };
   const aiProv = el("select");
-  for (const [id, label] of [["gemini", "Gemini"], ["openai", "OpenAI"]]) aiProv.append(Object.assign(document.createElement("option"), { value: id, textContent: label }));
+  const AI_NAMES = { gemini: "Gemini", openai: "OpenAI", anthropic: "Claude (API)" };
+  for (const [id, label] of Object.entries(AI_NAMES)) aiProv.append(Object.assign(document.createElement("option"), { value: id, textContent: label }));
   const aiKey = el("input");
   aiKey.type = "password";
   aiKey.placeholder = t("Clave de API");
@@ -1208,7 +1210,7 @@ function renderSetup(s) {
     : ai.ollama === "empty" ? [btn(t("Descargar modelo gratis (≈2 GB)"), "ollama-pull", null, "allow")]
     : ai.ollama === "off" ? [ai.installed ? btn(t("Abrir Ollama"), "ollama-open") : btn(t("Instalar Ollama (gratis)"), "open", "ollama")] : [];
   const aiRow = row(others.length ? true : null, t("Otras IAs"), aiText, ...ollamaBtns, aiProv, aiKey,
-    ...["gemini", "openai"].filter((id) => ai.keyed?.[id]).map((id) => btn(t("Quitar {0}", id === "gemini" ? "Gemini" : "OpenAI"), "ai-key-clear", id)), btn(t("Guía"), "open", "ai-guide"));
+    ...Object.keys(AI_NAMES).filter((id) => ai.keyed?.[id]).map((id) => btn(t("Quitar {0}", AI_NAMES[id]), "ai-key-clear", id)), btn(t("Guía"), "open", "ai-guide"));
   // Correo: tu Gmail por el conector de tu Claude (solo lectura). Apagado hasta que lo activas; al activarlo se comprueba de verdad.
   const mailRow = s.mail?.on ? row(true, t("Correo"), t("Solo revisa cuando tú lo pides: toca el botón ✉ de la barra, escribe «revisa mi correo» o usa /correo en Telegram. Ahora: {0} sin leer, {1} importantes.", s.mail.count, s.mail.important), btn(t("Revisar ahora"), "mail-refresh"), btn(t("Apagar"), "mail-off"))
     : row(null, t("Correo"), t("Opcional: Nimbo revisa tu Gmail (solo lectura, con el conector de Gmail de tu Claude) y te dice cuáles correos importan."), btn("claude.ai", "open", "connectors"), btn(t("Activar"), "mail-on", null, "allow"));
