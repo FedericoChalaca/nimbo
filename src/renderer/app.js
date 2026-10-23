@@ -1009,8 +1009,9 @@ function handle(p) {
       break;
     case "Stop":
       track(p, "finished", t("terminó"));
-      setState("finished", t("¡Listo! · {0}", who), { back: 5000 });
-      SOUNDS.finish();
+      // Si estás mirando la terminal (o el chat de Claude) no hace falta avisarte con ruido: solo cambia de estado.
+      setState("finished", t("¡Listo! · {0}", who), { back: p.watching ? 2500 : 5000 });
+      if (!p.watching) SOUNDS.finish();
       break;
     case "StopFailure":
       track(p, "error", t("falló"));
@@ -1309,7 +1310,7 @@ wrap.addEventListener("contextmenu", (e) => {
 
 // --- Nivel 2: aprobar permisos desde la nube ---
 const card = document.getElementById("card");
-const FIELDS = ["command", "file_path", "path", "url", "query", "pattern", "prompt", "description"];
+const FIELDS = ["command", "file_path", "path", "url", "query", "pattern", "plan", "prompt", "description"];
 let cardRid = "";
 api.onPermission((p) => {
   const input = p.tool_input ?? {};
@@ -1855,6 +1856,51 @@ function delegateCard(d) {
   };
   return box;
 }
+
+// --- Versiones nuevas y "qué hay de nuevo" (updates.js): una tarjeta en la caja de respuesta ---
+function releaseCard(head, notes, actions) {
+  const box = el("div", "prop");
+  box.append(el("div", "what", head));
+  if (notes?.length) { const list = el("div", "rnotes"); for (const n of notes) list.append(el("div", "", "• " + n)); box.append(list); }
+  const btns = el("div", "btns");
+  btns.append(...actions);
+  box.append(btns);
+  answer.replaceChildren(box);
+  answer.classList.remove("wait");
+  answerBox.classList.remove("hidden");
+  if (chat.classList.contains("hidden")) toggleChat(true);
+  return box;
+}
+const UPDATE_ERR = { hash: "La actualización descargada no coincide con la que publicó GitHub: no la instalé.", none: "Ya no hay una actualización pendiente." };
+function showUpdate(info) {
+  if (mini || !info) return;
+  const later = el("button", "", t("Más tarde"));
+  const go = el("button", "allow", t("Actualizar ahora"));
+  const out = el("div", "dout");
+  const box = releaseCard(t("Nimbo {0} ya salió (tienes la {1})", info.version, info.current ?? ""), info.notes, [go, later]);
+  box.append(out);
+  later.onclick = () => { api.updateLater(); box.remove(); answerBox.classList.add("hidden"); };
+  api.onUpdateProgress((p) => { if (go.disabled) out.textContent = t("Descargando… {0} %", p); });
+  go.onclick = async () => {
+    go.disabled = true; later.disabled = true;
+    out.textContent = t("Descargando… {0} %", 0);
+    const r = await api.updateInstall().catch(() => ({ error: "fail" }));
+    if (r?.ok) out.textContent = t("Instalando… Nimbo se reinicia en un momento.");
+    else if (r?.opened) { out.textContent = t("Abrí la página de la versión en tu navegador."); later.disabled = false; }
+    else { out.textContent = t(UPDATE_ERR[r?.error] ?? "No pude descargar la actualización. Inténtalo de nuevo o ábrela desde la página de la versión."); go.disabled = false; later.disabled = false; }
+  };
+  emote("hello", 1400);
+}
+api.onUpdate(showUpdate);
+api.onUpdateNone((v) => setState(state, v ? t("Nimbo está al día ({0})", v) : t("No pude consultar las versiones ahora."), { labelFor: 4000 }));
+api.onWhatsNew((i) => {
+  if (mini) return;
+  const ok = el("button", "allow", t("Entendido"));
+  const box = releaseCard(t("Nimbo se actualizó a la {0}", i.version), i.notes, [ok]);
+  ok.onclick = () => { box.remove(); answerBox.classList.add("hidden"); };
+  emote("hello", 1400);
+  SOUNDS.hello();
+});
 
 // Posición a lo largo del borde superior (la guarda main.js)
 api.onAnchor((f) => root.style.setProperty("--f", f));

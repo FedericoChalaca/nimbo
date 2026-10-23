@@ -296,6 +296,7 @@
   .prop .done { white-space: pre-wrap; }
   .waiting { display: flex; align-items: center; gap: 10px; }
   .waiting button { margin-left: auto; padding: 3px 10px; font-size: 11px; }
+  .prop .rnotes { color: #b7bcc4; font-size: 12px; margin: 2px 0 8px; display: grid; gap: 3px; }
   .prop .dout { margin-top: 8px; color: #9aa0a8; font-size: 12px; }
   .prop .dimg { display: block; max-width: 100%; max-height: 220px; border-radius: 10px; margin-bottom: 8px; }
   .prop .dtext { color: #eceef2; white-space: pre-wrap; margin-bottom: 8px; max-height: 180px; overflow: auto; }

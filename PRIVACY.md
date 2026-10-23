@@ -9,6 +9,8 @@ It does connect to the network in the cases below. Each one uses a session or a 
 | When | Where it connects | What is sent |
 |---|---|---|
 | You use the chat, or it summarizes Trello or WhatsApp with Claude | Anthropic, through your own `claude` command | Your message, attached images or screenshots, and what Claude needs to answer |
+| You accept version alerts (asked once; right-click → Tell me about new versions) | GitHub (api.github.com and github.com), a couple of times a day | A request for Nimbo's latest release. Nothing of yours is sent. If you press "Update now", the installer is downloaded from github.com and checked against the SHA-256 GitHub publishes |
+| A job finishes (Claude Code "Stop" event) | Your own PC: Nimbo asks Windows which program is in front (PowerShell, `osascript` or `xdotool`) to stay quiet when it is a terminal, editor or the Claude app | Nothing leaves your PC and the answer is not stored |
 | GitHub is connected (`gh` installed and signed in) | GitHub, through your own `gh` session, every 5 minutes | A request for your unread notifications |
 | The Trello connector is enabled in your Claude | Trello, through your Claude: your board list once a day, and a board's cards when you open it | A read-only request for your boards, and for the open cards of the board you opened |
 | You search for a song in the chat (Spotify connector enabled in your Claude) | Spotify, through your Claude | The words you searched for |
@@ -40,6 +42,8 @@ Sí se conecta a la red en los casos de abajo. En cada uno usa una sesión o un 
 | Cuándo | A dónde se conecta | Qué se envía |
 |---|---|---|
 | Usas el chat, o resume Trello o WhatsApp con Claude | Anthropic, con tu propio comando `claude` | Tu mensaje, las imágenes o pantallazos adjuntos y lo que Claude necesita para responder |
+| Aceptas el aviso de versiones nuevas (se pregunta una vez; clic derecho → Avisarme de versiones nuevas) | GitHub (api.github.com y github.com), un par de veces al día | La consulta de la última versión de Nimbo. No se envía nada tuyo. Si pulsas "Actualizar ahora", el instalador se descarga de github.com y se comprueba contra el SHA-256 que publica GitHub |
+| Termina un trabajo (evento "Stop" de Claude Code) | Tu propio PC: Nimbo le pregunta a Windows qué programa está al frente (PowerShell, `osascript` o `xdotool`) para callarse si es una terminal, un editor o la app de Claude | Nada sale de tu PC y la respuesta no se guarda |
 | GitHub está conectado (`gh` instalado y con sesión) | GitHub, con tu propia sesión de `gh`, cada 5 minutos | La consulta de tus notificaciones sin leer |
 | El conector de Trello está activo en tu Claude | Trello, a través de tu Claude: tu lista de tableros una vez al día, y las tarjetas de un tablero cuando lo abres | Una consulta de solo lectura de tus tableros y de las tarjetas abiertas del tablero que abriste |
 | Buscas una canción en el chat (conector de Spotify activo en tu Claude) | Spotify, a través de tu Claude | Las palabras que buscaste |

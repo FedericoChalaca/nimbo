@@ -1,6 +1,6 @@
 // Nimbo: ventana transparente arriba de la pantalla + servidor local que recibe
 // los hooks de Claude Code y se los pasa al personaje.
-const { app, BrowserWindow, powerMonitor, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer, Tray, nativeImage, safeStorage } = require("electron");
+const { app, BrowserWindow, powerMonitor, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer, Tray, nativeImage, safeStorage, dialog } = require("electron");
 const { execFile } = require("child_process");
 const { pathToFileURL } = require("url");
 const crypto = require("crypto");
@@ -21,6 +21,8 @@ const { createAlerts } = require("./alerts");
 const { createMail, threadUrl } = require("../integrations/mail");
 const { createAi, pullModel, RECOMMENDED, KEYED, KEY_FORMAT } = require("../integrations/ai");
 const { createClaudeApi, HAIKU } = require("../integrations/claude-api");
+const updates = require("./updates");
+const { foreground, isWatching } = require("./foreground");
 const { cleanDelegates, imageFileName, insideDir } = require("./delegate");
 const { createTelegram, parseInbox } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
@@ -935,6 +937,10 @@ function buildMenu() {
       })),
     },
     { label: t("Actualizar Trello"), click: () => refreshTrello() },
+    ...(updateInfo ? [{ label: t("⬆ Actualizar Nimbo a {0}", updateInfo.version), click: () => win.webContents.send("update", updateInfo) }] : []),
+    { label: t("Buscar actualizaciones"), click: () => checkUpdates({ manual: true }) },
+    { label: t("Avisarme de versiones nuevas"), type: "checkbox", checked: prefs.updateCheck === true, click: (item) => { prefs.updateCheck = item.checked; savePrefs(); if (item.checked) checkUpdates(); } },
+    { label: t("Silencio si estoy mirando la terminal"), type: "checkbox", checked: prefs.quietWhenWatching !== false, click: (item) => { prefs.quietWhenWatching = item.checked; savePrefs(); } },
     {
       label: t("Leer mensajes de WhatsApp (los resume tu Claude)"),
       type: "checkbox",
@@ -1087,10 +1093,55 @@ http
       try { remote.onHook(payload); } catch {} // estado de los chats para la app del iPhone
       if (req.url === "/permission") return askPermission(payload, nonce, res);
       res.writeHead(204).end();
-      if (win && !win.isDestroyed()) win.webContents.send("hook", payload);
+      const deliver = () => { if (win && !win.isDestroyed()) win.webContents.send("hook", payload); };
+      // "Silencio si estoy mirando": si el trabajo terminó con la terminal o el chat de Claude al frente, la isla no suena (solo cambia de estado).
+      if (payload.hook_event_name === "Stop" && prefs.quietWhenWatching !== false) foreground().then((name) => { payload.watching = isWatching(name); deliver(); }, deliver);
+      else deliver();
     });
   })
   .listen(PORT, "127.0.0.1");
+
+// --- Versiones nuevas (updates.js): solo si el dueño lo aceptó. Avisa; en Windows con la app instalada baja el instalador, verifica su SHA-256 y lo abre. ---
+let updateInfo = null; // la versión más nueva que se encontró (o null)
+async function checkUpdates({ manual = false } = {}) {
+  if (prefs.updateCheck !== true && !manual) return;
+  try {
+    const info = await updates.latest({ current: app.getVersion(), platform: process.platform, arch: process.arch });
+    updateInfo = info && { ...info, current: app.getVersion() };
+    if (!info) { if (manual) win?.webContents.send("update-none", app.getVersion()); return; }
+    if (!manual && Date.now() < (prefs.updateLater ?? 0)) return; // "Más tarde": no vuelve a avisar hasta mañana
+    win?.webContents.send("update", updateInfo);
+  } catch { if (manual) win?.webContents.send("update-none", ""); }
+}
+async function askUpdateConsent() {
+  if (prefs.updateCheck !== undefined || process.env.CI || process.env.NIMBO_SMOKE_EXE) return;
+  const r = await dialog.showMessageBox({ type: "question", title: "Nimbo", message: t("¿Quieres que Nimbo te avise cuando salga una versión nueva?"),
+    detail: t("Nimbo mirará la página de versiones de Nimbo en GitHub un par de veces al día. No envía nada tuyo. Lo cambias cuando quieras en el menú (clic derecho → Avisarme de versiones nuevas)."),
+    buttons: [t("Sí, avisarme"), t("No, gracias")], defaultId: 0, cancelId: 1, noLink: true });
+  prefs.updateCheck = r.response === 0;
+  savePrefs();
+  if (prefs.updateCheck) checkUpdates();
+}
+// Tras actualizar: qué trae la versión nueva (se lee de su página en GitHub, solo con el aviso de versiones aceptado).
+async function showWhatsNew() {
+  const cur = app.getVersion();
+  if (prefs.lastVersion && prefs.lastVersion !== cur && updates.isNewer(cur, prefs.lastVersion))
+    win?.webContents.send("whatsnew", { version: cur, notes: prefs.updateCheck === true ? await updates.notesFor(cur) : [] });
+  if (prefs.lastVersion !== cur) { prefs.lastVersion = cur; savePrefs(); }
+}
+ipcMain.handle("update-install", async () => {
+  const info = updateInfo;
+  if (!info) return { error: "none" };
+  const openPage = () => { shell.openExternal(info.page); return { opened: true }; };
+  if (process.platform !== "win32" || !app.isPackaged || !info.asset) return openPage(); // Linux, macOS o desde el código: la página de la versión
+  const r = await updates.download(info.asset, path.join(app.getPath("temp"), "nimbo-update"), { onProgress: (p) => win?.webContents.send("update-progress", p) });
+  if (r.error === "nodigest" || r.error === "url") return openPage(); // sin forma de verificarlo no se instala nada
+  if (r.error) return { error: r.error };
+  require("child_process").spawn(r.file, [], { detached: true, stdio: "ignore" }).unref(); // el instalador reemplaza a Nimbo y lo vuelve a abrir
+  setTimeout(() => app.quit(), 500);
+  return { ok: true };
+});
+ipcMain.on("update-later", () => { prefs.updateLater = Date.now() + 24 * 3600_000; savePrefs(); });
 
 // Sin esto Windows no muestra las notificaciones de una app sin instalador.
 app.setAppUserModelId("Nimbo");
@@ -1102,6 +1153,9 @@ app.whenReady().then(() => {
   globalShortcut.register(MINI_SHORTCUT, () => setMini(!mini));
   setTimeout(pollGithub, 8000);
   setTimeout(checkPlan, 7000); // después del saludo
+  setTimeout(showWhatsNew, 12_000);
+  setTimeout(() => (prefs.updateCheck === undefined ? askUpdateConsent() : checkUpdates()), 45_000);
+  setInterval(checkUpdates, 6 * 3600_000);
   setInterval(checkPlan, 30 * 60_000);
   watchWhatsapp();
   if (telegram.status().token) telegram.start();
