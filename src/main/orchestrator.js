@@ -135,6 +135,41 @@ function sessionTitle(transcriptPath) {
 }
 
 /**
+ * Cuánto contexto lleva un chat (como el indicador de Claude Code): los tokens que vio el modelo en su última respuesta, sacados de la
+ * cola de la transcripción. → { used, max, pct } o null. Se recuerda por tamaño+fecha del archivo: solo se relee si el chat avanzó.
+ */
+const ctxCache = new Map(); // archivo → { key, ctx }
+function sessionContext(transcriptPath) {
+  if (typeof transcriptPath !== "string") return null;
+  const file = path.resolve(transcriptPath);
+  if (!file.toLowerCase().startsWith(PROJECTS.toLowerCase() + path.sep) || !file.endsWith(".jsonl")) return null;
+  let st;
+  try { st = fs.statSync(file); } catch { return null; }
+  const key = `${st.size}:${st.mtimeMs}`;
+  const hit = ctxCache.get(file);
+  if (hit?.key === key) return hit.ctx;
+  let ctx = null;
+  try { ctx = contextFrom(readTailSync(file)); } catch {}
+  ctxCache.set(file, { key, ctx });
+  if (ctxCache.size > 200) ctxCache.delete(ctxCache.keys().next().value);
+  return ctx;
+}
+/** Del texto de una transcripción: el uso de la última respuesta. Haiku tiene 200 mil tokens de ventana; Sonnet y Opus 5.x, 1 millón
+ *  (las transcripciones del dueño llegan a 936 mil con Opus 5.5). */
+function contextFrom(text) {
+  const i = text.lastIndexOf('"usage":{"input_tokens":');
+  if (i < 0) return null;
+  const chunk = text.slice(i, i + 600);
+  const n = (k) => Number(new RegExp(`"${k}":(\\d+)`).exec(chunk)?.[1] ?? 0);
+  const used = n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens") + n("output_tokens");
+  if (!used) return null;
+  const line = text.slice(text.lastIndexOf("\n", i) + 1, i);
+  const model = /"model":"([^"]+)"/.exec(line)?.[1] ?? "";
+  const max = /haiku/i.test(model) ? 200_000 : 1_000_000;
+  return { used, max, pct: Math.min(100, Math.round((used / max) * 100)) };
+}
+
+/**
  * Las carpetas extra de un chat se cuentan sobre TODA su transcripción, pero sin congelar nada: se lee en trozos de 1 MB (cediendo el
  * turno entre uno y otro) y se recuerda hasta dónde se leyó; si el archivo crece (solo se agrega al final) se lee únicamente lo nuevo.
  */
@@ -383,7 +418,9 @@ function createOrchestrator(chatDir, { vault, lang, plan, model, engine, claudeA
     if (/^[0-9a-f-]{36}$/i.test(r.session_id ?? "")) sessionId = r.session_id;
     let plan = r.structured_output;
     if (!plan) { try { plan = JSON.parse(r.result); } catch { plan = { reply: r.result, dispatch: [] }; } }
-    return { plan, raw: r.result };
+    // Lo que costó (lo reporta el propio claude): el modelo que más gastó, la duración y el costo en USD.
+    const top = Object.entries(r.modelUsage ?? {}).sort((a, b) => (b[1]?.costUSD ?? 0) - (a[1]?.costUSD ?? 0))[0]?.[0] ?? "";
+    return { plan, raw: r.result, meta: { model: top, ms: r.duration_ms, cost: r.total_cost_usd } };
   }
 
   /** El motor API: la API de Claude con tu clave (sin herramientas; ve imágenes, texto/código y PDF adjuntos). → { plan, raw } o { error }. */
@@ -397,7 +434,7 @@ function createOrchestrator(chatDir, { vault, lang, plan, model, engine, claudeA
     const attached = (msg?.images?.length || msg?.files?.length) ? " [con adjuntos]" : "";
     apiHistory.push({ role: "user", content: String(msg?.text ?? "") + attached }, { role: "assistant", content: String(r.data.reply ?? "") });
     apiHistory.splice(0, Math.max(0, apiHistory.length - 24));
-    return { plan: r.data, raw: "" };
+    return { plan: r.data, raw: "", meta: { model: r.model ?? "", tokens: (r.usage?.input_tokens ?? 0) + (r.usage?.output_tokens ?? 0) } };
   }
 
   return {
@@ -417,7 +454,7 @@ function createOrchestrator(chatDir, { vault, lang, plan, model, engine, claudeA
       known = new Map(sessions.map((s) => [s.id, s]));
       const got = useApi() ? await askApi(msg, sessions, reminders) : await askCli(msg, sessions, reminders);
       if (got.error) return { text: got.error, dispatch: [], error: true };
-      const { plan, raw } = got;
+      const { plan, raw, meta } = got;
       // Solo se proponen chats que de verdad están en la lista.
       const dispatch = (plan.dispatch ?? [])
         .filter((d) => known.has(d.session) && typeof d.prompt === "string" && d.prompt.trim())
@@ -432,6 +469,7 @@ function createOrchestrator(chatDir, { vault, lang, plan, model, engine, claudeA
         delegate: cleanDelegates(plan.delegate),
         reminders: Array.isArray(plan.reminders) ? plan.reminders.slice(0, 10) : [],
         complete: (Array.isArray(plan.complete) ? plan.complete : []).filter((id) => pendingIds.has(id)),
+        meta,
       };
     },
 
@@ -450,7 +488,7 @@ function createOrchestrator(chatDir, { vault, lang, plan, model, engine, claudeA
   };
 }
 
-module.exports = { createOrchestrator, listSessions, sessionTitle, runClaude, connectors, scanDirs, dirScans, readEdges, claudeFound: () => CLAUDE_EXE !== "" };
+module.exports = { createOrchestrator, listSessions, sessionTitle, sessionContext, contextFrom, runClaude, connectors, scanDirs, dirScans, readEdges, claudeFound: () => CLAUDE_EXE !== "" };
 
 // Autoprueba (sin red ni modelo): `node src/main/orchestrator.js` — la lectura acotada de transcripciones grandes y el conteo de carpetas por trozos.
 if (require.main === module) (async () => {
@@ -469,6 +507,12 @@ if (require.main === module) (async () => {
   const size = fs.statSync(big).size;
   assert.ok(size > 4_000_000);
   assert.deepStrictEqual(await scanDirs(big, size, tmp + "/otra"), [root]); // 1300 menciones → carpeta de trabajo
+  // Contexto: la ÚLTIMA respuesta (no la primera ni las "iterations" de adentro), con la ventana según el modelo.
+  const u = (model, a, b) => JSON.stringify({ type: "assistant", message: { model, usage: { input_tokens: 2, cache_creation_input_tokens: a, cache_read_input_tokens: b, output_tokens: 10, iterations: [{ input_tokens: 999999 }] } } });
+  assert.deepStrictEqual(contextFrom([u("claude-opus-5-5", 100, 1000), u("claude-opus-5-5", 1000, 249000)].join("\n")), { used: 250012, max: 1_000_000, pct: 25 });
+  assert.deepStrictEqual(contextFrom(u("claude-haiku-5-5", 0, 150000)), { used: 150012, max: 200_000, pct: 75 });
+  assert.strictEqual(contextFrom('{"type":"user"}'), null);
+  assert.strictEqual(sessionContext(path.join(tmp, "fuera.jsonl")), null); // solo transcripciones de ~/.claude/projects
   assert.strictEqual(dirScans.get(big).counts.get(root), 1300); // ni de más ni de menos: los cortes caen entre líneas
   // El archivo crece: solo se lee lo nuevo (el contador sube exactamente en lo agregado).
   fs.appendFileSync(big, line(9999) + line(10000));

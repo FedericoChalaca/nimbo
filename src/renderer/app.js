@@ -1,8 +1,9 @@
 // La isla: personaje, estados, chat, tarjetas y vistas. Lo carga src/renderer/index.html después de
 // jarvis.js e i18n.js, y antes de voice.js (comparten el ámbito global de la página).
 // Sin Electron (vista previa en un navegador) la página funciona igual, solo que sin eventos.
-const noop = () => {};
-const api = window.nimbo ?? new Proxy({}, { get: () => noop });
+// En un navegador `window.nimbo` es el <div id="nimbo"> (los id son globales): ahí va una API de mentira que no hace nada.
+const noop = () => Promise.resolve(null);
+const api = (window.nimbo instanceof Element ? null : window.nimbo) ?? new Proxy({}, { get: () => noop });
 // Idioma: main.js lo pasa en la URL (?lang=en). El texto en español es la clave; i18n.js trae
 // el inglés. t("Hola 👋 · {0}", quien) → traduce y pone los valores.
 const LANG = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "es";
@@ -48,6 +49,7 @@ function layout() {
     wrap.style.setProperty("--w", `${MAX_W}px`);
     wrap.style.setProperty("--h", "152px");
     lastSize = { w: MAX_W, h: 152 };
+    fitWindow(480);
     return;
   }
   const open = [...content.children].some((e) => !e.classList.contains("hidden"));
@@ -75,6 +77,14 @@ function layout() {
   wrap.style.setProperty("--w", `${Math.round(w)}px`);
   wrap.style.setProperty("--h", `${Math.round(h)}px`);
   lastSize = { w, h };
+  fitWindow(open ? 480 : h + 62); // 62 = sombra de la isla
+}
+// La ventana mide lo que muestra la isla: crece ANTES de la animación y encoge cuando la animación de cierre ya terminó.
+let winH = 480, winShrink = 0;
+function fitWindow(need) {
+  clearTimeout(winShrink);
+  if (need > winH) { winH = need; api.winHeight(need); }
+  else if (need < winH) winShrink = setTimeout(() => { winH = need; api.winHeight(need); }, 650);
 }
 let layoutQueued = 0;
 const relayout = () => { layoutQueued ||= requestAnimationFrame(layout); };
@@ -266,7 +276,9 @@ function track(p, st, step) {
   else {
     const prev = sessions.get(id);
     sessions.set(id, { title: p.title || base(p.cwd ?? "") || "Claude", state: st, step: step ?? prev?.step ?? "",
-      t: Date.now(), steps: prev?.steps ?? [], n: prev?.n ?? 0 });
+      t: Date.now(), steps: prev?.steps ?? [], n: prev?.n ?? 0,
+      // Como en Claude Code: cuánto contexto lleva (main.js lo lee de la transcripción), en qué modo de permisos está y cuánto tardó el turno.
+      ctx: p.context ?? prev?.ctx ?? null, mode: p.permission_mode ?? prev?.mode ?? "", since: prev?.since ?? 0, took: prev?.took ?? 0 });
     recordStep(sessions.get(id), p);
   }
   renderSessions();
@@ -295,6 +307,8 @@ function recordStep(s, p) {
     case "UserPromptSubmit":
       s.steps = [];
       s.n = 0;
+      s.since = Date.now();
+      s.took = 0;
       break;
     case "PreToolUse":
       if (last?.status === "run") last.status = "ok";
@@ -310,6 +324,7 @@ function recordStep(s, p) {
       break;
     case "Stop":
       if (last?.status === "run") last.status = "ok";
+      if (s.since) s.took = Date.now() - s.since;
       break;
   }
   renderLive();
@@ -368,8 +383,9 @@ function renderLive() {
   if (key === liveKey) return;
   liveKey = key;
   const head = el("div", "lhead");
-  head.append(el("span", `dot ${s.state}`), el("b", "", s.title), el("span", "sub", "Claude Code"),
-    el("span", "count", s.state === "finished" ? t("listo") : t("paso {0}", s.n)));
+  head.append(el("span", `dot ${s.state}`), el("b", "", s.title), ...[modeChip(s.mode)].filter(Boolean),
+    el("span", "count", s.state === "finished" ? (s.took ? t("listo en {0}", dur(s.took)) : t("listo")) : t("paso {0}", s.n)));
+  if (s.ctx) head.append(ctxRing(s.ctx, true));
   const steps = el("div", "steps");
   for (const st of s.steps) {
     const row = el("div", `lstep ${st.status}`);
@@ -398,8 +414,32 @@ function settle() {
 }
 const ago = (t) => {
   const s = Math.round((Date.now() - t) / 1000);
-  return s < 60 ? `${s}s` : `${Math.round(s / 60)}m`;
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
 };
+// "45 s", "3 min", "1 h 5 min"
+const dur = (ms) => {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+};
+// Modo de permisos del chat (solo los que no son el normal): plan, edita solo, auto, sin permisos.
+const MODES = { plan: ["plan", "Plan"], acceptEdits: ["edits", t("Edita solo")], auto: ["auto", "Auto"], bypassPermissions: ["bypass", t("Sin permisos")] };
+function modeChip(mode) {
+  const m = MODES[mode];
+  if (!m) return null;
+  const c = el("span", `mode ${m[0]}`, m[1]);
+  c.title = t("Modo de permisos: {0}", m[1]);
+  return c;
+}
+// Anillo de contexto (como el de Claude Code): se llena según lo usado; ámbar desde 60 %, rojo desde 80 %.
+const fmtTokens = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} M` : `${Math.round(n / 1000)} k`);
+function ctxRing(ctx, withText = false) {
+  const r = el("span", `ctx${ctx.pct >= 80 ? " hot" : ctx.pct >= 60 ? " warm" : ""}`);
+  r.style.setProperty("--p", ctx.pct);
+  r.title = t("Contexto: {0} % ({1} de {2} tokens)", ctx.pct, fmtTokens(ctx.used), fmtTokens(ctx.max));
+  r.append(el("i"));
+  if (withText) r.append(el("span", "", `${ctx.pct} %`));
+  return r;
+}
 function renderSessions() {
   renderApps();
   if (sessionBox.classList.contains("hidden")) return;
@@ -408,7 +448,8 @@ function renderSessions() {
   const rows = list.map((s, i) => {
     const row = el("div", "srow");
     row.style.setProperty("--d", `${i * .035}s`); // entran escalonadas, 35 ms entre filas
-    row.append(el("span", `dot ${s.state}`), el("b", "", s.title), el("span", "step", s.step), el("span", "ago", ago(s.t)));
+    const step = s.state === "finished" && s.took ? t("terminó en {0}", dur(s.took)) : s.step;
+    row.append(el("span", `dot ${s.state}`), el("b", "", s.title), el("span", "step", step), ...[modeChip(s.mode), s.ctx && ctxRing(s.ctx)].filter(Boolean), el("span", "ago", ago(s.t)));
     return row;
   });
   const head = list.length === 1 ? t("1 chat activo") : t("{0} chats activos", list.length);
@@ -438,8 +479,20 @@ const miniCloud = (color) => {
   svgEl.append(use);
   return svgEl;
 };
+// Actividad: lo último que pasó (terminó, te necesita, falló, recordatorios, GitHub), como la bandeja de notificaciones de Claude Code.
+// Vive solo en memoria (se pierde al cerrar Nimbo) y guarda títulos de chat y textos cortos, nunca comandos ni mensajes.
+const activity = []; // { at, kind: done | needs | error | remind | github, title, text }
+let activitySeen = Date.now();
+const unseenActivity = () => activity.filter((a) => a.at > activitySeen).length;
+function logActivity(kind, title, text = "") {
+  activity.unshift({ at: Date.now(), kind, title: String(title).slice(0, 60), text: String(text).slice(0, 90) });
+  activity.length = Math.min(activity.length, 30);
+  if (openApp === "act") { activitySeen = Date.now(); renderAppView(); }
+  renderApps();
+}
 function appsList() {
   const out = [{ id: "chats", name: "Chats", color: "#d97757", count: liveSessions().length }];
+  if (activity.length) out.push({ id: "act", name: t("Actividad"), color: "#8b9cff", count: activity.length, badge: unseenActivity() ? String(unseenActivity()) : "✓" });
   if (trelloData?.boards?.length) out.push({ id: "trello", name: "Trello", color: "#579dff", count: trelloData.boards.length });
   if (dayPlan) out.push({ id: "plan", name: t("Plan"), color: "#2dd4bf", count: dayPlan.solos + dayPlan.teNecesitan });
   if (github !== null) out.push({ id: "github", name: "GitHub", color: "#a371f7", count: github.length });
@@ -467,6 +520,7 @@ function renderApps() {
       if (openApp === "wa") waViewed();
       openApp = openApp === a.id ? null : a.id;
       if (openApp === "wa") waOpenedAt = Date.now();
+      if (openApp === "act") activitySeen = Date.now();
       renderApps();
       renderAppView();
     };
@@ -670,6 +724,24 @@ function renderAppView() {
       foot.append(seenBtn);
       rows.push(foot);
     }
+  } else if (app.id === "act") {
+    head.append(el("span", "sub", t("lo último en tus chats")));
+    const clear = el("button", "", t("Limpiar"));
+    clear.type = "button";
+    clear.onclick = () => { activity.length = 0; openApp = null; renderApps(); renderAppView(); };
+    head.append(clear);
+    const ICON = { done: ["green", "✓"], needs: ["amber", "!"], error: ["red", "✕"], remind: ["amber", "⏰"], github: ["purple", "GH"] };
+    const list = el("div", "alist");
+    for (const a of activity.slice(0, 15)) {
+      const r = el("div", "arow");
+      const name = el("span", "name");
+      name.append(el("b", "", a.title), el("i", "", a.text));
+      name.title = `${a.title} · ${a.text}`;
+      const [color, icon] = ICON[a.kind] ?? ["", "·"];
+      r.append(el("span", `chip2 cnt ${color}`, icon), name, el("span", "ago", ago(a.at)));
+      list.append(r);
+    }
+    rows.push(list, el("div", "afoot", t("Lo que pasó mientras no mirabas (solo mientras Nimbo está abierto).")));
   } else if (app.id === "pend") {
     head.append(el("span", "sub", t("tus recordatorios")));
     for (const p of pendingList.slice(0, 6)) {
@@ -964,6 +1036,7 @@ api.onGithub((list) => {
     emote("hello", 1600);
     SOUNDS.hello();
     setState(state, `GitHub: ${github[0].title}`.slice(0, 90), { labelFor: 5000 });
+    logActivity("github", "GitHub", github[0].title);
   }
   renderSessions();
   renderApps();
@@ -1004,17 +1077,22 @@ function handle(p) {
     case "Notification":
       // Permisos pendientes o "esperando tu respuesta": las dos cosas te necesitan.
       track(p, "needs", p.message ?? t("te necesita"));
+      logActivity("needs", who, p.message ?? t("te necesita"));
       setState("needs", `${who}: ${p.message ?? t("te necesita")}`);
       SOUNDS.needs();
       break;
-    case "Stop":
+    case "Stop": {
       track(p, "finished", t("terminó"));
+      const took = sessions.get(p.session_id ?? p.title)?.took;
+      logActivity("done", who, took ? t("terminó en {0}", dur(took)) : t("terminó"));
       // Si estás mirando la terminal (o el chat de Claude) no hace falta avisarte con ruido: solo cambia de estado.
       setState("finished", t("¡Listo! · {0}", who), { back: p.watching ? 2500 : 5000 });
       if (!p.watching) SOUNDS.finish();
       break;
+    }
     case "StopFailure":
       track(p, "error", t("falló"));
+      logActivity("error", who, t("falló"));
       setState("error", t("Algo falló en {0} 😢", who), { back: 8000, labelFor: 2500 });
       SOUNDS.error();
       break;
@@ -1338,6 +1416,7 @@ api.onPermission((p) => {
   setState("needs");
   card.classList.remove("hidden");
   SOUNDS.needs();
+  logActivity("needs", p.title || base(p.cwd ?? ""), t("pidió permiso para {0}", p.tool_name ?? t("una herramienta")));
 });
 card.addEventListener("click", (e) => {
   const d = e.target.dataset?.d;
@@ -1376,6 +1455,7 @@ function showReminder() {
   if (!r || mini || !remindCard.classList.contains("hidden")) return;
   remindCard.dataset.id = r.id;
   remindCard.querySelector(".rtext").textContent = r.text;
+  logActivity("remind", t("Recordatorio"), r.text);
   remindCard.querySelector(".rdue").textContent = fmtDue(r.due);
   hidePanel();
   remindCard.classList.remove("hidden");
@@ -1587,7 +1667,7 @@ function swallow(dropped, x, y) {
 const aiSelect = document.getElementById("ai");
 let aiLabel = "Claude";
 function resetPlaceholder() {
-  msg.placeholder = aiLabel === "Claude" ? t("Escríbele a Claude… (suelta archivos sobre mí)") : t("Escríbele a {0}… (los adjuntos van a Claude)", aiLabel);
+  msg.placeholder = aiLabel === "Claude" ? t("Escríbele a Claude… o / para comandos") : t("Escríbele a {0}… (los adjuntos van a Claude)", aiLabel);
 }
 function applyAi(r) {
   if (!r?.providers) return;
@@ -1615,7 +1695,8 @@ chat.addEventListener("submit", async (e) => {
   renderThumbs();
   msg.value = "";
   resetPlaceholder();
-  if (interview && !sent.length && !paths.length) {
+  if (text.startsWith("/") && !sent.length && !paths.length && !interview) await runSlash(text);
+  else if (interview && !sent.length && !paths.length) {
     if (INTERVIEW_END.test(text)) interviewEnd();
     else if (INTERVIEW_SKIP.test(text) && !interview.awaitingRole) await interviewTurn("");
     else await interviewTurn(text);
@@ -1733,7 +1814,7 @@ async function askAndShow(message) {
   answerBox.classList.remove("hidden");
   progressStart(message.files?.length || message.images?.length ? 25_000 : 15_000);
   setState("thinking", t("Pensando…"));
-  const started = Date.now();
+  const started = Date.now(); // también la usa answerMeta
   const tick = setInterval(() => {
     const s = Math.round((Date.now() - started) / 1000);
     waitText.textContent = s < 12 ? t("Pensando…") : t("Sigue trabajando… {0} s", s);
@@ -1748,12 +1829,87 @@ async function askAndShow(message) {
   if (r?.added?.length) setTimeout(() => setState(state, `⏰ Anotado: ${r.added[0].text}`, { labelFor: 3500 }), 300);
   answer.classList.remove("wait");
   answer.replaceChildren(el("div", "reply", r?.text ?? t("No pude hablar con Claude.")));
+  if (r?.text && !r.error) answer.append(answerMeta(r.meta, Date.now() - started));
   speak(r?.text); // solo la respuesta corta; los prompts propuestos para otros chats no se leen
   for (const d of r?.dispatch ?? []) answer.append(proposal(d));
   for (const d of r?.delegate ?? []) answer.append(delegateCard(d));
   answer.scrollTop = 0;
   return r;
 }
+
+// Debajo de cada respuesta, como /cost en Claude Code: qué modelo contestó, cuánto tardó y cuánto costó (lo reporta tu claude).
+const MODEL_NAME = (m = "") => (/opus/i.test(m) ? "Opus" : /sonnet/i.test(m) ? "Sonnet" : /haiku/i.test(m) ? "Haiku" : "");
+function answerMeta(meta = {}, ms) {
+  const cost = Number(meta?.cost);
+  const parts = [MODEL_NAME(meta?.model), dur(meta?.ms ?? ms),
+    Number.isFinite(cost) && cost > 0 ? `${cost.toLocaleString(LOCALE, { maximumFractionDigits: 3, minimumFractionDigits: 3 })} USD` : meta?.tokens ? `${fmtTokens(meta.tokens)} tokens` : ""];
+  return el("div", "ameta", parts.filter(Boolean).join(" · "));
+}
+
+// --- Comandos con "/" en el chat (como los de Claude Code): se resuelven aquí mismo, sin gastar a Claude ---
+const slashBox = document.getElementById("slash");
+const COMMANDS = [
+  { cmd: "/nuevo", desc: t("Empieza una conversación nueva"), run: async () => { await api.chatCmd("new"); return t("Listo: empezamos de cero. 🧹"); } },
+  { cmd: "/pantalla", desc: t("Adjunta un pantallazo de tu pantalla"), run: () => { shotBtn.click(); } },
+  { cmd: "/modelo", arg: "haiku · sonnet · opus", desc: t("Cambia el modelo del chat"), run: async (a) => {
+    const r = await api.chatCmd("model", a.toLowerCase());
+    return r?.changed ? t("Ahora contesto con {0}.", MODEL_NAME(r.model)) : t("Modelo actual: {0}. Escribe /modelo haiku, sonnet u opus.", MODEL_NAME(r?.model) || t("el de tu claude"));
+  } },
+  { cmd: "/actividad", desc: t("Lo último que pasó en tus chats"), run: () => { toggleChat(false); appsBox.classList.remove("hidden"); openApp = "act"; activitySeen = Date.now(); renderApps(); renderAppView(); } },
+  { cmd: "/plan", desc: t("El plan de hoy"), run: () => answerPlan() },
+  { cmd: "/correo", desc: t("Revisa tu correo"), run: () => answerMail() },
+  { cmd: "/tema", desc: t("Cambia entre JARVIS y Nube"), run: () => { api.setupDo("theme", root.classList.contains("theme-jarvis") ? "cloud" : "jarvis"); } },
+  { cmd: "/mini", desc: t("Modo mini (para jugar)"), run: () => { toggleChat(false); api.toggleMini(); } },
+  { cmd: "/ajustes", desc: t("Conexiones y ajustes"), run: () => openSetup() },
+  { cmd: "/ayuda", desc: t("Todo lo que puedo hacer"), run: () => COMMANDS.map((c) => `${c.cmd}${c.arg ? " " + c.arg : ""} — ${c.desc}`).join("\n") + "\n\n" + t("Atajo: {0} abre este chat desde cualquier lado.", "Ctrl+Alt+Espacio") },
+];
+let slashPick = 0;
+const slashMatches = () => {
+  const v = msg.value;
+  if (!v.startsWith("/") || v.includes(" ")) return [];
+  return COMMANDS.filter((c) => c.cmd.startsWith(v.toLowerCase()));
+};
+function renderSlash() {
+  const list = slashMatches();
+  slashBox.classList.toggle("hidden", !list.length);
+  if (!list.length) return;
+  slashPick = Math.min(slashPick, list.length - 1);
+  slashBox.replaceChildren(...list.map((c, i) => {
+    const r = el("div", `scmd${i === slashPick ? " on" : ""}`);
+    r.append(el("b", "", c.cmd), el("span", "", c.arg ? `${c.arg} — ${c.desc}` : c.desc));
+    r.onmousedown = (e) => { e.preventDefault(); pickSlash(c); };
+    return r;
+  }));
+}
+function pickSlash(c) {
+  msg.value = c.cmd + (c.arg ? " " : "");
+  slashBox.classList.add("hidden");
+  if (!c.arg) chat.requestSubmit();
+  msg.focus();
+}
+msg.addEventListener("input", () => { slashPick = 0; renderSlash(); });
+msg.addEventListener("keydown", (e) => {
+  const list = slashMatches();
+  if (!list.length || slashBox.classList.contains("hidden")) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); slashPick = (slashPick + (e.key === "ArrowDown" ? 1 : list.length - 1)) % list.length; renderSlash(); }
+  else if (e.key === "Tab" || (e.key === "Enter" && msg.value !== list[slashPick].cmd)) { e.preventDefault(); pickSlash(list[slashPick]); }
+});
+async function runSlash(text) {
+  const [word, ...rest] = text.trim().split(/\s+/);
+  const c = COMMANDS.find((x) => x.cmd === word.toLowerCase());
+  slashBox.classList.add("hidden");
+  const out = c ? await c.run(rest.join(" ")) : t("No conozco {0}. Escribe /ayuda para ver los comandos.", word);
+  if (typeof out === "string") { answer.classList.remove("wait"); answer.replaceChildren(el("div", "reply", out)); answerBox.classList.remove("hidden"); answer.scrollTop = 0; }
+}
+// Atajo global (Ctrl+Alt+Espacio, como el acceso rápido de la app de Claude): abre el chat de Nimbo listo para escribir.
+api.onQuickAsk(() => {
+  if (!card.classList.contains("hidden")) return; // hay un permiso esperando: eso va primero
+  hidePanel();
+  if (!setupBox.classList.contains("hidden")) closeSetup();
+  lastActivity = Date.now();
+  if (state === "sleeping") setState("idle");
+  toggleChat(true);
+});
 
 // --- Orquestador: Nimbo propone un prompt para otro chat; tú lo revisas y lo envías ---
 function el(tag, cls, text) {

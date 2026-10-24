@@ -4,7 +4,9 @@
 // La clave la guarda main.js cifrada por el sistema (ai-keys.bin, id "anthropic"); aquí solo se usa y NUNCA sale en un error.
 const fs = require("fs");
 const path = require("path");
-const Anthropic = require("@anthropic-ai/sdk").default ?? require("@anthropic-ai/sdk");
+// El SDK se carga recién cuando se usa (pesa ~0,3 s al arrancar y solo lo necesita quien eligió el motor API).
+let SDK;
+const sdk = () => (SDK ??= ((m) => m.default ?? m)(require("@anthropic-ai/sdk")));
 
 const SONNET = "claude-sonnet-5-5"; // el chat de Nimbo (decisión del dueño: todo en Sonnet)
 const HAIKU = "claude-haiku-5-5"; // extracciones baratas (resúmenes de WhatsApp)
@@ -64,12 +66,12 @@ function trimHistory(history, max = MAX_HISTORY) {
 
 /** Un error del SDK → { "key" | "limit" | "billing" | "model" | "offline" | "fail" }, sin mostrar nunca la clave. */
 function errorCode(e) {
-  if (e instanceof Anthropic.APIUserAbortError) return "cancelled"; // el usuario pulsó Cancelar
-  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return "key";
-  if (e instanceof Anthropic.RateLimitError || e?.status === 529) return "limit";
-  if (e?.status === 402 || (e instanceof Anthropic.BadRequestError && /credit balance|billing/i.test(String(e.message)))) return "billing";
-  if (e instanceof Anthropic.NotFoundError) return "model";
-  if (e instanceof Anthropic.APIConnectionError) return "offline";
+  if (e instanceof sdk().APIUserAbortError) return "cancelled"; // el usuario pulsó Cancelar
+  if (e instanceof sdk().AuthenticationError || e instanceof sdk().PermissionDeniedError) return "key";
+  if (e instanceof sdk().RateLimitError || e?.status === 529) return "limit";
+  if (e?.status === 402 || (e instanceof sdk().BadRequestError && /credit balance|billing/i.test(String(e.message)))) return "billing";
+  if (e instanceof sdk().NotFoundError) return "model";
+  if (e instanceof sdk().APIConnectionError) return "offline";
   return "fail";
 }
 
@@ -83,7 +85,7 @@ function createClaudeApi({ getKey, baseURL }) {
   const get = () => {
     const key = getKey();
     if (!key) return null;
-    if (!client || clientKey !== key) { client = new Anthropic({ apiKey: key, baseURL, maxRetries: 1, timeout: 90_000 }); clientKey = key; }
+    if (!client || clientKey !== key) { client = new (sdk())({ apiKey: key, baseURL, maxRetries: 1, timeout: 90_000 }); clientKey = key; }
     return client;
   };
   return {
@@ -91,7 +93,7 @@ function createClaudeApi({ getKey, baseURL }) {
 
     /** ¿Acepta Anthropic esta clave? (pide la lista de modelos: no gasta nada). */
     async verify(key) {
-      try { await new Anthropic({ apiKey: key, baseURL, maxRetries: 0, timeout: 10_000 }).models.list({ limit: 1 }); return true; } catch { return false; }
+      try { await new (sdk())({ apiKey: key, baseURL, maxRetries: 0, timeout: 10_000 }).models.list({ limit: 1 }); return true; } catch { return false; }
     },
 
     /** Una respuesta con forma fija (JSON que cumple `schema`). → { data, usage, model } o { error }. */

@@ -6,9 +6,16 @@
   const canvas = document.getElementById("orb");
   const ctx = canvas.getContext("2d");
   const W = 240, H = 140, CX = 120, CY = 66, BASE_R = 42;
-  const DPR = 2;
-  canvas.width = W * DPR;
-  canvas.height = H * DPR;
+  // El dibujo usa coordenadas de 240×140, pero en pantalla el lienzo mide 120×70 (190×111 al soltar archivos): los
+  // píxeles reales se ajustan a lo que se ve (antes eran 480×280 fijos, ~7 veces más de lo necesario).
+  let scale = 1;
+  const fit = () => {
+    const w = Math.max(1, Math.round((canvas.clientWidth || W / 2) * (devicePixelRatio || 1)));
+    if (canvas.width !== w) { canvas.width = w; canvas.height = Math.round((w * H) / W); }
+    scale = canvas.width / W;
+  };
+  fit();
+  new ResizeObserver(fit).observe(canvas);
 
   // Puntos repartidos parejo sobre una esfera (espiral de Fibonacci).
   const N = 140;
@@ -20,6 +27,16 @@
     pts.push([Math.cos(t) * r, y, Math.sin(t) * r]);
   }
   const LINK = 0.4;
+  // La esfera gira entera (rígida): la distancia entre dos puntos nunca cambia, así que los pares
+  // que se unen con una línea se calculan una sola vez (antes eran ~9.700 comparaciones por cuadro).
+  const PAIRS = [];
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+    const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1], pts[i][2] - pts[j][2]);
+    if (d <= LINK) PAIRS.push(i, j, 1 - d / LINK);
+  }
+  // Las líneas y los puntos se agrupan por brillo: un trazo por grupo en vez de uno por línea.
+  const BANDS = 8;
+  const bands = Array.from({ length: BANDS }, () => []);
 
   // Chispas: trazos cortos que orbitan alrededor, como datos girando.
   const sparks = Array.from({ length: 46 }, () => ({
@@ -63,6 +80,11 @@
   let nextScan = performance.now() + 6000;
   let last = performance.now();
   let active = false;
+  let lastDraw = 0;
+  // Cuadros por segundo según lo que pasa: en reposo no hace falta dibujar a 60.
+  const FPS = { idle: 15, sleeping: 6, working: 24, thinking: 24, needs: 24, listening: 30, error: 24, finished: 30 };
+  let stateName = "idle";
+  let hidden = false; // el personaje no se ve (modo mini sin espacio, ventana tapada): no se dibuja
 
   const lerp = (a, b, k) => a + (b - a) * k;
   const easeOut = (t) => 1 - Math.pow(1 - t, 3);
@@ -70,7 +92,12 @@
 
   function frame(now) {
     if (!active) return;
-    const dt = Math.min((now - last) / 1000, .05);
+    requestAnimationFrame(frame);
+    const busy = now < emoteUntil || shock >= 0 || scan >= 0 || boot < 1 || level > .02 || levelTarget > 0;
+    const fps = busy ? 40 : FPS[stateName] ?? 24;
+    if (hidden || now - lastDraw < 1000 / fps - 2) return;
+    lastDraw = now;
+    const dt = Math.min((now - last) / 1000, .1);
     last = now;
     const k = 1 - Math.pow(.02, dt); // suavizado independiente de los FPS
     const tgt = now < emoteUntil ? emoteTarget : target;
@@ -98,7 +125,7 @@
     const jy = (Math.random() - .5) * cur.shake * 3;
     const cx = CX + jx, cy = CY + jy;
 
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
     ctx.clearRect(0, 0, W, H);
     ctx.globalCompositeOperation = "lighter";
 
@@ -123,37 +150,57 @@
       return [cx + x1 * R * p, cy + y2 * R * p, (z2 + 1) / 2, x1, y2, z2];
     });
     ctx.lineWidth = .6;
-    for (let i = 0; i < proj.length; i++) {
-      for (let j = i + 1; j < proj.length; j++) {
-        const a = proj[i], c = proj[j];
-        const d = Math.hypot(a[3] - c[3], a[4] - c[4], a[5] - c[5]);
-        if (d > LINK) continue;
-        ctx.strokeStyle = rgba((1 - d / LINK) * (a[2] + c[2]) * .55 * cur.glow);
-        ctx.beginPath();
+    for (const band of bands) band.length = 0;
+    for (let k = 0; k < PAIRS.length; k += 3) {
+      const i = PAIRS[k], j = PAIRS[k + 1];
+      if (i >= shown || j >= shown) continue;
+      // brillo 0…~1,1 (cercanía × profundidad de los dos puntos) → su grupo
+      const w = PAIRS[k + 2] * (proj[i][2] + proj[j][2]) * .55;
+      bands[Math.min(BANDS - 1, (w * BANDS) | 0)].push(i, j);
+    }
+    for (let b8 = 0; b8 < BANDS; b8++) {
+      const list = bands[b8];
+      if (!list.length) continue;
+      ctx.strokeStyle = rgba(((b8 + .5) / BANDS) * cur.glow);
+      ctx.beginPath();
+      for (let k = 0; k < list.length; k += 2) {
+        const a = proj[list[k]], c = proj[list[k + 1]];
         ctx.moveTo(a[0], a[1]);
         ctx.lineTo(c[0], c[1]);
-        ctx.stroke();
       }
-    }
-    ctx.shadowColor = rgba(1);
-    ctx.shadowBlur = 6;
-    for (const [x, y, depth] of proj) {
-      ctx.fillStyle = rgba((.25 + depth * .75) * cur.glow);
-      ctx.beginPath();
-      ctx.arc(x, y, .6 + depth * 1.1, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Chispas en órbita: van más rápido mientras Claude trabaja
-    ctx.lineWidth = 1.1;
-    for (const s of sparks) {
-      s.a += s.v * dt * (.4 + cur.spin);
-      ctx.strokeStyle = rgba(s.alpha * cur.glow * (.6 + beat * .4) * b);
-      ctx.beginPath();
-      ctx.arc(cx, cy, R * s.r, s.a, s.a + s.len);
       ctx.stroke();
     }
-    ctx.shadowBlur = 0;
+    // Puntos con su halo: dos pasadas (halo ancho y tenue + punto) por grupo de profundidad, sin shadowBlur
+    // (el desenfoque de sombra en 140 puntos era lo más caro de todo el cuadro).
+    for (const band of bands) band.length = 0;
+    for (let i = 0; i < proj.length; i++) bands[Math.min(BANDS - 1, (proj[i][2] * BANDS) | 0)].push(i);
+    for (let b8 = 0; b8 < BANDS; b8++) {
+      const list = bands[b8];
+      if (!list.length) continue;
+      const depth = (b8 + .5) / BANDS;
+      for (const [grow, alpha] of [[2.6, .16], [1, 1]]) {
+        ctx.fillStyle = rgba((.25 + depth * .75) * cur.glow * alpha);
+        ctx.beginPath();
+        const r = (.6 + depth * 1.1) * grow;
+        for (const i of list) { const [x, y] = proj[i]; ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
+        ctx.fill();
+      }
+    }
+
+    // Chispas en órbita: van más rápido mientras Claude trabaja (agrupadas por brillo, como las líneas)
+    ctx.lineWidth = 1.1;
+    for (const band of bands) band.length = 0;
+    for (const s of sparks) {
+      s.a += s.v * dt * (.4 + cur.spin);
+      bands[Math.min(BANDS - 1, (s.alpha * BANDS) | 0)].push(s);
+    }
+    for (let b8 = 0; b8 < BANDS; b8++) {
+      if (!bands[b8].length) continue;
+      ctx.strokeStyle = rgba(((b8 + .5) / BANDS) * cur.glow * (.6 + beat * .4) * b);
+      ctx.beginPath();
+      for (const s of bands[b8]) { ctx.moveTo(cx + Math.cos(s.a) * R * s.r, cy + Math.sin(s.a) * R * s.r); ctx.arc(cx, cy, R * s.r, s.a, s.a + s.len); }
+      ctx.stroke();
+    }
 
     // Anillos: marcas finas, arcos y un aro tenue, girando a distinto ritmo
     // (durante el encendido se dibujan de 0 a su largo completo).
@@ -206,7 +253,6 @@
       if (shock > 1) shock = -1;
     }
     cur.glow = glowSave;
-    requestAnimationFrame(frame);
   }
 
   window.Jarvis = {
@@ -221,6 +267,7 @@
       if (on) requestAnimationFrame(frame);
     },
     setState(name) {
+      stateName = name;
       target = STATES[name] ?? STATES.idle;
       if (name === "finished") shock = 0;
     },
@@ -232,6 +279,7 @@
     },
     poke() { shock = 0; },
     setLevel(v) { levelTarget = v; },
+    setHidden(h) { hidden = !!h; },
     // El cursor inclina la esfera, como los ojos de la nube.
     look(dx, dy) {
       aimY = Math.max(-1, Math.min(1, dx / 400)) * .6;

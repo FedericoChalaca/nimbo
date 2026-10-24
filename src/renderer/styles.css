@@ -58,7 +58,7 @@
   /* Brillo que recorre el texto mientras Claude piensa o trabaja */
   #nimbo:is(.state-working, .state-thinking) #label {
     background: linear-gradient(100deg, #7c818a 0 38%, #f2f3f5 50%, #7c818a 62% 100%) 0 0 / 260% 100%;
-    -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 2.2s linear infinite; }
+    -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 2.2s steps(30) infinite; }
   @keyframes shine { from { background-position: 130% 0; } to { background-position: -130% 0; } }
   #measure { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: nowrap; font-weight: 500;
     font-size: 13.5px; font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
@@ -69,11 +69,11 @@
     font: 800 12px "Segoe UI Variable Text", "Segoe UI", sans-serif; animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both; }
   #mailBtn:hover { filter: brightness(1.15); }
   #mailBtn.busy::after { content: ""; position: absolute; inset: -4px; border-radius: 999px; border: 2px solid transparent;
-    border-top-color: #ea4335; border-right-color: #ea4335; animation: spin .8s linear infinite; }
+    border-top-color: #ea4335; border-right-color: #ea4335; animation: spin .8s steps(8) infinite; }
   #waBtn:hover { filter: brightness(1.15); }
   #waBtn.urgent { background: #ff4d4f; color: #fff; }
   #waBtn.busy::after { content: ""; position: absolute; inset: -4px; border-radius: 999px; border: 2px solid transparent;
-    border-top-color: #25d366; border-right-color: #25d366; animation: spin .8s linear infinite; }
+    border-top-color: #25d366; border-right-color: #25d366; animation: spin .8s steps(8) infinite; }
   #waBtn.urgent.busy::after { border-top-color: #ff4d4f; border-right-color: #ff4d4f; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .afoot.row { display: flex; align-items: center; gap: 6px; }
@@ -94,7 +94,7 @@
   #pips:empty { display: none; }
   .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--c, #888);
     animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both; }
-  .pip.working, .pip.thinking { animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both, pulse 1.2s ease-in-out .45s infinite; }
+  .pip.working, .pip.thinking { animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both, pulse 1.2s steps(12) .45s infinite; }
   @keyframes pulse { 50% { opacity: .35; transform: scale(.75); } }
   @keyframes pop-in { from { transform: scale(0); } }
 
@@ -114,6 +114,8 @@
   #hit { pointer-events: all; cursor: pointer; }
   .theme-cloud #orb { display: none; }
   .theme-jarvis #char svg > :not(#hit) { display: none; }
+  /* display:none NO detiene las animaciones de SVG: con JARVIS, la nube escondida seguía animándose (y gastando) */
+  .theme-jarvis #char svg * { animation: none !important; }
   /* Insignia de estado (… ! ✓ ✕): el cambio se anima desde JS (encoge, cambia, rebota) */
   /* En % para que acompañe a la nube cuando crece (modo soltar) */
   #badge { position: absolute; left: 18%; top: 6%; width: 14px; height: 14px; border-radius: 50%; box-sizing: content-box;
@@ -130,14 +132,16 @@
   #cloudShade .top { stop-color: #ffffff; }
   #cloudShade .bottom { stop-color: var(--cloud2); transition: stop-color .5s; }
   #gloss { fill: url(#cloudGloss); pointer-events: none; }
-  #breathe { transform-origin: 120px 96px; animation: breathe 3.6s ease-in-out infinite; }
+  /* Respira a saltitos (8 por segundo): la ventana es transparente y Windows copia la ventana ENTERA en cada cuadro
+     animado, así que una animación continua en reposo costaba un núcleo de la CPU. A esta amplitud no se nota. */
+  #breathe { transform-origin: 120px 96px; animation: breathe 3.6s steps(29) infinite; }
   .state-sleeping #breathe { animation-duration: 5.5s; }
   /* Respirar conservando el volumen: cuando sube, adelgaza */
   @keyframes breathe { 50% { transform: scale(.985, 1.03); } }
   #bob { transform-origin: 120px 96px; }
-  .state-working #bob { animation: bob .9s ease-in-out infinite; }
-  .state-thinking #bob { animation: bob 2.2s ease-in-out infinite; }
-  .state-needs #bob { animation: hop .6s cubic-bezier(.3, 0, .7, 1) infinite; }
+  .state-working #bob { animation: bob .9s steps(10) infinite; }
+  .state-thinking #bob { animation: bob 2.2s steps(24) infinite; }
+  .state-needs #bob { animation: hop .6s steps(9) infinite; }
   .state-finished #bob { animation: jump .9s ease-out; }
   .state-error #bob { animation: shake .28s linear; }
   @keyframes bob { 50% { transform: translateY(-3px); } }
@@ -193,7 +197,8 @@
   .emote-hello #bob { animation: jump .9s ease-out; }
   .emote-dizzy #squish { transform-origin: 120px 64px; animation: wobble .45s ease-in-out infinite; }
   @keyframes wobble { 25% { transform: rotate(-7deg); } 75% { transform: rotate(7deg); } }
-  .eyes-dizzy .spin { transform-box: fill-box; transform-origin: center; animation: spin .6s linear infinite; }
+  .eyes-dizzy .spin { transform-box: fill-box; transform-origin: center; }
+  .emote-dizzy .eyes-dizzy .spin { animation: spin .6s steps(10) infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   /* Bostezo: se estira hacia arriba y abre la boca */
   .emote-yawn #squish { animation: stretch 1.4s ease-in-out; }
@@ -217,7 +222,8 @@
     100% { opacity: 0; transform: translate(-2px, -22px) scale(1) rotate(-6deg); } }
 
   /* Extras */
-  .dots circle { fill: #fff; animation: dot 1.2s ease-in-out infinite; }
+  .dots circle { fill: #fff; }
+  .state-thinking .dots circle { animation: dot 1.2s steps(12) infinite; }
   .dots circle:nth-child(2) { animation-delay: .22s; }
   .dots circle:nth-child(3) { animation-delay: .44s; }
   @keyframes dot { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
@@ -231,12 +237,14 @@
   .state-finished .sparkles path:nth-child(4) { animation-delay: .42s; }
   @keyframes twinkle { 0% { transform: scale(0) rotate(0); } 40% { transform: scale(1.2) rotate(45deg); }
     100% { transform: scale(0) rotate(90deg); } }
-  .rain line { stroke: #7aa7ff; stroke-width: 2.4; stroke-linecap: round; animation: fall .9s linear infinite; }
+  .rain line { stroke: #7aa7ff; stroke-width: 2.4; stroke-linecap: round; }
+  .state-error .rain line { animation: fall .9s steps(10) infinite; }
   .rain line:nth-child(2) { animation-delay: .3s; }
   .rain line:nth-child(3) { animation-delay: .6s; }
   .rain line:nth-child(4) { animation-delay: .15s; }
   @keyframes fall { from { transform: translateY(0); opacity: 1; } to { transform: translateY(26px); opacity: 0; } }
-  .zzz text { fill: #c9ccd6; font: 700 13px "Segoe UI", sans-serif; opacity: 0; animation: zz 3s ease-out infinite; }
+  .zzz text { fill: #c9ccd6; font: 700 13px "Segoe UI", sans-serif; opacity: 0; }
+  .state-sleeping .zzz text { animation: zz 3s steps(24) infinite; }
   .zzz text:nth-child(2) { animation-delay: 1s; }
   .zzz text:nth-child(3) { animation-delay: 2s; }
   @keyframes zz { 0% { opacity: 0; transform: translate(0, 0); } 30% { opacity: .8; }
@@ -313,8 +321,8 @@
   .srow .step { flex: 1; min-width: 0; color: #9aa0a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .srow .ago { color: #6b717a; font-size: 11px; flex: none; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #888; }
-  .dot.working { background: #4da3ff; animation: pulse 1.2s ease-in-out infinite; }
-  .dot.thinking { background: #9b87ff; animation: pulse 1.6s ease-in-out infinite; }
+  .dot.working { background: #4da3ff; animation: pulse 1.2s steps(12) infinite; }
+  .dot.thinking { background: #9b87ff; animation: pulse 1.6s steps(16) infinite; }
   .dot.needs { background: #ffb020; }
   .dot.finished { background: #34c77b; }
   .dot.error { background: #e5484d; }
@@ -339,7 +347,7 @@
   #answerBox:hover #rail { width: 5px; }
   #thumb { position: absolute; left: 0; right: 0; border-radius: 3px;
     background: linear-gradient(180deg, var(--accent-a), var(--accent-b), var(--accent-a)) 0 0 / 100% 200%;
-    box-shadow: 0 0 8px var(--accent-a); animation: shimmer 1.6s linear infinite;
+    box-shadow: 0 0 8px var(--accent-a); animation: shimmer 1.6s steps(16) infinite;
     transition: top .12s ease-out, height .2s ease-out; }
   @keyframes shimmer { to { background-position: 0 200%; } }
 
@@ -400,7 +408,7 @@
   .lstep.ok i::before { content: "✓"; color: #34c77b; }
   .lstep.fail i::before { content: "✕"; color: #e5484d; }
   .lstep.run i::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-    border: 1.5px solid #4da3ff; border-right-color: transparent; animation: spin .8s linear infinite; }
+    border: 1.5px solid #4da3ff; border-right-color: transparent; animation: spin .8s steps(8) infinite; }
   .code { margin-top: 9px; background: #0b0c0e; border: 1px solid rgba(255, 255, 255, .07); border-radius: 10px;
     overflow: hidden; font: 11.5px/1.6 "Cascadia Mono", Consolas, monospace; }
   .code .tab { display: flex; gap: 6px; align-items: center; padding: 4px 10px; background: #121316; color: #c9ccd3;
@@ -437,7 +445,7 @@
   .pill:hover { background: color-mix(in srgb, var(--c) 22%, #1d1e22); }
   .pill.on { background: color-mix(in srgb, var(--c) 30%, #1d1e22); }
   .pill b { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--c) 30%, transparent); font-size: 11px; }
-  .mini { width: 22px; height: 15px; color: var(--c); flex: none; animation: mini-bob 2.6s ease-in-out infinite; }
+  .mini { width: 22px; height: 15px; color: var(--c); flex: none; animation: mini-bob 2.6s steps(26) infinite; }
   .pill:nth-child(2) .mini { animation-delay: -.9s; }
   .pill:nth-child(3) .mini { animation-delay: -1.7s; }
   @keyframes mini-bob { 50% { transform: translateY(-1.5px) scale(1.04, .97); } }
@@ -517,3 +525,81 @@
   .dragging #island::after { opacity: var(--trail, 0); }
 
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01s !important; transition-duration: .01s !important; } }
+
+  /* ── Componentes nuevos (2026-10-24) ── */
+  /* Anillo de contexto de cada chat, como el indicador de Claude Code */
+  .ctx { flex: none; display: inline-flex; align-items: center; gap: 5px; color: #8f959e; font-size: 10.5px; font-variant-numeric: tabular-nums; --ring: #7b8cff; }
+  .ctx i { width: 12px; height: 12px; border-radius: 50%; background: conic-gradient(var(--ring) calc(var(--p) * 1%), rgba(255, 255, 255, .13) 0);
+    -webkit-mask: radial-gradient(circle, transparent 3.3px, #000 3.8px); mask: radial-gradient(circle, transparent 3.3px, #000 3.8px); }
+  .ctx.warm { --ring: #ffb020; }
+  .ctx.hot { --ring: #e5484d; color: #ff9a9d; }
+  .lhead .ctx { margin-left: 4px; }
+  /* Modo de permisos (plan, auto, edita solo, sin permisos) */
+  .mode { flex: none; padding: 0 6px; border-radius: 5px; font-size: 10px; font-weight: 700; line-height: 16px; background: rgba(255, 255, 255, .08); color: #c9ccd3; }
+  .mode.plan { background: rgba(45, 212, 191, .16); color: #6ee7d8; }
+  .mode.auto, .mode.edits { background: rgba(155, 135, 255, .16); color: #c2b5ff; }
+  .mode.bypass { background: rgba(229, 72, 77, .18); color: #ff9a9d; }
+  .arow .ago { flex: none; color: #6b717a; font-size: 11px; font-variant-numeric: tabular-nums; }
+  /* Qué modelo contestó, cuánto tardó y cuánto costó */
+  .ameta { margin-top: 7px; color: #666c75; font-size: 10.5px; font-style: normal; font-variant-numeric: tabular-nums; }
+  /* Comandos con "/" */
+  #slash { flex-basis: 100%; display: flex; flex-direction: column; gap: 1px; max-height: 196px; overflow-y: auto; padding: 2px 0 4px; scrollbar-width: none; }
+  .scmd { display: flex; align-items: baseline; gap: 10px; padding: 6px 10px; border-radius: 10px; cursor: pointer; font-size: 12px; }
+  .scmd b { flex: none; font: 600 12px "Cascadia Mono", Consolas, monospace; color: #f2f3f5; }
+  .scmd span { min-width: 0; color: #8f959e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scmd.on, .scmd:hover { background: rgba(255, 255, 255, .07); }
+  /* Íconos de línea en el chat (antes eran emojis) */
+  #chat button.ico { background: transparent; color: #a4a9b2; }
+  #chat button.ico:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+  #chat button.ico svg { display: block; width: 17px; height: 17px; margin: auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  #chat button.send { background: #f5f6f8; color: #0b0c0e; }
+  #chat button.send:hover { background: #fff; color: #0b0c0e; }
+  #chat button.send svg { stroke-width: 2.4; }
+  #chat button.ico.live { background: #e5484d; color: #fff; }
+  #chat button:disabled { opacity: .45; }
+
+  /* ── Temas ──
+     Nube: suave, tarjetas como de vidrio con un brillo arriba y el acento lila.
+     JARVIS: HUD naranja, esquinas marcadas, letra monoespaciada en los títulos y líneas finas.
+     Todo es estático (nada se anima de más: cada cuadro animado cuesta, ver la nota de #breathe). */
+  .theme-cloud #island { background: linear-gradient(180deg, #000 0, #000 46px, #0c0d12 100%); }
+  .theme-cloud .box { background: linear-gradient(180deg, rgba(255, 255, 255, .068), rgba(255, 255, 255, .022) 62%), #111216;
+    border-color: rgba(255, 255, 255, .08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 8px 20px rgba(0, 0, 0, .28); }
+  .theme-cloud :is(button.allow, #chat button.send) { background: linear-gradient(180deg, #fff, #e6e3ff); color: #0b0c0e;
+    box-shadow: 0 0 0 1px rgba(157, 149, 255, .35), 0 4px 14px rgba(157, 149, 255, .22); }
+  .theme-cloud #chat input { background: rgba(0, 0, 0, .5); }
+  .theme-cloud .srow b, .theme-cloud .lhead b { letter-spacing: -.005em; }
+
+  .theme-jarvis { --hud: #ff8c1a; --hud-soft: rgba(255, 140, 26, .24); }
+  .theme-jarvis #island { background: radial-gradient(130px 80px at 60px 34px, rgba(255, 140, 26, .11), transparent 72%),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, .016) 0 1px, transparent 1px 3px), #000;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, .5), inset 0 -1px 0 rgba(255, 140, 26, .38); }
+  .theme-jarvis .box { border-radius: 12px; border: 1px solid var(--hud-soft);
+    background: linear-gradient(180deg, rgba(255, 140, 26, .075), rgba(255, 140, 26, .012) 58%), #07080a; box-shadow: inset 0 0 18px rgba(255, 140, 26, .05); }
+  /* Esquinas de HUD en cada tarjeta */
+  .theme-jarvis .box::before { content: ""; position: absolute; inset: 4px; z-index: 0; pointer-events: none; opacity: .75; background-repeat: no-repeat;
+    background-image: linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
+      linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud));
+    background-size: 10px 1.5px, 1.5px 10px, 10px 1.5px, 1.5px 10px, 10px 1.5px, 1.5px 10px, 10px 1.5px, 1.5px 10px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right; }
+  .theme-jarvis .box::after { background: linear-gradient(to top, color-mix(in srgb, var(--sc) 10%, transparent), transparent); }
+  .theme-jarvis :is(#sessions .head, .what, .ahead b, .lhead b, .afoot, .ameta, .rdue) { font-family: "Cascadia Mono", Consolas, monospace; letter-spacing: .05em; }
+  .theme-jarvis :is(#sessions .head, .ahead b, .what) { text-transform: uppercase; font-size: 10.5px; color: #ffb066; }
+  .theme-jarvis .what::before { border-radius: 1px; rotate: 45deg; background: var(--hud); }
+  .theme-jarvis :is(.dot, .pip) { border-radius: 1.5px; rotate: 45deg; scale: .88; } /* rotate/scale sueltos: se suman al latido (que usa transform) */
+  .theme-jarvis #content button:not(.pill) { border-radius: 8px; background: rgba(255, 140, 26, .08); color: #ffd3a3; box-shadow: inset 0 0 0 1px rgba(255, 140, 26, .28); }
+  .theme-jarvis #content button:not(.pill):hover { background: rgba(255, 140, 26, .17); }
+  .theme-jarvis #content :is(button.allow, #chat button.send) { background: #ff8c1a; color: #140800; box-shadow: 0 0 14px rgba(255, 140, 26, .45); }
+  .theme-jarvis #content #chat button.ico:not(.send) { background: transparent; box-shadow: none; color: #ffb066; }
+  .theme-jarvis #content #chat button.ico:not(.send):hover { background: rgba(255, 140, 26, .14); color: #ffe0bf; }
+  .theme-jarvis #content #chat button.ico.live { background: #e5484d; color: #fff; }
+  .theme-jarvis #chat input { border-radius: 8px; background: #040405; border-color: rgba(255, 140, 26, .25); font: 12px "Cascadia Mono", Consolas, monospace; }
+  .theme-jarvis #chat input:focus { border-color: rgba(255, 140, 26, .7); box-shadow: 0 0 0 3px rgba(255, 140, 26, .12); }
+  .theme-jarvis :is(.pill, .chip2, .mode, .chip) { border-radius: 4px; }
+  .theme-jarvis :is(.cmd, .code, .prop textarea) { border-color: rgba(255, 140, 26, .2); border-radius: 8px; }
+  .theme-jarvis .ctx:not(.warm, .hot) { --ring: var(--hud); }
+  .theme-jarvis .scmd b { color: #ffb066; }
+  .theme-jarvis .scmd.on, .theme-jarvis .scmd:hover { background: rgba(255, 140, 26, .1); }
+  .theme-jarvis #label { letter-spacing: .015em; }
+  .theme-jarvis .prop { border-top-color: rgba(255, 140, 26, .18); }
+  .theme-jarvis .crow { border-top-color: rgba(255, 140, 26, .12); }

@@ -282,6 +282,12 @@ Solo revisa cuando tú lo pides: toca el botón **✉** de la barra (aparece cua
 - **Te avisa de las versiones nuevas.** La primera vez Nimbo te pregunta una sola vez si puede mirar su página de versiones en GitHub (un par de veces al día, sin enviar nada tuyo). Cuando sale una más nueva, una tarjeta te cuenta qué trae; con la app instalada en Windows, **Actualizar ahora** baja el instalador, comprueba su SHA-256 contra el que publica GitHub y lo abre. En otros casos abre la página de la versión. Clic derecho → *Buscar actualizaciones* o *Avisarme de versiones nuevas*. Tras actualizar, una tarjeta te muestra las novedades.
 - **Silencio si estás mirando.** Si un trabajo termina mientras la terminal, tu editor o la app de Claude están al frente, Nimbo solo cambia de estado: sin sonido. Clic derecho → *Silencio si estoy mirando la terminal* (activado por defecto).
 - **Planes en la tarjeta de permisos.** Cuando Claude Code te pide aprobar un plan, la tarjeta muestra el plan.
+- **Contexto, modo y tiempo de cada chat.** Como el indicador de Claude Code, cada chat de la lista muestra un anillo con cuánto de su ventana de contexto lleva (ámbar desde 60 %, rojo desde 80 %), su modo de permisos cuando no es el normal (Plan, Auto, Edita solo, Sin permisos) y, al terminar, cuánto tardó el turno.
+- **Actividad.** Una píldora con lo último de tus chats mientras no mirabas: qué terminó (y cuánto tardó), qué te necesita o pidió permiso, qué falló, recordatorios y GitHub. Vive solo en memoria.
+- **Comandos con barra.** Escribe `/` en el chat: `/nuevo` (conversación nueva), `/pantalla`, `/modelo haiku|sonnet|opus`, `/actividad`, `/plan`, `/correo`, `/tema`, `/mini`, `/ajustes`, `/ayuda`. Se resuelven al instante, sin gastar a Claude.
+- **Lo que costó cada respuesta.** Debajo de cada respuesta: el modelo, cuánto tardó y cuánto costó en USD (lo que reporta tu Claude).
+- **Preguntar desde cualquier lado.** `Ctrl+Alt+Espacio` abre el chat de Nimbo listo para escribir, estés en el programa que estés.
+- **Liviano.** La ventana es transparente y Windows copia la ventana entera en cada cuadro animado; por eso las animaciones que no paran van a 6–30 cuadros por segundo, la ventana mide solo lo que ocupa la isla y la esfera de JARVIS dibuja solo los píxeles que se ven. Medido en el portátil del autor: el proceso que dibuja pasó de un núcleo entero de la CPU a ~14 % (Nube) y 21–26 % (JARVIS).
 - **Orquesta.** Conoce tus chats: si pides algo que le toca a otro proyecto, redacta el prompt para ese chat y lo envía solo cuando tú confirmas.
 - **Recordatorios.** "Recuérdame mañana a las 9 enviar la factura": avisa en la isla y con una notificación de Windows.
 - **Dos apariencias.** Una nube con cara o una esfera de puntos estilo JARVIS.
@@ -302,6 +308,8 @@ Solo revisa cuando tú lo pides: toca el botón **✉** de la barra (aparece cua
 | Arrastrar la barra | Lo mueve por el borde de arriba. |
 | Soltar un archivo encima | Se lo "come" y lo adjunta al chat. |
 | `Ctrl+Alt+N` | Modo mini. |
+| `Ctrl+Alt+Espacio` | Abre el chat desde cualquier lado. |
+| `/` en el chat | Comandos (`/ayuda` los lista). |
 
 ## Seguridad
 

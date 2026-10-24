@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   onMini: (fn) => ipcRenderer.on("mini", (_e, m) => fn(m)),
   toggleMini: () => ipcRenderer.send("toggle-mini"),
   chatOpen: (open) => ipcRenderer.send("chat-open", open),
+  chatCmd: (action, value) => ipcRenderer.invoke("chat-cmd", action, value),
+  onQuickAsk: (fn) => ipcRenderer.on("quick-ask", () => fn()),
   ask: (msg) => ipcRenderer.invoke("ask", msg),
   dispatch: (id, prompt) => ipcRenderer.invoke("dispatch", id, prompt),
   onTheme: (fn) => ipcRenderer.on("theme", (_e, t) => fn(t)),
@@ -74,6 +76,7 @@ contextBridge.exposeInMainWorld("nimbo", {
   // Ruta real de un archivo soltado o elegido (las imágenes pegadas no tienen: devuelve "").
   filePath: (file) => webUtils.getPathForFile(file),
   hitRects: (rects) => ipcRenderer.send("hit-rects", rects),
+  winHeight: (h) => ipcRenderer.send("win-height", h),
   onHover: (fn) => ipcRenderer.on("hover", (_e, on) => fn(on)),
   menu: () => ipcRenderer.send("menu"),
 });

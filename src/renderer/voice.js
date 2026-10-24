@@ -12,11 +12,16 @@
   // Whisper a veces "oye" estas frases en el silencio.
   const HALLUCINATIONS = /^(gracias( por ver)?|subt[ií]tulos|¡?suscr[ií]bete|amara\.org|\.+|…)/i;
 
-  const worker = new Worker("stt-worker.js", { type: "module" });
+  // El worker se crea al primer uso (al abrir el chat o dictar): importar Whisper pesa y no hace falta al arrancar.
+  let worker = null;
+  function getWorker() {
+    if (!worker) { worker = new Worker("stt-worker.js", { type: "module" }); worker.onmessage = onWorkerMessage; }
+    return worker;
+  }
   let nextId = 0;
   const waiting = new Map();
   const firstSeen = {}; // archivo del modelo → cuándo llegó su primer aviso de progreso
-  worker.onmessage = ({ data }) => {
+  const onWorkerMessage = ({ data }) => {
     // Solo mientras descarga de verdad: con el modelo en caché también llegan avisos al 100%.
     if (data.type === "progress" && data.file?.endsWith(".onnx")) {
       const downloading = label.textContent.startsWith(t("Descargando el oído"));
@@ -40,7 +45,7 @@
     const id = nextId++;
     return new Promise((resolve) => {
       waiting.set(id, resolve);
-      worker.postMessage({ id, audio, language: LANG === "en" ? "english" : "spanish" }, [audio.buffer]);
+      getWorker().postMessage({ id, audio, language: LANG === "en" ? "english" : "spanish" }, [audio.buffer]);
     });
   }
 
@@ -140,5 +145,5 @@
   const micBtn = document.getElementById("mic");
   micBtn.addEventListener("click", dictate);
   // Precarga el modelo al abrir el chat, para que el primer dictado no espere la descarga.
-  chat.addEventListener("focusin", () => worker.postMessage({ type: "load" }), { once: true });
+  chat.addEventListener("focusin", () => getWorker().postMessage({ type: "load" }), { once: true });
 })();

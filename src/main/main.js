@@ -7,7 +7,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
-const { createOrchestrator, sessionTitle, claudeFound } = require("./orchestrator");
+const { createOrchestrator, sessionTitle, sessionContext, claudeFound } = require("./orchestrator");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -40,7 +40,12 @@ if (process.env.APPIMAGE) app.commandLine.appendSwitch("no-sandbox");
 const PORT = 47823;
 const W = 440;
 const H = 480;
+// Alto real de la ventana: la página lo pide según lo que muestra (isla compacta ≈ 130 px, abierta = H). La ventana es
+// transparente y Windows copia la ventana ENTERA en cada cuadro animado: cuanto más chica, menos gasta.
+let winH = H;
 const MINI_SHORTCUT = "Control+Alt+N";
+// Acceso rápido (como el de la app de Claude): abre el chat de Nimbo desde cualquier programa.
+const ASK_SHORTCUT = "Control+Alt+Space";
 // Si nadie decide en este tiempo, la pregunta vuelve a la terminal.
 const DECISION_TIMEOUT = 60_000;
 
@@ -151,7 +156,7 @@ function createWindow() {
       const wx = Math.round(Math.min(a.x + span, Math.max(a.x, (p.x - drag.grab - 14 + a.x * k) / (1 + k))));
       prefs.pos = (wx - a.x) / span;
       if (wx !== b.x) {
-        win.setBounds({ x: wx, y: a.y, width: W, height: H });
+        win.setBounds({ x: wx, y: a.y, width: W, height: winH });
         win.webContents.send("anchor", prefs.pos);
       }
       return;
@@ -185,6 +190,15 @@ ipcMain.on("drag-end", () => {
   if (!drag) return;
   drag = null;
   savePrefs();
+});
+
+ipcMain.on("win-height", (_e, h) => {
+  h = Math.round(Number(h));
+  if (!Number.isFinite(h)) return;
+  winH = Math.min(H, Math.max(100, h));
+  if (mini || drag || !win || win.isDestroyed()) return;
+  const b = win.getBounds();
+  if (b.height !== winH) win.setBounds({ ...b, height: winH });
 });
 
 // Zonas tocables (la nube y las cajas visibles), en coordenadas de la ventana.
@@ -237,7 +251,7 @@ const MARGIN = 8;
 function placeWindow() {
   const { workArea: a } = screen.getPrimaryDisplay();
   if (!mini) {
-    win.setBounds({ x: Math.round(a.x + prefs.pos * (a.width - W)), y: a.y, width: W, height: H });
+    win.setBounds({ x: Math.round(a.x + prefs.pos * (a.width - W)), y: a.y, width: W, height: winH });
     return;
   }
   const [v, h] = corner.split("-");
@@ -640,6 +654,18 @@ ipcMain.handle("media", () => media);
 ipcMain.on("media-do", (_e, order) => player.send(String(order)));
 
 // La ventana normalmente no roba el foco; solo lo toma mientras el chat está abierto.
+// Comandos "/" del chat que tocan el proceso principal: conversación nueva y modelo del chat (los demás los resuelve la página).
+ipcMain.handle("chat-cmd", (_e, action, value) => {
+  if (action === "new") { orchestrator.reset(); aiHistory.clear(); return { ok: true }; }
+  if (action === "model") {
+    const model = ["haiku", "sonnet", "opus"].includes(value) ? value : null;
+    if (!model) return { model: prefs.chatModel };
+    prefs.chatModel = model;
+    savePrefs();
+    return { model, changed: true };
+  }
+  return null;
+});
 ipcMain.on("chat-open", (_e, open) => {
   win.setFocusable(open);
   if (open) win.focus();
@@ -1089,6 +1115,8 @@ http
       // Qué chat es: el título de la barra lateral (o la carpeta si no tiene título).
       payload.title = sessionTitle(payload.transcript_path) ||
         (path.resolve(String(payload.cwd ?? "")) === CHAT_DIR ? "Nimbo" : path.basename(String(payload.cwd ?? "")));
+      // Cuánto contexto lleva ese chat: al empezar y al terminar cada turno (y entre herramientas, solo si la transcripción creció).
+      if (["UserPromptSubmit", "Stop", "PostToolUse", "SessionStart"].includes(payload.hook_event_name)) payload.context = sessionContext(payload.transcript_path);
       try { alerts.onHook(payload); } catch {} // avisos al celular (solo el título del chat y el nombre de la herramienta)
       try { remote.onHook(payload); } catch {} // estado de los chats para la app del iPhone
       if (req.url === "/permission") return askPermission(payload, nonce, res);
@@ -1151,6 +1179,7 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   globalShortcut.register(MINI_SHORTCUT, () => setMini(!mini));
+  globalShortcut.register(ASK_SHORTCUT, () => { if (mini) setMini(false); win.webContents.send("quick-ask"); });
   setTimeout(pollGithub, 8000);
   setTimeout(checkPlan, 7000); // después del saludo
   setTimeout(showWhatsNew, 12_000);

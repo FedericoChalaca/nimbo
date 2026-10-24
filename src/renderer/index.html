@@ -119,14 +119,15 @@
           </div>
         </div>
         <form id="chat" class="box hidden">
+          <div id="slash" class="hidden"></div>
           <div id="thumbs"></div>
           <select id="ai" class="hidden" title="IA"></select>
-          <input id="msg" placeholder="Escríbele a Claude… (suelta archivos sobre mí)" autocomplete="off">
+          <input id="msg" placeholder="Escríbele a Claude… o / para comandos" autocomplete="off">
           <input id="file" type="file" multiple hidden>
-          <button type="button" id="shot" title="Ver mi pantalla: toma un pantallazo y lo adjunta">🖥</button>
-          <button type="button" id="attach" title="Adjuntar archivos o imágenes">📎</button>
-          <button type="button" id="mic" title="Dictar: habla y se escribe aquí">🎤</button>
-          <button type="submit" title="Enviar">➤</button>
+          <button type="button" id="shot" class="ico" title="Ver mi pantalla: toma un pantallazo y lo adjunta"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+          <button type="button" id="attach" class="ico" title="Adjuntar archivos o imágenes"><svg viewBox="0 0 24 24"><path d="M20 11.5l-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg></button>
+          <button type="button" id="mic" class="ico" title="Dictar: habla y se escribe aquí"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
+          <button type="submit" class="ico send" title="Enviar"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
         </form>
         <div id="answerBox" class="box hidden">
           <div id="answer"></div>

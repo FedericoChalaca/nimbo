@@ -282,6 +282,12 @@ It only checks when you ask: click the **✉** button on the bar (it appears onc
 - **Tells you about new versions.** The first time, Nimbo asks once whether it may look at its releases page on GitHub (a couple of times a day, nothing of yours is sent). When a newer one is out, a card shows what it brings; on an installed Windows copy **Update now** downloads the installer, checks its SHA-256 against the one GitHub publishes and opens it. Elsewhere it opens the release page. Right-click → *Check for updates* or *Tell me about new versions*. After updating, a card shows what is new.
 - **Quiet when you are watching.** If a job finishes while the terminal, your editor or the Claude app is in front, Nimbo only changes state: no sound. Right-click → *Quiet when I'm watching the terminal* (on by default).
 - **Plans in the permission card.** When Claude Code asks you to approve a plan, the card shows the plan itself.
+- **Context, mode and time of each chat.** Like Claude Code's own indicator, each chat in the list shows a ring with how much of its context window it has used (amber from 60 %, red from 80 %), its permission mode when it is not the normal one (Plan, Auto, Auto-edit, No prompts) and, when it finishes, how long the turn took.
+- **Activity.** A pill with the latest of your chats while you were away: what finished (and how long it took), what needs you or asked for permission, what failed, reminders and GitHub. It lives only in memory.
+- **Slash commands.** Type `/` in the chat: `/nuevo` (new conversation), `/pantalla`, `/modelo haiku|sonnet|opus`, `/actividad`, `/plan`, `/correo`, `/tema`, `/mini`, `/ajustes`, `/ayuda`. They run on the spot, without spending Claude.
+- **What each answer cost.** Under every answer: the model, how long it took and its cost in USD (as reported by your Claude).
+- **Quick ask from anywhere.** `Ctrl+Alt+Space` opens Nimbo's chat ready to type, from any program.
+- **Light on your PC.** The window is transparent, and Windows copies the whole window for every animated frame, so endless animations run at 6–30 frames per second, the window is only as tall as the island and the JARVIS sphere draws only the pixels you see. Measured on the author's laptop: the drawing process went from a full CPU core to about 14 % (Cloud) and 21–26 % (JARVIS).
 - **Orchestrates.** It knows your chats: ask for something that belongs to another project and it drafts the prompt for that chat, and sends it only when you confirm.
 - **Reminders.** "Remind me tomorrow at 9 to send the invoice": it alerts on the island and with a Windows notification.
 - **Two looks.** A cloud with a face, or a JARVIS-style sphere of connected dots.
@@ -302,6 +308,8 @@ It only checks when you ask: click the **✉** button on the bar (it appears onc
 | Drag the bar | Moves it along the top edge. |
 | Drop a file on it | It "eats" the file and attaches it to the chat. |
 | `Ctrl+Alt+N` | Mini mode. |
+| `Ctrl+Alt+Space` | Opens the chat from anywhere. |
+| `/` in the chat | Commands (`/ayuda` lists them). |
 
 ## Security
 
