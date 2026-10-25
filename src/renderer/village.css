@@ -101,3 +101,14 @@ button.px.alt { background: #e9e2d0; box-shadow: inset 0 -3px 0 #c2b89f, 0 2px 0
 #empty { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, 80vw); padding: 18px 22px; text-align: center; font-size: 14px;
   background: var(--paper); border: 4px solid var(--wood-d); border-radius: 8px; box-shadow: inset 0 0 0 3px var(--paper-d), 0 6px 0 rgba(0, 0, 0, .35); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01s !important; transition-duration: .01s !important; } }
+/* Proyectos de una casa (una casa por tema puede tener varias carpetas) */
+.project { padding: 9px 11px; margin-bottom: 7px; border-radius: 6px; background: rgba(234, 216, 177, .45); border: 2px solid rgba(61, 36, 20, .15); }
+.phead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.phead b { font: 800 14px "Cascadia Mono", Consolas, monospace; color: var(--wood-d); }
+.ppath { color: var(--ink-l); font: 11.5px "Cascadia Mono", Consolas, monospace; word-break: break-all; user-select: text; }
+.pgit { margin-top: 4px; font-size: 12.5px; }
+.pgit code { font: 600 12px "Cascadia Mono", Consolas, monospace; background: var(--paper-d); padding: 1px 6px; border-radius: 4px; }
+.pbtns { display: flex; gap: 8px; margin-top: 8px; }
+.px-input { flex: 1; min-width: 180px; padding: 5px 10px; border: 3px solid var(--wood-d); border-radius: 6px; background: var(--paper); color: var(--ink);
+  font: 600 13px "Segoe UI", sans-serif; outline: none; }
+#houseList .edit { margin-top: 6px; justify-content: center; border: 2px dashed var(--wood-l); color: var(--wood); font-size: 11.5px; }

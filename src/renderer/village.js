@@ -52,12 +52,16 @@
   const inMap = (x, y) => x >= 0 && y >= 0 && x < MW && y < MH;
   const SQ = { x: 27, y: 18, w: 11, h: 8 }; // la plaza
   const HALL = { x: 28, y: 10, w: 8, h: 6 }; // la casa de Nimbo
-  const SLOTS = [[15, 10], [44, 10], [10, 19], [49, 19], [15, 28], [44, 28], [22, 34], [37, 34], [5, 29], [54, 29], [20, 2], [39, 2]];
+  const SLOTS = [[15, 10], [44, 10], [10, 19], [49, 19], [15, 28], [44, 28], [22, 34], [37, 34], [5, 29], [54, 29], [20, 2], [39, 2], [30, 37], [2, 10], [56, 10]];
   const HW = 5, HH = 4; // casa: 5×4 baldosas; la puerta en el centro de la fila de abajo
   const ROOFS = ["#c0392b", "#2e86de", "#8e44ad", "#16a085", "#d35400", "#7b5e3b", "#b7950b", "#c2185b", "#2c7a7b", "#5b4fc4", "#a0522d", "#3d8b40"];
   const POND = { x: 56, y: 37, rx: 4.6, ry: 3.2 };
 
-  let houses = []; // { ...datos, x, y, roof, wall, front, work, windows }
+  let houses = []; // las casas de los lotes: { ...datos, x, y, roof, wall, front, work, windows }
+  let hallHouse = null; // la casa grande de la plaza (la de Nimbo), si aldea.json le dio habitantes ("ayuntamiento")
+  let plazaHome = null; // los chats sin casa viven en la plaza
+  const slotOf = new Map(); // id de casa → lote: cada casa conserva su lugar entre recargas
+  const homes = () => [hallHouse, ...houses, plazaHome].filter(Boolean);
   let staticLayer = null;
   let deco = []; // adornos con brillo de noche (faroles)
 
@@ -71,21 +75,27 @@
     }
   }
 
-  function buildMap(list) {
+  function buildMap(list, plazaChats = []) {
     ground.fill(GRASS);
     solid.fill(0);
     deco = [];
     const r = rng(20261024);
     for (let y = SQ.y; y < SQ.y + SQ.h; y++) for (let x = SQ.x; x < SQ.x + SQ.w; x++) ground[idx(x, y)] = PLAZA;
     carve(HALL.x + 3, HALL.y + HALL.h, HALL.x + 3, SQ.y); // de la puerta de Nimbo a la plaza
-    houses = list.slice(0, SLOTS.length).map((h, i) => {
-      const [x, y] = SLOTS[i];
+    const slotted = list.filter((h) => !h.hall);
+    for (const id of [...slotOf.keys()]) if (!slotted.some((h) => h.id === id)) slotOf.delete(id);
+    for (const h of slotted) if (!slotOf.has(h.id)) { const used = new Set(slotOf.values()); const free = SLOTS.findIndex((_, i) => !used.has(i)); if (free >= 0) slotOf.set(h.id, free); }
+    const hallData = list.find((h) => h.hall);
+    hallHouse = hallData ? { ...hallData, x: HALL.x, y: HALL.y, front: { x: HALL.x + 3, y: HALL.y + HALL.h }, work: { x: HALL.x + 4, y: HALL.y + HALL.h }, isHall: true } : null;
+    plazaHome = { id: "plaza", name: t("Plaza"), isPlaza: true, chats: plazaChats, projects: [], front: { x: SQ.x + 2, y: SQ.y + 2 }, work: { x: SQ.x + 2, y: SQ.y + 2 } };
+    houses = slotted.filter((h) => slotOf.has(h.id)).map((h) => {
+      const [x, y] = SLOTS[slotOf.get(h.id)];
       const seed = hash(h.name);
       const front = { x: x + 2, y: y + HH };
       const midRow = SQ.y + 3;
       carve(front.x, front.y, front.x, midRow); // baja (o sube) hasta la fila de la plaza…
       carve(front.x, midRow, front.x < SQ.x ? SQ.x : front.x > SQ.x + SQ.w ? SQ.x + SQ.w - 1 : front.x, midRow); // …y va hasta ella
-      return { ...h, x, y, front, work: { x: x + 3, y: y + HH }, roof: ROOFS[seed % ROOFS.length], wall: seed & 1 ? "wood" : "stone", seed };
+      return { ...h, x, y, front, work: { x: x + 3, y: y + HH }, roof: h.color || ROOFS[(h.tema ? hash(h.tema.toLowerCase()) : seed) % ROOFS.length], wall: seed & 1 ? "wood" : "stone", seed };
     });
     // Estanque
     for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
@@ -125,6 +135,7 @@
     // Faroles en las esquinas de la plaza
     for (const [x, y] of [[SQ.x, SQ.y], [SQ.x + SQ.w - 1, SQ.y], [SQ.x, SQ.y + SQ.h - 1], [SQ.x + SQ.w - 1, SQ.y + SQ.h - 1]]) { deco.push({ x, y, kind: "lamp" }); solid[idx(x, y)] = 1; }
     drawStatic(trees, bits, { fx, fy });
+    if (hallHouse) hallHouse.windows = HALL.windows;
   }
 
   // --- Arte (todo a mano, a píxeles) ---
@@ -421,7 +432,7 @@
   function makeVillagers() {
     const keep = new Map(villagers.map((v) => [v.id, v]));
     villagers = [];
-    for (const h of houses) for (const c of h.chats) {
+    for (const h of homes()) for (const c of h.chats) {
       const old = keep.get(c.id);
       const r = rng(hash(c.id));
       const start = { x: h.front.x * TILE + 8 + Math.round((r() - .5) * 20), y: (h.front.y + 1) * TILE + 12 };
@@ -490,7 +501,7 @@
     v.tool = 0;
     if (st === "needs") { v.dir = "up"; if (!v.bubble || v.bubble.kind !== "alert") say(v, "!", 60_000, "alert"); return; }
     if (v.bubble?.kind === "alert") v.bubble = null;
-    if (night() && !v.chat.active) { // de noche los que no trabajan se van a dormir
+    if (night() && !v.chat.active && !h.isPlaza) { // de noche los que no trabajan se van a dormir
       if (tileOf(v).x === h.front.x && tileOf(v).y === h.front.y) { v.inside = true; return; }
       goTo(v, h.front.x, h.front.y);
       return;
@@ -499,6 +510,7 @@
     v.wait -= dt;
     if (v.wait > 0) return;
     v.wait = 3 + v.r() * 6;
+    if (h.isPlaza) { goTo(v, SQ.x + 1 + Math.floor(v.r() * (SQ.w - 2)), SQ.y + 1 + Math.floor(v.r() * (SQ.h - 2))); return; } // los sin casa pasean por la plaza
     if (v.r() < .25) { goTo(v, h.front.x, h.front.y + 1); return; } // volver un rato a casa
     const s = randomSpot(v.r);
     goTo(v, s.x, s.y);
@@ -554,6 +566,7 @@
   const keys = new Set();
   addEventListener("keydown", (e) => {
     if (e.key === "Escape") { closeAll(); return; }
+    if (e.target.closest?.("input")) return;
     if (!$("house").classList.contains("hidden") || !$("lightbox").classList.contains("hidden")) return;
     const k = e.key.toLowerCase();
     if (["e", " ", "enter"].includes(k)) { e.preventDefault(); if (!$("dialog").classList.contains("hidden")) closeDialog(); else interact(); return; }
@@ -601,7 +614,7 @@
     return best;
   }
   function houseAt(tx, ty) {
-    if (tx >= HALL.x && tx < HALL.x + HALL.w && ty >= HALL.y - 1 && ty <= HALL.y + HALL.h) return "hall";
+    if (tx >= HALL.x && tx < HALL.x + HALL.w && ty >= HALL.y - 1 && ty <= HALL.y + HALL.h) return hallHouse ?? "hall";
     return houses.find((h) => tx >= h.x && tx < h.x + HW && ty >= h.y - 1 && ty <= h.y + HH) ?? null;
   }
   function interact() {
@@ -621,14 +634,36 @@
     else lines.push(t("Vivo en {0}. Mi último movimiento fue {1}.", v.house.name, ago(v.chat.at)));
     if (v.chat.lastPrompt) lines.push(t("Lo último que me pediste: «{0}»", short(v.chat.lastPrompt, 110)));
     if (l?.ctx) lines.push(t("Llevo {0} % de mi memoria (contexto).", l.ctx.pct));
-    const home = el("button", "px", t("Ver mi casa"));
-    home.onclick = () => { closeDialog(); openHouse(v.house); };
+    const home = el("button", "px", v.house.isPlaza ? t("Buscarme casa") : t("Ver mi casa"));
+    home.onclick = () => (v.house.isPlaza ? showMove(v) : (closeDialog(), openHouse(v.house)));
+    const move = el("button", "px alt", t("Mudarme…"));
+    move.onclick = () => showMove(v);
+    if (v.house.isPlaza) lines.push(t("Vivo en la plaza: todavía no tengo casa."));
     v.dir = player.x > v.x ? "right" : player.x < v.x - 2 ? "left" : player.y > v.y ? "down" : "up";
-    showDialog(nameOf(v), lines.join("\n"), [home]);
+    showDialog(nameOf(v), lines.join("\n"), v.house.isPlaza ? [home] : [home, move]);
+  }
+  // Mudar un chat: a otra casa, a la plaza o a una casa nueva que nace con él. Queda guardado en aldea.json.
+  function showMove(v) {
+    const go = (to) => async () => { const r = await api.move(v.id, to).catch(() => null); if (r?.error === "broken") return showDialog(nameOf(v), t("No puedo: aldea.json tiene un error y no lo quiero pisar. Arréglalo o bórralo."), []); closeDialog(); await load(); };
+    const targets = [hallHouse, ...houses].filter((h) => h && h !== v.house).map((h) => { const b = el("button", "px alt", h.isHall ? `Nimbo · ${h.name}` : h.name); b.onclick = go(h.id); return b; });
+    if (!v.house.isPlaza) { const p = el("button", "px alt", t("Plaza (sin casa)")); p.onclick = go("plaza"); targets.push(p); }
+    const fresh = el("button", "px", t("＋ Casa nueva"));
+    fresh.onclick = () => {
+      const input = el("input", "px-input");
+      input.value = short(v.chat.title, 40);
+      input.maxLength = 40;
+      const ok = el("button", "px", t("Fundar"));
+      ok.onclick = async () => { const r = await api.found(v.id, input.value).catch(() => null); if (r?.error === "broken") return showDialog(nameOf(v), t("No puedo: aldea.json tiene un error y no lo quiero pisar. Arréglalo o bórralo."), []); closeDialog(); await load(); };
+      input.onkeydown = (e) => { if (e.key === "Enter") ok.click(); };
+      showDialog(nameOf(v), t("¿Cómo se llama la casa nueva?"), [input, ok]);
+      setTimeout(() => input.focus(), 30);
+    };
+    showDialog(nameOf(v), t("¿A dónde me mudo?"), [...targets, fresh]);
   }
   function hallTalk() {
     const busy = villagers.filter((v) => stateOf(v) === "working").length;
     const needs = villagers.filter((v) => stateOf(v) === "needs").length;
+    if (hallHouse) { closeDialog(); return openHouse(hallHouse); }
     showDialog("Nimbo", [t("¡Bienvenido a la aldea, {0}! Aquí vive cada uno de tus chats de Claude Code.", NAME || t("Federico")),
       t("Hoy: {0} casas, {1} trabajando y {2} esperándote.", houses.length, busy, needs)].join("\n"), []);
   }
@@ -652,19 +687,26 @@
   async function openHouse(h) {
     closeDialog();
     $("houseName").textContent = h.name;
-    $("housePath").textContent = h.folder;
-    const git = $("houseGit");
-    git.replaceChildren();
-    if (h.git) {
-      git.append(t("Rama "), el("code", "", h.git.branch), " · ", t("último commit {0}: ", h.git.when ? ago(h.git.when) : ""), el("b", "", h.git.subject));
-      if (h.git.changes) git.append(" · ", el("span", "", t("{0} cambios sin guardar", h.git.changes)));
-    } else git.textContent = t("No es un repositorio de git (o no tiene commits).");
-    const btns = [];
-    const folder = el("button", "px", t("Abrir carpeta"));
-    folder.onclick = () => api.open(h.id, "folder");
-    btns.push(folder);
-    if (h.git?.github) { const gh = el("button", "px alt", t("Ver en GitHub")); gh.onclick = () => api.open(h.id, "github"); btns.push(gh); }
-    $("houseBtns").replaceChildren(...btns);
+    $("housePath").textContent = [h.tema, h.more ? t("y {0} chats más", h.more) : ""].filter(Boolean).join(" · ");
+    $("houseBtns").replaceChildren();
+    const projects = h.projects ?? [];
+    $("houseGit").replaceChildren(...(projects.length ? projects.map((p) => {
+      const box = el("div", "project");
+      const head = el("div", "phead");
+      head.append(el("b", "", p.name), el("span", "ppath", p.path));
+      const git = el("div", "pgit");
+      if (p.git) {
+        git.append(t("Rama "), el("code", "", p.git.branch), " · ", t("último commit {0}: ", p.git.when ? ago(p.git.when) : ""), el("b", "", p.git.subject));
+        if (p.git.changes) git.append(" · ", el("span", "", t("{0} cambios sin guardar", p.git.changes)));
+      } else git.textContent = t("No es un repositorio de git (o no tiene commits).");
+      const btns = el("div", "pbtns");
+      const folder = el("button", "px", t("Abrir carpeta"));
+      folder.onclick = () => api.open(h.id, "folder", p.i);
+      btns.append(folder);
+      if (p.git?.github) { const gh = el("button", "px alt", t("Ver en GitHub")); gh.onclick = () => api.open(h.id, "github", p.i); btns.append(gh); }
+      box.append(head, git, btns);
+      return box;
+    }) : [el("div", "pgit", t("Esta casa no tiene carpetas: sus chats viven aquí por su título o porque los mudaste."))]));
     $("houseChats").replaceChildren(...h.chats.map((c) => {
       const v = villagers.find((x) => x.id === c.id);
       const row = el("div", "chatrow");
@@ -722,19 +764,24 @@
   let hudKey = "";
   function renderHud() {
     const busy = villagers.filter((v) => stateOf(v) === "working").length;
-    $("hudStats").textContent = t("{0} casas · {1} aldeanos · {2} trabajando", houses.length, villagers.length, busy);
-    const key = houses.map((h) => h.id + h.chats.length).join();
+    $("hudStats").textContent = t("{0} casas · {1} aldeanos · {2} trabajando", houses.length + (hallHouse ? 1 : 0), villagers.length, busy);
+    const list = [...(hallHouse ? [hallHouse] : []), ...houses, ...(plazaHome?.chats.length ? [plazaHome] : [])];
+    const key = list.map((h) => h.id + h.chats.length).join() + broken;
     if (key === hudKey) return; // sin cambios no se redibuja: reemplazar los botones se comería el clic en curso
     hudKey = key;
-    $("houseList").replaceChildren(...houses.map((h) => {
+    const rows = list.map((h) => {
       const b = el("button");
       b.type = "button";
       const sw = el("i");
-      sw.style.background = h.roof;
-      b.append(sw, el("span", "", h.name), el("em", "", String(h.chats.length)));
+      sw.style.background = h.isHall ? "#3a78c2" : h.isPlaza ? "#bdb6a7" : h.roof;
+      b.append(sw, el("span", "", h.isHall ? `Nimbo · ${h.name}` : h.isPlaza ? t("Plaza (sin casa)") : h.name), el("em", "", String(h.chats.length)));
       b.onclick = () => { player.x = h.front.x * TILE + 8; player.y = (h.front.y + 1) * TILE + 12; player.path = null; buddy.trail = []; canvas.focus(); };
       return b;
-    }));
+    });
+    const edit = el("button", "edit", broken ? t("⚠ aldea.json tiene un error (no lo toqué): abrirlo") : t("✎ Editar casas (aldea.json)"));
+    edit.type = "button";
+    edit.onclick = () => api.editConfig?.();
+    $("houseList").replaceChildren(...rows, edit);
   }
 
   // --- Textos encima del mundo: carteles, globos, nombres ---
@@ -751,7 +798,7 @@
   }
   function drawLabels(now) {
     for (const e of pool.values()) e.dataset.used = "";
-    label("hall", "sign-label home", "Nimbo", (HALL.x + HALL.w / 2) * TILE, HALL.y * TILE - 2);
+    label("hall", "sign-label home", hallHouse ? `Nimbo · ${short(hallHouse.name, 18)}` : "Nimbo", (HALL.x + HALL.w / 2) * TILE, HALL.y * TILE - 2);
     for (const h of houses) {
       const vs = villagers.filter((v) => v.house === h);
       const cls = vs.some((v) => stateOf(v) === "needs") ? " needs" : vs.some((v) => stateOf(v) === "working") ? " busy" : "";
@@ -809,7 +856,7 @@
         const glow = (x, y, rad, a) => { const gr = ctx.createRadialGradient(x, y, 0, x, y, rad); gr.addColorStop(0, `rgba(255,190,90,${a})`); gr.addColorStop(1, "rgba(255,190,90,0)"); ctx.fillStyle = gr; ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2); };
         const lit = (w) => { R(ctx, w.x, w.y, w.w, w.h, "rgba(255,200,90,.55)"); glow(w.x + w.w / 2, w.y + w.h / 2, w.w * 1.1, .22); };
         for (const h of houses) if (villagers.some((v) => v.house === h && (v.inside || stateOf(v) === "working"))) h.windows?.forEach(lit);
-        HALL.windows?.forEach(lit);
+        HALL.windows?.forEach(lit); // la casa de Nimbo siempre tiene luz
         for (const d of deco) glow(d.x * TILE + 8, d.y * TILE - 8, 22, .3);
         ctx.globalCompositeOperation = "source-over";
       }
@@ -824,17 +871,19 @@
 
   // --- Datos: casas y chats (al abrir y cada minuto) y eventos de Claude Code en vivo ---
   let loading = null;
+  let broken = false; // aldea.json está mal escrito: se avisa y no se toca
   async function load() {
     if (loading) return loading;
     loading = (async () => {
       const d = await api.data().catch(() => null);
       if (!d) return;
       NAME = d.name || "";
+      broken = !!d.broken;
       const first = !staticLayer;
-      buildMap(d.houses ?? []);
+      buildMap(d.houses ?? [], d.plaza ?? []);
       makeVillagers();
       if (first) { player.x = (HALL.x + 3) * TILE + 8; player.y = (HALL.y + HALL.h + 1) * TILE + 12; cam.x = player.x - VW / 2; cam.y = player.y - VH / 2; }
-      $("empty").classList.toggle("hidden", houses.length > 0);
+      $("empty").classList.toggle("hidden", homes().some((h) => h.chats.length));
       $("empty").textContent = t("Todavía no hay vecinos: abre un chat de Claude Code en una carpeta y aparecerá su casa aquí.");
       renderHud();
     })().finally(() => { loading = null; });

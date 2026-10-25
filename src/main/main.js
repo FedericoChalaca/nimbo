@@ -674,7 +674,8 @@ ipcMain.on("chat-open", (_e, open) => {
 
 // --- La aldea (village.js): cada carpeta con chats es una casa y cada chat, un aldeano. Ventana aparte, opaca (barata de dibujar). ---
 const village = createVillage({
-  listSessions: () => listSessions(CHAT_DIR, { limit: 40 }),
+  listSessions: () => listSessions(CHAT_DIR, { limit: 60, includeScratch: true }),
+  configFile: path.join(app.getPath("userData"), "aldea.json"), // qué chat vive en qué casa (texto editable: lo leen el vault y el Orquestador)
   page: () => `nimbo://app/src/renderer/village.html?lang=${lang()}`,
   preload: path.join(__dirname, "village-preload.js"),
   name: () => String(prefs.name ?? ""),

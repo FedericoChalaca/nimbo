@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld("aldea", {
   data: () => ipcRenderer.invoke("village-data"),
   photos: (house) => ipcRenderer.invoke("village-photos", String(house)),
   photo: (house, i) => ipcRenderer.invoke("village-photo", String(house), Number(i)),
-  open: (house, what) => ipcRenderer.send("village-open", String(house), what === "github" ? "github" : "folder"),
+  open: (house, what, i = 0) => ipcRenderer.send("village-open", String(house), what === "github" ? "github" : "folder", Number(i)),
+  move: (chat, house) => ipcRenderer.invoke("village-move", String(chat), String(house)), // mudar un chat a otra casa ("plaza" = sin casa)
+  found: (chat, name) => ipcRenderer.invoke("village-found", String(chat), String(name)), // casa nueva con ese chat
+  editConfig: () => ipcRenderer.send("village-config"), // abre aldea.json
   onHook: (fn) => ipcRenderer.on("village-hook", (_e, h) => fn(h)),
 });

@@ -229,7 +229,8 @@ async function readEdges(file, size) {
 const sessionCache = new Map(); // archivo → { mtime, size, session | null }: lo que no cambió no se vuelve a leer
 
 /** Tus chats más recientes que tienen carpeta de proyecto. */
-async function listSessions(excludeCwd, { limit = 16 } = {}) {
+// includeScratch: también los chats "sin carpeta" de la app (scratch-workspaces); la aldea los ubica por título o por dónde trabajaron.
+async function listSessions(excludeCwd, { limit = 16, includeScratch = false } = {}) {
   const files = [];
   for (const dir of await fs.promises.readdir(PROJECTS, { withFileTypes: true })) {
     if (!dir.isDirectory()) continue;
@@ -250,7 +251,7 @@ async function listSessions(excludeCwd, { limit = 16 } = {}) {
   for (const { full, mtime, size } of candidates) {
     const hit = sessionCache.get(full);
     if (hit && hit.mtime === mtime && hit.size === size && hit.exclude === excludeCwd) {
-      if (hit.session) sessions.push({ ...hit.session, at: mtime, active: Date.now() - mtime < ACTIVE_MS });
+      if (hit.session && (includeScratch || !hit.session.scratch)) sessions.push({ ...hit.session, at: mtime, active: Date.now() - mtime < ACTIVE_MS });
       if (sessions.length === limit) break;
       continue;
     }
@@ -260,18 +261,21 @@ async function listSessions(excludeCwd, { limit = 16 } = {}) {
     const cwd = cwdMatch && JSON.parse(`"${cwdMatch[1]}"`);
     // Fuera: chats "sin carpeta" de la app (scratch-workspaces) y corridas sueltas de
     // `claude -p` (entrypoint sdk-cli), que no son conversaciones tuyas.
-    if (!cwd || cwd === excludeCwd || cwd.includes("scratch-workspaces") || !fs.existsSync(cwd)) { keep(null); continue; }
+    const scratch = !!cwd && cwd.includes("scratch-workspaces");
+    if (!cwd || cwd === excludeCwd || (!scratch && !fs.existsSync(cwd))) { keep(null); continue; }
     if (text.match(new RegExp(`"entrypoint":${STR}`))?.[1] === "sdk-cli") { keep(null); continue; }
-    sessions.push(keep({
+    const session = keep({
       id: path.basename(full, ".jsonl"),
       cwd,
+      scratch,
       dirs: await scanDirs(full, size, cwd),
       project: path.basename(cwd),
       title: lastMatch(text, new RegExp(`"customTitle":${STR}`, "g")) ?? lastMatch(text, new RegExp(`"agentName":${STR}`, "g")) ?? "",
       lastPrompt: (lastMatch(text, new RegExp(`"lastPrompt":${STR}`, "g")) ?? "").slice(0, 140),
       active: Date.now() - mtime < ACTIVE_MS,
-    }));
-    sessions[sessions.length - 1].at = mtime; // cuándo se movió por última vez (la aldea ordena las casas con esto)
+    });
+    if (scratch && !includeScratch) continue; // se recuerda igual (la aldea sí los quiere), pero el chat de Nimbo no los lista
+    sessions.push({ ...session, at: mtime }); // cuándo se movió por última vez (la aldea ordena las casas con esto)
     if (sessions.length === limit) break; // el del vault + los más nuevos (16 para el chat de Nimbo; la aldea pide más)
   }
   return sessions;
