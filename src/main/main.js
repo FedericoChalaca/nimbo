@@ -10,7 +10,7 @@ const path = require("path");
 const { createOrchestrator, sessionTitle, sessionContext, claudeFound, listSessions } = require("./orchestrator");
 const { createVillage } = require("./village");
 const { createWake, createLive } = require("../integrations/wake");
-const { createWindows } = require("../integrations/windows");
+const { createWindows, AUMID } = require("../integrations/windows");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -759,14 +759,65 @@ async function storeLogo(file) {
 }
 let lastTasks = null; // la última lista: se reenvía cuando la página carga (el ayudante solo avisa cuando algo cambia)
 let taskbarArming = false; // prendiendo: falta leer cómo estaba la barra antes de ocultarla
+// Programas anclados (prefs.taskbarPins): salen siempre, abiertos o no; clic derecho en uno lo ancla o lo quita. La primera vez se
+// copian los accesos directos anclados en la barra de Windows (las apps de la Tienda no dejan acceso directo: se anclan desde Nimbo).
+const PINNED_DIR = path.join(app.getPath("appData"), "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar");
+function taskbarPins() {
+  if (!Array.isArray(prefs.taskbarPins)) {
+    let lnks = [];
+    try { lnks = fs.readdirSync(PINNED_DIR).filter((f) => /\.lnk$/i.test(f)); } catch {}
+    prefs.taskbarPins = lnks.map((f) => {
+      const lnk = path.join(PINNED_DIR, f);
+      let target = "";
+      try { target = shell.readShortcutLink(lnk).target; } catch {}
+      return /\.exe$/i.test(target) ? { key: target.toLowerCase(), name: path.basename(f, ".lnk"), path: target, lnk } : null;
+    }).filter(Boolean);
+    savePrefs();
+  }
+  return prefs.taskbarPins;
+}
+// Las ventanas de Nimbo que no son "un programa" (la isla y la barra de música) no van en la lista; la aldea sí, como "Nimbo".
+const hwndOf = (w) => { try { return w.getNativeWindowHandle().readBigUInt64LE(0).toString(); } catch { return ""; } };
+const NIMBO_ICON = () => nativeImage.createFromPath(path.join(ROOT, "assets", "icon.png")).resize({ width: 32, height: 32 }).toDataURL();
+let lastApps = [];
+async function sendTasks() {
+  const own = process.execPath.toLowerCase();
+  const skip = new Set(BrowserWindow.getAllWindows().filter((w) => w !== village.window()).map(hwndOf));
+  const apps = lastApps.map((a) => ({ ...a, windows: a.windows.filter((w) => !skip.has(w.h)) })).filter((a) => a.windows.length);
+  const pins = taskbarPins();
+  const running = new Map(apps.map((a) => [a.key, a]));
+  const list = [...pins.map((p) => ({ ...(running.get(p.key) ?? { key: p.key, name: p.name, path: p.path, windows: [], fg: false, min: false }), pinned: true })),
+    ...apps.filter((a) => !pins.some((p) => p.key === a.key))];
+  const out = await Promise.all(list.map(async (a) => ({ key: a.key, name: a.key === own ? "Nimbo" : a.name, icon: a.key === own ? NIMBO_ICON() : await iconOf(a.path),
+    fg: a.fg, min: a.min, pinned: !!a.pinned, windows: a.windows.map((w) => ({ h: w.h, title: w.title, fg: w.fg, min: w.min })) })));
+  lastTasks = out;
+  if (win && !win.isDestroyed()) win.webContents.send("tasks", out);
+}
+function launchPin(p) {
+  if (p.lnk && fs.existsSync(p.lnk)) return shell.openPath(p.lnk);
+  if (p.aumid && AUMID.test(p.aumid)) return require("child_process").spawn("explorer.exe", [`shell:AppsFolder\\${p.aumid}`], { detached: true, stdio: "ignore" }).unref();
+  if (/\.exe$/i.test(p.path ?? "") && !/\\WindowsApps\\/i.test(p.path) && fs.existsSync(p.path)) return shell.openPath(p.path);
+}
+ipcMain.on("task-launch", (_e, key) => { const p = taskbarPins().find((x) => x.key === String(key)); if (p) launchPin(p); });
+ipcMain.on("task-menu", (_e, key) => {
+  const pins = taskbarPins();
+  const pin = pins.find((x) => x.key === String(key));
+  const app_ = lastApps.find((a) => a.key === String(key));
+  if (!pin && !app_) return;
+  const items = [pin
+    ? { label: t("Quitar de la barra de Nimbo"), click: () => { prefs.taskbarPins = pins.filter((x) => x !== pin); savePrefs(); sendTasks(); } }
+    : { label: t("Anclar a la barra de Nimbo"), click: () => { prefs.taskbarPins = [...pins, { key: app_.key, name: app_.name, path: app_.path, aumid: app_.aumid || "" }]; savePrefs(); sendTasks(); } }];
+  if (app_?.windows.length) items.push({ type: "separator" }, { label: app_.windows.length > 1 ? t("Cerrar las {0} ventanas", app_.windows.length) : t("Cerrar ventana"), click: () => app_.windows.forEach((w) => windows.act("close", w.h)) });
+  Menu.buildFromTemplate(items).popup({ window: win });
+});
 const windows = createWindows({
   binDir: path.join(app.getPath("userData"), "bin"),
   hide: true, // el auto-ocultar solo no basta: con un botón parpadeando la barra de Windows se queda a la vista
-  onApps: async (apps) => {
-    const out = await Promise.all(apps.map(async (a) => ({ key: a.key, name: a.name, icon: await iconOf(a.path), fg: a.fg, min: a.min,
-      windows: a.windows.map((w) => ({ h: w.h, title: w.title, fg: w.fg, min: w.min })) })));
-    lastTasks = out;
-    if (win && !win.isDestroyed()) win.webContents.send("tasks", out);
+  onApps: (apps) => {
+    // Un programa anclado guarda su identificador de la Tienda la primera vez que se ve abierto (para poder abrirlo cerrado).
+    for (const p of taskbarPins()) { const a = apps.find((x) => x.key === p.key); if (a?.aumid && !p.aumid) { p.aumid = a.aumid; savePrefs(); } }
+    lastApps = apps;
+    sendTasks();
   },
   onAutoHide: (v) => {
     if (!taskbarArming) return;

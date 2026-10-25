@@ -37,6 +37,13 @@ static class Ventanas {
   [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder s, ref int n);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetApplicationUserModelId(IntPtr h, ref uint n, StringBuilder s);
+  [DllImport("kernel32.dll")] static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint pid);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool Process32FirstW(IntPtr snap, ref PROCESSENTRY32 e);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool Process32NextW(IntPtr snap, ref PROCESSENTRY32 e);
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct PROCESSENTRY32 { public uint dwSize, cntUsage, th32ProcessID; public IntPtr th32DefaultHeapID; public uint th32ModuleID, cntThreads, th32ParentProcessID; public int pcPriClassBase; public uint dwFlags;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szExeFile; }
   [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
@@ -72,6 +79,37 @@ static class Ventanas {
     }
     paths[pid] = p;
     return p;
+  }
+  // Apps de la Tienda: su identificador (AUMID). Con él Nimbo puede abrirlas cuando están ancladas y cerradas (shell:AppsFolder\<id>).
+  static readonly Dictionary<uint, string> aumids = new Dictionary<uint, string>();
+  static string AumidOf(uint pid) {
+    string a;
+    if (aumids.TryGetValue(pid, out a)) return a;
+    a = "";
+    IntPtr h = OpenProcess(0x1000, false, pid);
+    if (h != IntPtr.Zero) {
+      var sb = new StringBuilder(256); uint n = 256;
+      if (GetApplicationUserModelId(h, ref n, sb) == 0) a = sb.ToString();
+      CloseHandle(h);
+    }
+    aumids[pid] = a;
+    return a;
+  }
+  // Programas cuya ventana es de un proceso ayudante (Steam: steamwebhelper.exe): se usa el programa que lo abrió, que es el que
+  // hay que abrir al anclarlo y el que tiene el nombre y el ícono de verdad.
+  static readonly Dictionary<uint, uint> owners = new Dictionary<uint, uint>();
+  static uint OwnerOf(uint pid) {
+    uint o;
+    if (owners.TryGetValue(pid, out o)) return o;
+    o = pid;
+    IntPtr snap = CreateToolhelp32Snapshot(2, 0); // TH32CS_SNAPPROCESS
+    if (snap != new IntPtr(-1)) {
+      var e = new PROCESSENTRY32(); e.dwSize = (uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
+      for (bool ok = Process32FirstW(snap, ref e); ok; ok = Process32NextW(snap, ref e)) if (e.th32ProcessID == pid) { o = e.th32ParentProcessID; break; }
+      CloseHandle(snap);
+    }
+    owners[pid] = o;
+    return o;
   }
   static string DescOf(string path) {
     if (path == "") return "";
@@ -113,18 +151,26 @@ static class Ventanas {
       if (!IsAppWindow(h)) return true;
       var t = new StringBuilder(512); GetWindowText(h, t, 512);
       uint pid; GetWindowThreadProcessId(h, out pid);
-      if (pid == (uint)parent) return true;
       string path = PathOf(pid);
+      uint real = pid;
+      for (int up = 0; up < 3 && System.IO.Path.GetFileName(path).IndexOf("helper", StringComparison.OrdinalIgnoreCase) >= 0; up++) {
+        uint parentPid = OwnerOf(real);
+        string pp = parentPid != real ? PathOf(parentPid) : "";
+        if (pp == "") break;
+        real = parentPid; path = pp;
+      }
       // Apps de la Tienda: la ventana es de ApplicationFrameHost; el programa real es su ventana hija de otro proceso.
       if (path.EndsWith("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase)) {
         uint host = pid;
-        EnumChildWindows(h, (c, l2) => { uint p2; GetWindowThreadProcessId(c, out p2); if (p2 != host) { path = PathOf(p2); return false; } return true; }, IntPtr.Zero);
+        EnumChildWindows(h, (c, l2) => { uint p2; GetWindowThreadProcessId(c, out p2); if (p2 != host) { path = PathOf(p2); real = p2; return false; } return true; }, IntPtr.Zero);
       }
       if (!first) sb.Append(',');
       first = false;
       sb.Append("{\"h\":\"").Append(h.ToInt64()).Append("\",\"t\":\"").Append(Esc(t.ToString())).Append("\",\"p\":\"").Append(Esc(path))
         .Append("\",\"d\":\"").Append(Esc(DescOf(path))).Append("\",\"m\":").Append(IsIconic(h) ? "true" : "false")
-        .Append(",\"f\":").Append(h == fg ? "true" : "false").Append('}');
+        .Append(",\"f\":").Append(h == fg ? "true" : "false");
+      if (path.IndexOf("\\WindowsApps\\", StringComparison.OrdinalIgnoreCase) >= 0) sb.Append(",\"a\":\"").Append(Esc(AumidOf(real))).Append('"');
+      sb.Append('}');
       return true;
     }, IntPtr.Zero);
     return sb.Append(']').ToString();
@@ -160,7 +206,7 @@ static class Ventanas {
 
   // --- Esconder la barra de Windows (una por pantalla) ---
   static volatile bool quitting = false;
-  static int parent = 0; // Nimbo: sus ventanas no van en la lista
+  static int parent = 0; // el proceso de Nimbo
   // (La barra misma no cuenta: al cerrarse una ventana Windows le pasa el foco y se quedaría a la vista.)
   static readonly HashSet<string> SHELL = new HashSet<string> { "NotifyIconOverflowWindow",
     "TopLevelWindowForOverflowXamlIsland", "Xaml_WindowedPopupClass", "Windows.UI.Core.CoreWindow" }; // Inicio, búsqueda, reloj, íconos ocultos

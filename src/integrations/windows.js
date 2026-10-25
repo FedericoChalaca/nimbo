@@ -18,16 +18,20 @@ function ensureExe(binDir) {
   if (!fs.existsSync(CSC)) throw new Error("csc");
   fs.mkdirSync(binDir, { recursive: true });
   execFileSync(CSC, ["-nologo", "-optimize", `-out:${exe}`, SOURCE], { windowsHide: true, timeout: 60_000 });
-  for (const old of fs.readdirSync(binDir)) if (/^ventanas-.*\.exe$/.test(old) && path.join(binDir, old) !== exe) fs.rmSync(path.join(binDir, old), { force: true });
+  // Las versiones viejas se borran; si una sigue abierta (otro Nimbo), Windows no deja: queda para la próxima vez.
+  for (const old of fs.readdirSync(binDir)) if (/^ventanas-.*\.exe$/.test(old) && path.join(binDir, old) !== exe) try { fs.rmSync(path.join(binDir, old), { force: true }); } catch {}
   return exe;
 }
+
+// Identificador de una app de la Tienda (Paquete_editor!App): lo único que se le pasa a shell:AppsFolder para abrirla.
+const AUMID = /^[\w.-]{1,200}![\w.-]{1,100}$/;
 
 /** Una línea del programa → { windows: [...] } | { autohide: 0|1 } | null. Las ventanas se validan: el resto de Nimbo confía en esto. */
 function parseLine(line) {
   let o;
   try { o = JSON.parse(String(line).trim()); } catch { return null; }
   if (Array.isArray(o?.windows)) {
-    return { windows: o.windows.filter((w) => /^\d{1,20}$/.test(w?.h)).map((w) => ({ h: w.h, title: String(w.t ?? "").slice(0, 200), path: String(w.p ?? ""), desc: String(w.d ?? "").slice(0, 80), min: w.m === true, fg: w.f === true })) };
+    return { windows: o.windows.filter((w) => /^\d{1,20}$/.test(w?.h)).map((w) => ({ h: w.h, title: String(w.t ?? "").slice(0, 200), path: String(w.p ?? ""), desc: String(w.d ?? "").slice(0, 80), min: w.m === true, fg: w.f === true, aumid: AUMID.test(w.a ?? "") ? w.a : "" })) };
   }
   if (o && (o.autohide === 0 || o.autohide === 1)) return { autohide: o.autohide };
   return null;
@@ -44,7 +48,8 @@ function groupApps(windows, order) {
   const groups = new Map();
   for (const w of windows) {
     const key = (w.path || w.title).toLowerCase();
-    if (!groups.has(key)) groups.set(key, { key, name: appName(w.desc) || path.basename(w.path || "", ".exe") || w.title, path: w.path, windows: [] });
+    if (!groups.has(key)) groups.set(key, { key, name: appName(w.desc) || path.basename(w.path || "", ".exe") || w.title, path: w.path, aumid: "", windows: [] });
+    if (w.aumid) groups.get(key).aumid = w.aumid;
     groups.get(key).windows.push({ h: w.h, title: w.title, min: w.min, fg: w.fg });
   }
   for (const key of groups.keys()) if (!order.has(key)) order.set(key, order.size ? Math.max(...order.values()) + 1 : 0);
@@ -118,7 +123,7 @@ function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => 
   };
 }
 
-module.exports = { createWindows, parseLine, groupApps, ensureExe, appName };
+module.exports = { createWindows, parseLine, groupApps, ensureExe, appName, AUMID };
 
 // Autoprueba: node src/integrations/windows.js  (en Windows también compila el programa y lee las ventanas de verdad)
 if (require.main === module) (async () => {
@@ -127,7 +132,9 @@ if (require.main === module) (async () => {
   assert.strictEqual(parseLine("basura"), null);
   assert.deepStrictEqual(parseLine('{"autohide":1}'), { autohide: 1 });
   const p = parseLine('{"windows":[{"h":"12","t":"Doc \\"uno\\"","p":"C:\\\\x\\\\code.exe","d":"Visual Studio Code","m":false,"f":true},{"h":"abc","t":"mala"}]}');
-  assert.deepStrictEqual(p.windows, [{ h: "12", title: 'Doc "uno"', path: "C:\\x\\code.exe", desc: "Visual Studio Code", min: false, fg: true }]); // un id raro se descarta
+  assert.deepStrictEqual(p.windows, [{ h: "12", title: 'Doc "uno"', path: "C:\\x\\code.exe", desc: "Visual Studio Code", min: false, fg: true, aumid: "" }]); // un id raro se descarta
+  assert.strictEqual(parseLine('{"windows":[{"h":"1","a":"5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"}]}').windows[0].aumid, "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App");
+  assert.strictEqual(parseLine('{"windows":[{"h":"1","a":"x & calc!App"}]}').windows[0].aumid, ""); // nada raro llega a shell:AppsFolder
   // Agrupar: por programa, en orden de llegada, estable aunque cambie el orden de Windows.
   const order = new Map();
   const w = (h, path, fg = false, min = false) => ({ h, title: "t" + h, path, desc: "", min, fg });

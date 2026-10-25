@@ -16,9 +16,9 @@
   </symbol>
 </svg>
 <div id="nimbo" class="enter state-idle theme-cloud">
-  <div id="wrap" class="solid">
+  <div id="wrap">
     <div class="ear l"></div><div class="ear r"></div>
-    <div id="island">
+    <div id="island" class="solid">
       <div id="dropzone"></div>
       <div id="char">
         <div id="glow"></div>
@@ -88,7 +88,6 @@
         <div id="ticker"><span id="label"></span></div>
         <button id="mailBtn" class="hidden" type="button" title="Revisar correo">✉</button>
         <button id="waBtn" class="hidden" type="button" title="Resumen de WhatsApp"></button>
-        <div id="tasks"></div>
         <div id="pips"></div>
         <button id="menuBtn" type="button" title="Opciones de Nimbo">⋮</button>
         <div id="progress"><i></i></div>
@@ -137,6 +136,8 @@
         </div>
       </div>
     </div>
+    <!-- Tus programas (Nimbo como barra de tareas): una franja de media altura pegada a la derecha de la isla -->
+    <div id="dock" class="solid"><div id="tasks"></div></div>
   </div>
   <span id="measure"></span>
 </div>

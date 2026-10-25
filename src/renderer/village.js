@@ -45,7 +45,7 @@
 
   // --- Mapa: 64×44 baldosas de 16 px ---
   const TILE = 16, MW = 64, MH = 44;
-  const GRASS = 0, PATH = 1, PLAZA = 2, WATER = 3;
+  const GRASS = 0, PATH = 1, PLAZA = 2, WATER = 3, SAND = 4;
   const ground = new Uint8Array(MW * MH);
   const solid = new Uint8Array(MW * MH); // árboles, casas, agua, adornos
   const idx = (x, y) => y * MW + x;
@@ -55,7 +55,10 @@
   const SLOTS = [[15, 10], [44, 10], [10, 19], [49, 19], [15, 28], [44, 28], [22, 34], [37, 34], [5, 29], [54, 29], [20, 2], [39, 2], [30, 37], [2, 10], [56, 10]];
   const HW = 5, HH = 4; // casa: 5×4 baldosas; la puerta en el centro de la fila de abajo
   const ROOFS = ["#c0392b", "#2e86de", "#8e44ad", "#16a085", "#d35400", "#7b5e3b", "#b7950b", "#c2185b", "#2c7a7b", "#5b4fc4", "#a0522d", "#3d8b40"];
-  const POND = { x: 56, y: 37, rx: 4.6, ry: 3.2 };
+  // Mar en la esquina de abajo a la derecha (antes era bosque cortado por el borde): < 1 = agua, hasta 1,13 = playa. Lejos de los lotes.
+  const sea = (x, y) => (MW - x) / 22 + (MH - y) / 14 - Math.sin(x * .5) * .04 - Math.cos(y * .7) * .03;
+  let seaTiles = []; // para las olitas que brillan (cada cuadro)
+  const BOAT = { x: 58 * 16, y: 40 * 16 };
 
   let houses = []; // las casas de los lotes: { ...datos, x, y, roof, wall, front, work, windows }
   let hallHouse = null; // la casa grande de la plaza (la de Nimbo), si aldea.json le dio habitantes ("ayuntamiento")
@@ -97,10 +100,13 @@
       carve(front.x, midRow, front.x < SQ.x ? SQ.x : front.x > SQ.x + SQ.w ? SQ.x + SQ.w - 1 : front.x, midRow); // …y va hasta ella
       return { ...h, x, y, front, work: { x: x + 3, y: y + HH }, roof: h.color || ROOFS[(h.tema ? hash(h.tema.toLowerCase()) : seed) % ROOFS.length], wall: seed & 1 ? "wood" : "stone", seed };
     });
-    // Estanque
+    // Mar y playa
+    seaTiles = [];
     for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-      const d = ((x + .5 - POND.x) / POND.rx) ** 2 + ((y + .5 - POND.y) / POND.ry) ** 2;
-      if (d < 1 && ground[idx(x, y)] === GRASS) { ground[idx(x, y)] = WATER; solid[idx(x, y)] = 1; }
+      if (ground[idx(x, y)] !== GRASS) continue;
+      const d = sea(x + .5, y + .5);
+      if (d < 1) { ground[idx(x, y)] = WATER; solid[idx(x, y)] = 1; seaTiles.push({ x, y }); }
+      else if (d < 1.13) ground[idx(x, y)] = SAND;
     }
     // Edificios: sólidos
     const block = (x, y, w, h) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) if (inMap(i, j)) solid[idx(i, j)] = 2; };
@@ -167,9 +173,18 @@
   }
   function waterTile(g, x, y, r) {
     const px = x * TILE, py = y * TILE;
-    R(g, px, py, TILE, TILE, "#4c9fd6");
-    for (let k = 0; k < 3; k++) R(g, px + Math.floor(r() * 12), py + Math.floor(r() * 14), 4, 1, "#7cc0ec");
-    if (inMap(x, y - 1) && ground[idx(x, y - 1)] !== WATER) R(g, px, py, 16, 2, "#2f6f9e");
+    const d = sea(x + .5, y + .5); // más adentro, más oscuro
+    R(g, px, py, TILE, TILE, d < .45 ? "#2b78b8" : d < .75 ? "#3a8cc9" : "#4c9fd6");
+    for (let k = 0; k < 3; k++) R(g, px + Math.floor(r() * 12), py + Math.floor(r() * 14), 4, 1, d < .45 ? "#4f97d1" : "#7cc0ec");
+    const shore = (i, j) => inMap(i, j) && ground[idx(i, j)] === SAND;
+    if (shore(x, y - 1)) R(g, px, py, 16, 2, "#e8f6ff"); // espuma contra la arena
+    if (shore(x - 1, y)) R(g, px, py, 2, 16, "#e8f6ff");
+  }
+  function sandTile(g, x, y, r) {
+    const px = x * TILE, py = y * TILE;
+    R(g, px, py, TILE, TILE, pick(r, ["#ead49b", "#e6cf94", "#eed9a3"]));
+    for (let k = 0; k < 5; k++) R(g, px + Math.floor(r() * 15), py + Math.floor(r() * 15), 1, 1, pick(r, ["#d6bb7a", "#f7e8bd"]));
+    if (r() < .06) { R(g, px + 6, py + 7, 3, 2, "#f4a6a0"); R(g, px + 7, py + 6, 1, 1, "#f4a6a0"); } // una conchita
   }
   function pine(g, px, py, s) {
     const mid = s > .5 ? "#2f6d3b" : "#2b663a", dark = "#1d4a29", light = "#4e9a4c";
@@ -331,7 +346,7 @@
     const r = rng(7);
     for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
       const k = ground[idx(x, y)];
-      if (k === GRASS) grassTile(g, x, y, r); else if (k === PATH) pathTile(g, x, y, r); else if (k === PLAZA) plazaTile(g, x, y); else waterTile(g, x, y, r);
+      if (k === GRASS) grassTile(g, x, y, r); else if (k === PATH) pathTile(g, x, y, r); else if (k === PLAZA) plazaTile(g, x, y); else if (k === SAND) sandTile(g, x, y, r); else waterTile(g, x, y, r);
     }
     for (const b of bits) bit(g, b);
     fountain(g, fx, fy); // la fuente queda entre 4 baldosas
@@ -895,6 +910,19 @@
     while (smoke.length && smoke[0].life <= 0) smoke.shift();
     for (const s of smoke) { ctx.globalAlpha = Math.max(0, s.life) * .7; ellipse(ctx, s.x, s.y, 2 + (1 - s.life) * 3, 2 + (1 - s.life) * 3, "#e8e8e8"); }
     ctx.globalAlpha = 1;
+    // Olitas que brillan en el mar y un barquito que se mece
+    for (const w of seaTiles) {
+      const ph = Math.sin(now / 900 + w.x * .7 + w.y * 1.3);
+      if (ph > .8) R(ctx, w.x * TILE + ((w.x * 5) % 11), w.y * TILE + ((w.y * 3) % 13) + Math.sin(now / 600 + w.x), 4, 1, `rgba(255,255,255,${(ph - .8) * 3.5})`);
+    }
+    if (seaTiles.length) {
+      const bx = BOAT.x + Math.sin(now / 4000) * 10, by = BOAT.y + Math.sin(now / 700) * 1.2;
+      ellipse(ctx, bx + 8, by + 9, 9, 2, "rgba(0,0,0,.18)");
+      R(ctx, bx, by + 4, 16, 3, "#7a4a28"); R(ctx, bx + 2, by + 7, 12, 2, "#5c3519"); // casco
+      R(ctx, bx + 7, by - 9, 1, 13, "#4a2c18"); // mástil
+      ctx.fillStyle = "#fdf6e3"; ctx.beginPath(); ctx.moveTo(bx + 8, by - 9); ctx.lineTo(bx + 15, by + 2); ctx.lineTo(bx + 8, by + 2); ctx.fill(); // vela
+      R(ctx, bx + 7, by - 11, 4, 2, "#d63a3a"); // banderita
+    }
     // Agua de la fuente
     for (let k = 0; k < 3; k++) { const a = now / 300 + k * 2.1; R(ctx, FOUNTAIN.x + Math.cos(a) * 4, FOUNTAIN.y - 10 + Math.abs(Math.sin(a)) * 8, 1, 2, "#bfe4fb"); }
     // Personajes, de atrás hacia adelante

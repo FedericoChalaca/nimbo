@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   village: () => ipcRenderer.send("village-show"),
   onTasks: (fn) => ipcRenderer.on("tasks", (_e, list) => fn(list)),
   taskDo: (action, h) => ipcRenderer.send("task-do", action, h), // focus · min · close de una ventana de la lista
+  taskLaunch: (key) => ipcRenderer.send("task-launch", String(key)), // abrir un programa anclado que está cerrado
+  taskMenu: (key) => ipcRenderer.send("task-menu", String(key)), // clic derecho: anclar / quitar / cerrar
   onWake: (fn) => ipcRenderer.on("wake", (_e, clip) => fn(clip instanceof Uint8Array ? clip : null)), // clip = el audio de la llamada (.wav)
   wakeLog: (kind, text, note) => ipcRenderer.send("wake-log", String(kind), String(text ?? ""), String(note ?? "")),
   wakeDone: () => ipcRenderer.send("wake-done"),

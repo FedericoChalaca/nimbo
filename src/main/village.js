@@ -273,7 +273,7 @@ function createVillage({ listSessions, configFile, page, preload, name }) {
     };
   }
 
-  return { open, hook, isOpen: () => !!win };
+  return { open, hook, isOpen: () => !!win, window: () => (win && !win.isDestroyed() ? win : null) };
 }
 
 module.exports = { createVillage, placeChats, readConfig, writeConfig, photoScore, findPhotos, readPhoto, gitInfo, hasWord };

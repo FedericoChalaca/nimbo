@@ -355,7 +355,8 @@
   #nimbo.mini { width: 100px; height: 60px; }
   .mini #wrap { left: 0; transform: none; width: 100px !important; height: 60px !important; transition: none; }
   .mini #island { background: transparent; box-shadow: none; border-radius: 0; }
-  .mini .ear, .mini #island::before, .mini #bar, .mini #content { display: none; }
+  .mini .ear, .mini #island::before, .mini #bar, .mini #content, .mini #dock { display: none; }
+  .mini #island { right: 0 !important; }
   .mini #char { left: 0; top: 2px; width: 100px; height: 58px; }
 
   /* "Siempre" va pegado a "Permitir", los dos a la derecha */
@@ -613,14 +614,26 @@
 
   /* ── Nimbo como barra de tareas ── */
   /* En la barra: íconos chicos a la derecha de Nimbo. El que está al frente lleva una rayita; los minimizados se ven apagados. */
-  #tasks { display: flex; align-items: center; gap: 2px; flex: none; }
+  /* Tus programas: una franja de media altura a la derecha de la isla, unida con una curva hacia adentro (como una pestaña doblada) */
+  #dock { position: absolute; top: 0; right: 0; height: 34px; width: var(--dock, 0px); display: flex; align-items: center; justify-content: center;
+    background: #000; border-radius: 0 0 14px 0; box-shadow: 0 10px 24px rgba(0, 0, 0, .38); visibility: hidden;
+    transition: width .52s cubic-bezier(.32, 1.22, .42, 1); }
+  #dock::before { content: ""; position: absolute; left: 0; top: 100%; width: 12px; height: 12px;
+    background: radial-gradient(circle at 100% 100%, transparent 11.5px, #000 12px); }
+  .docked #dock { visibility: visible; }
+  .docked #island { right: var(--dock, 0px); border-bottom-right-radius: 20px; }
+  #island { transition: border-radius .4s, right .52s cubic-bezier(.32, 1.22, .42, 1); }
+  #tasks { display: flex; align-items: center; gap: 1px; flex: none; }
   #tasks:empty { display: none; }
-  #tasks .tk { position: relative; width: 28px; height: 30px; padding: 0; border-radius: 8px; background: transparent; display: grid; place-items: center; }
-  #tasks .tk:hover { background: rgba(255, 255, 255, .1); transform: none; }
-  #tasks .tk img { width: 20px; height: 20px; image-rendering: auto; }
+  #tasks .tk { position: relative; width: 26px; height: 26px; padding: 0; border-radius: 7px; background: transparent; display: grid; place-items: center; }
+  #tasks .tk:hover { background: rgba(255, 255, 255, .12); transform: none; }
+  #tasks .tk img { width: 18px; height: 18px; image-rendering: auto; }
   #tasks .tk.min img { opacity: .5; }
-  #tasks .tk.fg::after { content: ""; position: absolute; left: 9px; right: 9px; bottom: 1px; height: 3px; border-radius: 3px; background: var(--accent-a); }
+  #tasks .tk.off img { opacity: .38; filter: grayscale(.6); } /* anclado y cerrado */
+  #tasks .tk:not(.off)::before { content: ""; position: absolute; left: 11px; right: 11px; bottom: 0; height: 2px; border-radius: 2px; background: #8f959e; }
+  #tasks .tk.fg::before { left: 7px; right: 7px; background: var(--accent-a); }
   #tasks .tkmore { color: #8f959e; font-size: 11px; font-weight: 700; padding: 0 4px; }
+  .tile.off { opacity: .55; }
   .noicon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: #2a2c31; color: #eceef2; font: 800 11px "Segoe UI", sans-serif; }
   /* Al pasar el mouse: los programas en grande */
   #taskBox { padding: 10px 10px 8px; }

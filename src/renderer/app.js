@@ -44,7 +44,7 @@ function layout() {
   layoutQueued = 0;
   if (mini) return;
   if (root.classList.contains("dropping")) {
-    root.classList.remove("open", "solo");
+    root.classList.remove("open", "solo", "docked");
     wrap.classList.remove("closing");
     wrap.style.setProperty("--w", `${MAX_W}px`);
     wrap.style.setProperty("--h", "152px");
@@ -56,18 +56,22 @@ function layout() {
   root.classList.toggle("open", open);
   if (open) root.classList.remove("solo");
   let w, h;
+  // Tus programas van en su franja (#dock) a la derecha de la isla, salvo con la isla abierta (ahí salen en grande).
+  const dockW = !open && tasksEl.children.length ? tasksEl.offsetWidth + 14 : 0;
+  root.classList.toggle("docked", dockW > 0);
+  wrap.style.setProperty("--dock", `${dockW}px`);
   if (open) {
     w = MAX_W;
     h = Math.min(470, BAR_H + content.offsetHeight + 14);
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
     measure.textContent = text;
-    const pipsW = (tasksEl.children.length ? tasksEl.offsetWidth + 10 : 0) + (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10) + (mailBtn.classList.contains("hidden") ? 0 : mailBtn.offsetWidth + 8);
+    const pipsW = (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10) + (mailBtn.classList.contains("hidden") ? 0 : mailBtn.offsetWidth + 8);
     // El texto ocupa lo que quepa (el resto se corta con "…"): la isla no pasa de MAX_W.
-    const textW = text ? Math.min(measure.offsetWidth, 270, MAX_W - 116 - 12 - pipsW - 16) : 0;
-    w = text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150;
+    const textW = text ? Math.min(measure.offsetWidth, 270, MAX_W - 116 - 12 - pipsW - 16 - dockW) : 0;
+    w = (text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150) + dockW;
     h = BAR_H;
-    if (state === "sleeping") { w = 132; h = 60; }
+    if (state === "sleeping") { w = 132 + dockW; h = 60; }
     root.classList.toggle("solo", !text && !pipsW);
   }
   const shrinking = w < lastSize.w - 1 || h < lastSize.h - 1;
@@ -481,20 +485,21 @@ const taskIcon = (a, size) => {
 // Un clic sobre un programa: si su ventana está al frente se minimiza; si no, viene al frente (la más reciente, si tiene varias).
 function taskClick(a) {
   if (!a) return;
+  if (!a.windows.length) return api.taskLaunch(a.key); // anclado y cerrado: se abre
   const front = a.windows.find((w) => w.fg && !w.min);
   if (front) return api.taskDo("min", front.h);
   api.taskDo("focus", (a.windows.find((w) => !w.min) ?? a.windows[0]).h);
 }
 function renderTasks() {
-  const key = mini ? "" : tasks.slice(0, MAX_TASKS).map((a) => a.key + a.fg + a.min + !!a.icon).join("|") + tasks.length;
+  const key = mini ? "" : tasks.slice(0, MAX_TASKS).map((a) => a.key + a.fg + a.min + !!a.icon + a.windows.length).join("|") + tasks.length;
   if (key === lastTasksKey) return;
   lastTasksKey = key;
   if (mini) { tasksEl.replaceChildren(); relayout(); return; }
   const shown = tasks.slice(0, MAX_TASKS).map((a) => {
-    const b = el("button", `tk${a.fg ? " fg" : ""}${a.min ? " min" : ""}`);
+    const b = el("button", `tk${a.fg ? " fg" : ""}${a.min ? " min" : ""}${a.windows.length ? "" : " off"}`);
     b.type = "button";
     b.dataset.key = a.key;
-    b.title = a.windows.length > 1 ? t("{0} · {1} ventanas", a.name, a.windows.length) : a.name;
+    b.title = a.windows.length > 1 ? t("{0} · {1} ventanas", a.name, a.windows.length) : a.windows.length ? a.name : t("{0} (anclado: clic para abrirlo)", a.name);
     b.append(taskIcon(a, 20));
     return b;
   });
@@ -506,14 +511,16 @@ function renderTaskBox() {
   if (taskBox.classList.contains("hidden")) return;
   const tiles = el("div", "tgrid");
   for (const a of tasks) {
-    const tile = el("button", `tile${a.fg ? " fg" : ""}${a.min ? " min" : ""}${openTask === a.key ? " on" : ""}`);
+    const tile = el("button", `tile${a.fg ? " fg" : ""}${a.min ? " min" : ""}${a.windows.length ? "" : " off"}${openTask === a.key ? " on" : ""}`);
     tile.type = "button";
-    tile.title = a.windows.map((w) => w.title).join("\n");
+    tile.title = a.windows.length ? a.windows.map((w) => w.title).join("\n") : t("{0} (anclado: clic para abrirlo)", a.name);
+    tile.dataset.key = a.key;
     tile.append(taskIcon(a, 34), el("span", "", a.name));
     if (a.windows.length > 1) tile.append(el("b", "", String(a.windows.length)));
     tile.onclick = () => {
       if (a.windows.length > 1) { openTask = openTask === a.key ? null : a.key; renderTaskBox(); return; }
       taskClick(a);
+      closeAll(); // ya elegiste: la isla vuelve a su tamaño
     };
     tiles.append(tile);
   }
@@ -521,7 +528,7 @@ function renderTaskBox() {
   const open = tasks.find((a) => a.key === openTask);
   if (open) for (const w of open.windows) {
     const r = el("div", `arow link twin${w.fg ? " fg" : ""}`);
-    r.onclick = () => api.taskDo(w.fg && !w.min ? "min" : "focus", w.h);
+    r.onclick = () => { api.taskDo(w.fg && !w.min ? "min" : "focus", w.h); closeAll(); };
     const x = el("button", "done", "✕");
     x.type = "button";
     x.title = t("Cerrar esta ventana");
@@ -529,8 +536,17 @@ function renderTaskBox() {
     r.append(el("span", "name", w.title), x);
     rows.push(r);
   }
-  taskBox.replaceChildren(el("div", "head", t("{0} programas abiertos", tasks.length)), tiles, ...rows);
+  const openCount = tasks.filter((a) => a.windows.length).length;
+  taskBox.replaceChildren(el("div", "head", t("{0} programas abiertos · clic derecho para anclar", openCount)), tiles, ...rows);
 }
+// Clic derecho en un programa (chiquito o en grande): anclarlo, quitarlo o cerrarlo (menú de main).
+document.addEventListener("contextmenu", (e) => {
+  const k = e.target.closest("#tasks .tk, #taskBox .tile")?.dataset.key;
+  if (!k) return;
+  e.preventDefault();
+  e.stopPropagation();
+  api.taskMenu(k);
+}, true);
 api.onTasks((list) => {
   tasks = Array.isArray(list) ? list : [];
   if (openTask && !tasks.some((a) => a.key === openTask)) openTask = null;
@@ -1272,10 +1288,10 @@ api.onHover((on) => {
     }, 1900);
     if (state === "sleeping") setState("idle");
     if (!mini && chat.classList.contains("hidden") && card.classList.contains("hidden") && remindCard.classList.contains("hidden") && setupBox.classList.contains("hidden")) {
-      if (tasks.length) { taskBox.classList.remove("hidden"); renderTaskBox(); } // tus programas abiertos, en grande
-      if (appsList().length) { appsBox.classList.remove("hidden"); renderApps(); }
+      // Como barra de tareas, pasar el mouse no despliega nada (lo pidió Federico): todo sale con un clic (openAll).
+      if (!tasks.length && appsList().length) { appsBox.classList.remove("hidden"); renderApps(); }
     }
-  } else {
+  } else if (!allOpen) {
     hoverTimer = setTimeout(() => hidePanel(), 700);
   }
 });
@@ -1426,6 +1442,22 @@ function emote(name, ms = 1400) {
 }
 const emoting = () => /emote-/.test(root.className);
 
+// Como barra de tareas, un clic despliega todo: tus programas en grande, las píldoras y el chat. Otro clic (o elegir un programa) lo cierra.
+let allOpen = false;
+function openAll() {
+  allOpen = true;
+  clearTimeout(hoverTimer);
+  if (!setupBox.classList.contains("hidden")) closeSetup();
+  taskBox.classList.remove("hidden");
+  renderTaskBox();
+  if (appsList().length) { appsBox.classList.remove("hidden"); renderApps(); }
+  toggleChat(true);
+}
+function closeAll() {
+  allOpen = false;
+  hidePanel();
+  toggleChat(false);
+}
 // Un clic abre/cierra el chat; varios seguidos son "cariños"; muchos lo marean.
 let clicks = 0;
 let clickTimer;
@@ -1449,6 +1481,7 @@ wrap.addEventListener("click", (e) => {
     clickTimer = setTimeout(() => {
       clicks = 0;
       if (mini) api.toggleMini(); // tocarlo en mini lo devuelve a su tamaño
+      else if (tasks.length) (allOpen ? closeAll : openAll)(); // como barra de tareas: un clic lo despliega todo
       else toggleChat();
     }, 280);
     return;
@@ -1609,7 +1642,7 @@ function toggleChat(open = chat.classList.contains("hidden")) {
   api.chatOpen(open);
   if (open) setTimeout(() => msg.focus(), 60);
 }
-msg.addEventListener("keydown", (e) => { if (e.key === "Escape") toggleChat(false); });
+msg.addEventListener("keydown", (e) => { if (e.key === "Escape") (allOpen ? closeAll : () => toggleChat(false))(); });
 
 // --- Adjuntos: soltar sobre Nimbo, 📎 o Ctrl+V (sirve con capturas de Win+Shift+S) ---
 // Las imágenes van dentro del mensaje; el resto (PDF, código, texto…) va por su ruta y
