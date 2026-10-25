@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   chatOpen: (open) => ipcRenderer.send("chat-open", open),
   chatCmd: (action, value) => ipcRenderer.invoke("chat-cmd", action, value),
   village: () => ipcRenderer.send("village-show"),
+  onWake: (fn) => ipcRenderer.on("wake", () => fn()),
+  wakeDone: () => ipcRenderer.send("wake-done"),
   onQuickAsk: (fn) => ipcRenderer.on("quick-ask", () => fn()),
   ask: (msg) => ipcRenderer.invoke("ask", msg),
   dispatch: (id, prompt) => ipcRenderer.invoke("dispatch", id, prompt),

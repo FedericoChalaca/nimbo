@@ -1251,6 +1251,9 @@ function renderSetup(s) {
 
   const look = row(null, t("Apariencia"), s.theme === "cloud" ? t("Nube. Cada apariencia tiene su propia voz.") : t("JARVIS. Cada apariencia tiene su propia voz."),
     btn(s.theme === "cloud" ? "JARVIS" : t("Nube"), "theme", s.theme === "cloud" ? "jarvis" : "cloud"));
+  const wakeRow = s.wake === null ? null
+    : s.wake ? row(true, t("«Oye Nimbo»"), t("Escuchando la frase de activación (con el reconocedor de Windows, sin internet). Di «Oye Nimbo» y luego lo que necesitas."), btn(t("Apagar"), "wake", false))
+    : row(null, t("«Oye Nimbo»"), t("Como «Oye Siri»: di «Oye Nimbo» y te escucha sin tocar nada. El micrófono queda abierto, pero solo reconoce esa frase y nada sale de tu PC."), btn(t("Activar"), "wake", true));
   const voiceRow = s.voice === null ? row(null, t("Voz"), t("Opcional: pon en prefs.json la dirección de un servicio de voz (`ttsUrl`)."))
     : s.voice ? row(true, t("Voz"), t("Lee sus respuestas en voz alta."), btn(t("Apagar"), "speak", false))
     : row(null, t("Voz"), t("Que Nimbo lea sus respuestas en voz alta."), btn(t("Activar"), "speak", true));
@@ -1300,7 +1303,7 @@ function renderSetup(s) {
   // Correo: tu Gmail por el conector de tu Claude (solo lectura). Apagado hasta que lo activas; al activarlo se comprueba de verdad.
   const mailRow = s.mail?.on ? row(true, t("Correo"), t("Solo revisa cuando tú lo pides: toca el botón ✉ de la barra, escribe «revisa mi correo» o usa /correo en Telegram. Ahora: {0} sin leer, {1} importantes.", s.mail.count, s.mail.important), btn(t("Revisar ahora"), "mail-refresh"), btn(t("Apagar"), "mail-off"))
     : row(null, t("Correo"), t("Opcional: Nimbo revisa tu Gmail (solo lectura, con el conector de Gmail de tu Claude) y te dice cuáles correos importan."), btn("claude.ai", "open", "connectors"), btn(t("Activar"), "mail-on", null, "allow"));
-  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, mailRow, spotify, telegramRow, aiRow, wa, look, voiceRow, auto];
+  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, mailRow, spotify, telegramRow, aiRow, wa, look, voiceRow, wakeRow, auto].filter(Boolean);
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));
   setupBox.replaceChildren(...rows);
 }
@@ -1909,6 +1912,19 @@ async function runSlash(text) {
   const out = c ? await c.run(rest.join(" ")) : t("No conozco {0}. Escribe /ayuda para ver los comandos.", word);
   if (typeof out === "string") { answer.classList.remove("wait"); answer.replaceChildren(el("div", "reply", out)); answerBox.classList.remove("hidden"); answer.scrollTop = 0; }
 }
+// "Oye Nimbo": el reconocedor de Windows oyó la frase. Abre el chat y te escucha; al callarte, lo que dijiste se envía solo.
+api.onWake(() => {
+  if (mini || !card.classList.contains("hidden") || asking) return api.wakeDone(); // jugando, con un permiso esperando o ya pensando: nada
+  hidePanel();
+  if (!setupBox.classList.contains("hidden")) closeSetup();
+  lastActivity = Date.now();
+  emote("hello", 1200);
+  SOUNDS.hello();
+  toggleChat(true);
+  logActivity("needs", "Nimbo", t("Me llamaste por voz"));
+  Promise.resolve(window.voiceDictate?.({ autoSend: true })).finally(() => api.wakeDone());
+});
+
 // Atajo global (Ctrl+Alt+Espacio, como el acceso rápido de la app de Claude): abre el chat de Nimbo listo para escribir.
 api.onQuickAsk(() => {
   if (!card.classList.contains("hidden")) return; // hay un permiso esperando: eso va primero

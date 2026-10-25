@@ -9,6 +9,7 @@ const http = require("http");
 const path = require("path");
 const { createOrchestrator, sessionTitle, sessionContext, claudeFound, listSessions } = require("./orchestrator");
 const { createVillage } = require("./village");
+const { createWake } = require("../integrations/wake");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -266,6 +267,7 @@ function placeWindow() {
 
 function setMini(on) {
   mini = on;
+  syncWake(); // jugando no escucha
   if (mini) pending?.finish("");
   else {
     if (prefs.whatsappRead === true) wa.poke(); // lo que llegó mientras jugabas
@@ -672,6 +674,26 @@ ipcMain.on("chat-open", (_e, open) => {
   if (open) win.focus();
 });
 
+// --- "Oye Nimbo" (wake.js): el reconocedor de Windows escucha SOLO la frase de activación; al oírla, la isla abre el chat y dicta. ---
+// Apagado hasta que lo actives (prefs.wakeWord). Mientras dictas y en modo mini no escucha (se apaga el proceso, no se ignora).
+let wakeTimer = 0;
+const wake = createWake({
+  lang,
+  min: () => (Number(prefs.wakeMin) > 0 && Number(prefs.wakeMin) < 1 ? Number(prefs.wakeMin) : 0.6),
+  onWake: () => {
+    if (mini || !win || win.isDestroyed()) return;
+    wake.set(false); // mientras te escucha el dictado, la palabra de activación descansa
+    win.webContents.send("wake");
+    clearTimeout(wakeTimer);
+    wakeTimer = setTimeout(syncWake, 60_000); // por si la página nunca avisa que terminó
+  },
+  onError: (e) => { if (win && !win.isDestroyed()) win.webContents.send("ai-error", e === "no-recognizer" ? t("«Oye Nimbo» necesita el reconocedor de voz de Windows en tu idioma (Configuración → Hora e idioma → Voz).") : t("«Oye Nimbo» no pudo escuchar: {0}", e)); },
+});
+function syncWake() { clearTimeout(wakeTimer); wake.set(prefs.wakeWord === true && !mini); }
+ipcMain.on("wake-done", syncWake);
+app.on("before-quit", () => wake.stop());
+app.whenReady().then(() => { syncWake(); powerMonitor.on("resume", () => { if (prefs.wakeWord === true) setTimeout(() => wake.restart(), 3000); }); });
+
 // --- La aldea (village.js): cada carpeta con chats es una casa y cada chat, un aldeano. Ventana aparte, opaca (barata de dibujar). ---
 const village = createVillage({
   listSessions: () => listSessions(CHAT_DIR, { limit: 60, includeScratch: true }),
@@ -744,6 +766,7 @@ async function setupStatus() {
     spotify: !spotifyApi.configured() ? null : spotifyApi.connected(), // null = sin Client ID · false = falta entrar
     theme: prefs.theme,
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
+    wake: process.platform === "win32" ? prefs.wakeWord === true : null, // null = no se puede (solo Windows)
     whatsappRead: prefs.whatsappRead === true,
     whatsappBrain: prefs.whatsappRead === true ? await wa.brain() : "",
     autostart: autostartOn(),
@@ -813,6 +836,7 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         prefs.whatsappRead = value === true; savePrefs(); watchWhatsapp(); break;
       case "theme": setTheme(String(value)); break;
       case "speak": setSpeak(value === true); break;
+      case "wake": prefs.wakeWord = value === true; savePrefs(); syncWake(); break;
       case "whatsapp-rules": shell.openPath(wa.rulesFile); break;
       case "trello": await refreshTrello(); break;
       case "spotify-id": {
@@ -1018,6 +1042,13 @@ function buildMenu() {
       type: "checkbox",
       checked: prefs.musicBar !== false,
       click: (item) => { prefs.musicBar = item.checked; savePrefs(); if (item.checked) musicBar.reset(); else musicBar.sync(); },
+    },
+    {
+      label: t("«Oye Nimbo»: escuchar siempre"),
+      type: "checkbox",
+      checked: prefs.wakeWord === true,
+      visible: process.platform === "win32",
+      click: (item) => { prefs.wakeWord = item.checked; savePrefs(); syncWake(); },
     },
     {
       label: t("Leer las respuestas en voz alta"),

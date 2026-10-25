@@ -22,6 +22,13 @@ const NIMBO_EN = {
   // — La aldea (village.js / village.html) —
   "Aldea de Nimbo": "Nimbo's village",
   "Aldea de agentes": "Agent village",
+  "«Oye Nimbo»: escuchar siempre": "“Hey Nimbo”: always listen",
+  "«Oye Nimbo»": "“Hey Nimbo”",
+  "Me llamaste por voz": "You called me by voice",
+  "Escuchando la frase de activación (con el reconocedor de Windows, sin internet). Di «Oye Nimbo» y luego lo que necesitas.": "Listening for the wake phrase (with Windows speech recognition, offline). Say “Hey Nimbo” and then what you need.",
+  "Como «Oye Siri»: di «Oye Nimbo» y te escucha sin tocar nada. El micrófono queda abierto, pero solo reconoce esa frase y nada sale de tu PC.": "Like “Hey Siri”: say “Hey Nimbo” and it listens hands-free. The microphone stays open, but it only recognizes that phrase and nothing leaves your PC.",
+  "«Oye Nimbo» necesita el reconocedor de voz de Windows en tu idioma (Configuración → Hora e idioma → Voz).": "“Hey Nimbo” needs Windows speech recognition in your language (Settings → Time & language → Speech).",
+  "«Oye Nimbo» no pudo escuchar: {0}": "“Hey Nimbo” could not listen: {0}",
   "Plaza": "Square",
   "Plaza (sin casa)": "Square (no house)",
   "Buscarme casa": "Find me a house",

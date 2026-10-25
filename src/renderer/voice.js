@@ -120,7 +120,8 @@
   }
 
   let dictating = false;
-  async function dictate() {
+  // autoSend: lo pidió "Oye Nimbo": al terminar de hablar, lo que dijiste se envía solo (como Siri).
+  async function dictate({ autoSend = false } = {}) {
     if (dictating) return finish(); // segundo clic = ya terminé
     stopSpeaking(); // si Nimbo estaba hablando, se calla para escucharte
     dictating = true;
@@ -135,6 +136,7 @@
         if (text && !HALLUCINATIONS.test(text)) msg.value = (msg.value ? msg.value + " " : "") + text;
       }
       setState("idle");
+      if (autoSend && msg.value.trim()) setTimeout(() => chat.requestSubmit(), 0);
     } catch (e) {
       const denied = e?.name === "NotAllowedError" || e?.name === "NotFoundError";
       setState("error", denied ? t("No tengo micrófono: revisa Privacidad → Micrófono en Windows") : t("Micrófono: {0}", e?.message ?? e).slice(0, 80), { back: 6000 });
@@ -147,7 +149,8 @@
   }
 
   const micBtn = document.getElementById("mic");
-  micBtn.addEventListener("click", dictate);
+  micBtn.addEventListener("click", () => dictate());
+  window.voiceDictate = dictate; // para "Oye Nimbo" (app.js)
   // Precarga el modelo al abrir el chat, para que el primer dictado no espere la descarga.
   chat.addEventListener("focusin", () => getWorker().postMessage({ type: "load" }), { once: true });
 })();
