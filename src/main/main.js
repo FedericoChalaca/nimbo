@@ -682,13 +682,34 @@ ipcMain.on("chat-open", (_e, open) => {
 // --- "Oye Nimbo" (wake.js): el reconocedor de Windows escucha SOLO la frase de activación; al oírla, la isla abre el chat y dicta. ---
 // Apagado hasta que lo actives (prefs.wakeWord). Mientras dictas y en modo mini no escucha (se apaga el proceso, no se ignora).
 let wakeTimer = 0;
+// Historial de «Oye Nimbo» (menú → "Historial de «Oye Nimbo»"): cada posible llamada, qué oyó cada paso y qué se mandó después, para
+// entender por qué se activa solo. Texto plano, SOLO en este PC, las últimas 400 líneas. Lleva pedacitos de lo que se oyó cerca del micrófono.
+const WAKE_LOG = path.join(app.getPath("userData"), "oye-nimbo-historial.txt");
+const pct = (n) => (Number(n) || 0).toFixed(2).replace(".", ",");
+let wakeLogQueue = Promise.resolve();
+function wakeLog(line) {
+  const when = new Date().toLocaleString("es-CO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  const clean = String(line).replace(/\s+/g, " ").slice(0, 400);
+  // En fila: dos anotaciones seguidas leerían el mismo archivo y una se perdería.
+  wakeLogQueue = wakeLogQueue.then(async () => {
+    const old = await fs.promises.readFile(WAKE_LOG, "utf8").catch(() => "");
+    await fs.promises.writeFile(WAKE_LOG, [...old.split(/\r?\n/).filter(Boolean).slice(-399), `${when}  ${clean}`].join("\r\n") + "\r\n");
+  }).catch(() => {});
+}
+const WHY = { "otra-frase": "el dictado de Windows oyó otra frase", "poca-confianza": "poca seguridad" };
 const wake = createWake({
   lang,
   min: () => (Number(prefs.wakeMin) > 0 && Number(prefs.wakeMin) < 1 ? Number(prefs.wakeMin) : 0.6),
-  onWake: () => {
+  onCand: (c) => wakeLog(c.ok ? `POSIBLE LLAMADA: Windows oyó «${c.step1}» (${pct(c.conf1)}) y en la revisión «${c.step2}» (${pct(c.conf2)})`
+    : `descartado (${WHY[c.why] ?? c.why}): «${c.step1}» (${pct(c.conf1)}) · revisión: «${c.step2}» (${pct(c.conf2)})`),
+  onWake: async (ev) => {
     if (mini || !win || win.isDestroyed()) return;
     wake.set(false); // mientras te escucha el dictado, la palabra de activación descansa
-    win.webContents.send("wake");
+    // El pedacito de audio de la llamada: la página lo revisa con Whisper antes de despertarse (Windows solo se confundía con videos).
+    let clip = null;
+    if (ev.clip) { clip = await fs.promises.readFile(ev.clip).catch(() => null); fs.promises.rm(ev.clip, { force: true }).catch(() => {}); }
+    if (clip && clip.length > 2_000_000) clip = null;
+    win.webContents.send("wake", clip ? new Uint8Array(clip) : null);
     clearTimeout(wakeTimer);
     wakeTimer = setTimeout(syncWake, 60_000); // por si la página nunca avisa que terminó
   },
@@ -700,6 +721,12 @@ const live = createLive({ lang, onPartial: (text) => { if (win && !win.isDestroy
 ipcMain.on("live-dictation", (_e, on) => (on === true ? live.start() : live.stop()));
 app.on("before-quit", () => live.stop());
 ipcMain.on("wake-done", syncWake);
+// Lo que pasó después de una llamada (lo manda la página): qué oyó Whisper en ella y qué dijiste.
+ipcMain.on("wake-log", (_e, kind, text, note) => {
+  const q = String(text ?? "").slice(0, 200);
+  if (kind === "check") wakeLog(`   Whisper oyó en la llamada: «${q}» → ${note === "ok" ? "me desperté" : "falsa alarma, no me desperté"}`);
+  if (kind === "said") wakeLog(`   después dijiste: «${q}» → ${String(note ?? "").slice(0, 80)}`);
+});
 app.on("before-quit", () => wake.stop());
 app.whenReady().then(() => { syncWake(); powerMonitor.on("resume", () => { if (prefs.wakeWord === true) setTimeout(() => wake.restart(), 3000); }); });
 
@@ -1124,6 +1151,11 @@ function buildMenu() {
       checked: prefs.wakeWord === true,
       visible: process.platform === "win32",
       click: (item) => { prefs.wakeWord = item.checked; savePrefs(); syncWake(); },
+    },
+    {
+      label: t("Historial de «Oye Nimbo»"),
+      visible: process.platform === "win32" && fs.existsSync(WAKE_LOG),
+      click: () => shell.openPath(WAKE_LOG),
     },
     {
       label: t("Leer las respuestas en voz alta"),

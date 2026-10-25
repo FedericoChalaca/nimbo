@@ -14,11 +14,15 @@ const CULTURE = { es: "es-ES", en: "en-US" }; // si no está, wake.ps1 usa otro 
 // que veía el dueño). Escuchando: ~6 % de un núcleo (el dictado compitiendo todo el tiempo costaba ~38 %). prefs.wakeMin lo cambia.
 const MIN = 0.5;
 
-/** Una línea del script → evento ({ ready } | { wake, text, conf } | { error }) o null. */
+/** Una línea del script → evento ({ ready } | { wake, text, conf, clip } | { cand } | { error }) o null. */
 function parseLine(line) {
   try {
     const o = JSON.parse(String(line).trim());
-    if (o?.wake === true && typeof o.text === "string") return { wake: true, text: o.text.slice(0, 40), conf: Number(o.conf) || 0 };
+    if (o?.wake === true && typeof o.text === "string") return { wake: true, text: o.text.slice(0, 40), conf: Number(o.conf) || 0, clip: o.clip === true };
+    if (o?.cand && typeof o.cand === "object") {
+      const c = o.cand;
+      return { cand: { step1: String(c.step1 ?? "").slice(0, 40), conf1: Number(c.conf1) || 0, step2: String(c.step2 ?? "").slice(0, 80), conf2: Number(c.conf2) || 0, ok: c.ok === true, why: String(c.why ?? "").slice(0, 20) } };
+    }
     if (o?.ready === true) return { ready: true, culture: String(o.culture ?? "") };
     if (typeof o?.error === "string") return { error: o.error.slice(0, 200) };
   } catch {}
@@ -26,24 +30,27 @@ function parseLine(line) {
 }
 
 /**
- * @param onWake  () => void, cuando oye la frase
+ * @param onWake  ({ text, conf, clip }) => void, cuando oye la frase; clip = ruta del .wav con ese pedacito (o null), para revisarlo con Whisper
+ * @param onCand  ({ step1, conf1, step2, conf2, ok, why }) => void, cada posible llamada (para el historial)
  * @param onError (código) => void ("no-recognizer" = Windows no tiene reconocedor de ese idioma)
  * @param lang    () => "es" | "en"
  * @param min     () => confianza mínima
  */
-function createWake({ onWake, onError = () => {}, lang = () => "es", min = () => MIN, platform = process.platform, script = SCRIPT, powershell }) {
+function createWake({ onWake, onCand = () => {}, onError = () => {}, lang = () => "es", min = () => MIN, platform = process.platform, script = SCRIPT, powershell }) {
   let child = null;
   let want = false; // ¿debería estar escuchando?
   let restartTimer = 0;
   let fails = 0;
   const exe = powershell ?? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 
+  const clip = path.join(require("os").tmpdir(), `nimbo-wake-${process.pid}.wav`);
+
   function launch() {
     clearTimeout(restartTimer);
     if (!want || child || platform !== "win32") return;
     const l = lang() === "en" ? "en" : "es";
     child = spawn(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
-      "-Culture", CULTURE[l], "-Phrases", PHRASES[l].join("|"), "-Min", String(min()), "-Parent", String(process.pid)], { windowsHide: true });
+      "-Culture", CULTURE[l], "-Phrases", PHRASES[l].join("|"), "-Min", String(min()), "-Clip", clip, "-Parent", String(process.pid)], { windowsHide: true });
     let buf = "";
     child.stdout.on("data", (d) => {
       buf += d;
@@ -52,7 +59,8 @@ function createWake({ onWake, onError = () => {}, lang = () => "es", min = () =>
         const ev = parseLine(buf.slice(0, nl));
         buf = buf.slice(nl + 1);
         if (ev?.ready) fails = 0;
-        if (ev?.wake) onWake(ev);
+        if (ev?.cand) onCand(ev.cand);
+        if (ev?.wake) onWake({ ...ev, clip: ev.clip ? clip : null });
         if (ev?.error) { onError(ev.error); if (ev.error === "no-recognizer") want = false; }
       }
     });
@@ -111,11 +119,12 @@ if (require.main === module) (async () => {
   const fs = require("fs");
   const os = require("os");
   const { execFileSync } = require("child_process");
-  assert.deepStrictEqual(parseLine('{"wake":true,"text":"oye nimbo","conf":0.71}'), { wake: true, text: "oye nimbo", conf: 0.71 });
+  assert.deepStrictEqual(parseLine('{"wake":true,"text":"oye nimbo","conf":0.71}'), { wake: true, text: "oye nimbo", conf: 0.71, clip: false });
   assert.deepStrictEqual(parseLine('{"ready":true,"culture":"es-ES"}'), { ready: true, culture: "es-ES" });
   assert.deepStrictEqual(parseLine('{"error":"no-recognizer"}'), { error: "no-recognizer" });
   assert.strictEqual(parseLine("basura"), null);
   assert.strictEqual(parseLine('{"near":"oye nimbo","conf":0.4}'), null); // lo descartado no despierta a Nimbo
+  assert.strictEqual(parseLine('{"cand":{"step1":"oye nimbo","conf1":0.6,"step2":"Hoy en el","conf2":0.5,"ok":false,"why":"otra-frase"}}').cand.why, "otra-frase");
   // Fuera de Windows no lanza nada.
   const off = createWake({ onWake() {}, platform: "linux" });
   off.set(true);

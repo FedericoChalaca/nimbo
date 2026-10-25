@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   village: () => ipcRenderer.send("village-show"),
   onTasks: (fn) => ipcRenderer.on("tasks", (_e, list) => fn(list)),
   taskDo: (action, h) => ipcRenderer.send("task-do", action, h), // focus · min · close de una ventana de la lista
-  onWake: (fn) => ipcRenderer.on("wake", () => fn()),
+  onWake: (fn) => ipcRenderer.on("wake", (_e, clip) => fn(clip instanceof Uint8Array ? clip : null)), // clip = el audio de la llamada (.wav)
+  wakeLog: (kind, text, note) => ipcRenderer.send("wake-log", String(kind), String(text ?? ""), String(note ?? "")),
   wakeDone: () => ipcRenderer.send("wake-done"),
   liveDictation: (on) => ipcRenderer.send("live-dictation", on === true),
   onDictationPartial: (fn) => ipcRenderer.on("dictation-partial", (_e, text) => fn(text)),

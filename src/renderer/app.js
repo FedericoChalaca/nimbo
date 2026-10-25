@@ -2011,16 +2011,21 @@ async function runSlash(text) {
   if (typeof out === "string") { answer.classList.remove("wait"); answer.replaceChildren(el("div", "reply", out)); answerBox.classList.remove("hidden"); answer.scrollTop = 0; }
 }
 // "Oye Nimbo": el reconocedor de Windows oyó la frase. Abre el chat y te escucha; al callarte, lo que dijiste se envía solo.
-api.onWake(() => {
+// Antes de despertarse, Whisper revisa el audio de la llamada (voiceCheckWake): si no oye "nimbo", no se abre ni suena nada.
+api.onWake((clip) => {
   if (mini || !card.classList.contains("hidden") || asking) return api.wakeDone(); // jugando, con un permiso esperando o ya pensando: nada
-  hidePanel();
-  if (!setupBox.classList.contains("hidden")) closeSetup();
-  lastActivity = Date.now();
-  emote("hello", 1200);
-  SOUNDS.hello();
-  toggleChat(true);
-  logActivity("needs", "Nimbo", t("Me llamaste por voz"));
-  Promise.resolve(window.voiceDictate?.({ autoSend: true })).finally(() => api.wakeDone());
+  const gate = clip && window.voiceCheckWake ? window.voiceCheckWake(clip).catch(() => true) : Promise.resolve(true);
+  gate.then((ok) => {
+    if (!ok) return;
+    hidePanel();
+    if (!setupBox.classList.contains("hidden")) closeSetup();
+    lastActivity = Date.now();
+    emote("hello", 1200);
+    SOUNDS.hello();
+    toggleChat(true);
+    logActivity("needs", "Nimbo", t("Me llamaste por voz"));
+  });
+  Promise.resolve(window.voiceDictate?.({ autoSend: true, gate })).finally(() => api.wakeDone());
 });
 
 // Atajo global (Ctrl+Alt+Espacio, como el acceso rápido de la app de Claude): abre el chat de Nimbo listo para escribir.
