@@ -860,6 +860,18 @@ function announcePlan() {
   speak(dayPlan.say);
 }
 // "dame el plan de hoy" en el chat: se responde aquí mismo, al instante y sin gastar Claude.
+// "¿qué tengo pendiente?" (escrito o dicho): se responde aquí con tus recordatorios, al instante y sin gastar a Claude.
+const PEND_ASK = /^\W*(?:(?:y\s+)?qu[eé]\s+(?:tengo|hay|me\s+queda)\s+(?:pendientes?|por\s+hacer|que\s+hacer)(?:\s+(?:hoy|para\s+hoy|esta\s+semana))?|(?:dime|dame|mu[eé]strame|cu[aá]les\s+son)\s+(?:mis\s+|los\s+)?pendientes|mis\s+pendientes|what(?:'s|\s+is|\s+do\s+i\s+have)\s+(?:pending|on\s+my\s+list|to\s+do)(?:\s+today)?)\W*$/i;
+function answerPending() {
+  const list = pendingList.slice(0, 5);
+  const text = !list.length ? t("No tienes pendientes. 🎉")
+    : [t(list.length === 1 ? "Tienes {0} pendiente:" : "Tienes {0} pendientes:", pendingList.length), ...list.map((p) => `• ${p.text}${p.due ? " — " + fmtDue(p.due) : ""}`)].join("\n");
+  answer.classList.remove("wait");
+  answer.replaceChildren(el("div", "reply", text));
+  answerBox.classList.remove("hidden");
+  speak(list.length ? t("Tienes {0} pendientes. El primero: {1}.", pendingList.length, list[0].text) : t("No tienes pendientes."));
+  if (list.length) { appsBox.classList.remove("hidden"); openApp = "pend"; renderApps(); renderAppView(); }
+}
 const PLAN_ASK = /^\W*(dame|dime|mu[eé]strame|cu[aá]l es|show me|give me|what(?:'s| is))?\s*(el |mi |the |my |today'?s )?plan( de hoy| del d[ií]a| for today| of the day)?\W*$/i;
 async function answerPlan() {
   answer.replaceChildren(el("div", "", t("Pensando…")));
@@ -1713,6 +1725,7 @@ chat.addEventListener("submit", async (e) => {
   } else if (!sent.length && !paths.length && interviewStart(text)) await interviewBegin(interviewStart(text).role);
   else if (!sent.length && !paths.length && MAIL_ASK.test(text)) answerMail();
   else if (!sent.length && !paths.length && PLAN_ASK.test(text) && /plan/i.test(text)) await answerPlan();
+  else if (!sent.length && !paths.length && PEND_ASK.test(text)) answerPending();
   else if (!sent.length && !paths.length && musicQuery(text)) await answerMusic(musicQuery(text));
   else await askAndShow({ text, images: sent, files: paths });
   asking = false;
@@ -1819,7 +1832,9 @@ async function askAndShow(message) {
   let cancelled = false;
   cancel.onclick = () => { cancelled = true; cancel.disabled = true; api.askCancel(); };
   waiting.append(waitText, cancel);
-  answer.replaceChildren(waiting);
+  // Lo que le pediste, a la vista mientras piensa (sobre todo si lo dijiste en voz alta: así sabes que te entendió).
+  const asked = el("div", "asked", `«${String(message.text).replace(/\s+/g, " ").slice(0, 160)}»`);
+  answer.replaceChildren(asked, waiting);
   answer.classList.add("wait");
   answerBox.classList.remove("hidden");
   progressStart(message.files?.length || message.images?.length ? 25_000 : 15_000);

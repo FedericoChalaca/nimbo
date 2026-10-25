@@ -89,7 +89,12 @@
     const ms = (buf.length / SR) * 1000;
     rec.total += ms;
     rec.chunks.push(new Float32Array(buf));
-    if (rms > SPEECH_RMS) {
+    // Ruido de fondo del cuarto (ventilador, música bajita): con él encima del umbral fijo, nunca "te callabas" y el dictado
+    // esperaba los 30 s enteros. El umbral sube con el ruido medido en los trozos sin voz.
+    // Piso de ruido: baja de golpe al trozo más silencioso y sube despacito (2 % por trozo de 0,13 s), así sigue a un ruido parejo
+    // sin confundirse con tu voz.
+    rec.floor = rec.floor == null ? rms : Math.min(rec.floor * 1.02, rms);
+    if (rms > Math.max(SPEECH_RMS, rec.floor * 2.5)) {
       rec.speech += ms;
       rec.silence = 0;
     } else {
@@ -125,6 +130,8 @@
     if (dictating) return finish(); // segundo clic = ya terminé
     stopSpeaking(); // si Nimbo estaba hablando, se calla para escucharte
     dictating = true;
+    // Mientras hablas, Whisper se carga (si se había soltado de la memoria): así no hay que esperarlo al terminar (hasta 3,7 s en este PC).
+    getWorker().postMessage({ type: "load" });
     micBtn.classList.add("live");
     try {
       await openMic();

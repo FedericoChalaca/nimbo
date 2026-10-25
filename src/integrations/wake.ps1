@@ -6,7 +6,7 @@
 # -Wav <archivo>: lee de un .wav en vez del micrófono (para la autoprueba) e informa también lo que descartó ("near").
 param(
   [string]$Culture = "es-ES",
-  [string]$Phrases = "oye nimbo|hola nimbo|ey nimbo",
+  [string]$Phrases = "oye nimbo|hola nimbo",
   [double]$Min = 0.6,
   [string]$Wav = ""
 )

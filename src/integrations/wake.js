@@ -6,7 +6,8 @@ const { spawn } = require("child_process");
 const path = require("path");
 
 const SCRIPT = path.join(__dirname, "wake.ps1");
-const PHRASES = { es: ["oye nimbo", "hola nimbo", "ey nimbo"], en: ["hey nimbo", "hi nimbo", "okay nimbo"] };
+// Sin «ey nimbo»: con la voz Helena, «el nimbo es un tipo de nube» se oía como «ey nimbo» (0,64) y despertaba a Nimbo.
+const PHRASES = { es: ["oye nimbo", "hola nimbo"], en: ["hey nimbo", "hi nimbo"] };
 const CULTURE = { es: "es-ES", en: "en-US" }; // si no está, wake.ps1 usa otro del mismo idioma (es-MX, es-CO…)
 // Medido con la voz Helena (es-ES): las frases de activación dan 0,68–0,73 de confianza; frases parecidas ("Oye, mira…", "el nimbo
 // es una nube", "Hola mundo") 0,26–0,46. El umbral queda en medio. prefs.wakeMin lo cambia (más alto = menos falsas alarmas).

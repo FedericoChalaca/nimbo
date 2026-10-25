@@ -570,7 +570,8 @@ if (require.main === module) (async () => {
   assert.strictEqual(calls[2].messages.length, 1); // "Nueva conversación" la borra
   // Cancelar corta la petición y avisa sin tratarlo como un fallo de la API.
   const lenta = orch.ask({ text: "lento" }, { reminders: [] });
-  setTimeout(() => orch.cancel(), 150);
+  const llegaron = calls.length;
+  (async () => { while (calls.length === llegaron) await new Promise((r) => setTimeout(r, 20)); orch.cancel(); })(); // cancela cuando la pregunta ya salió (leer la lista de chats tarda distinto en cada equipo)
   const cancelada = await lenta;
   assert.deepStrictEqual([cancelada.error, cancelada.text], [true, "Cancelado."]);
   // Sin clave, el motor "api" no se usa (cae al motor Suscripción, que aquí no existe: devuelve su error normal, no llama a la API).
