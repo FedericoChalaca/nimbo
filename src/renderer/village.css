@@ -118,3 +118,33 @@ button.px.alt { background: #e9e2d0; box-shadow: inset 0 -3px 0 #c2b89f, 0 2px 0
   font: 900 17px/1 "Segoe UI", sans-serif; cursor: pointer; box-shadow: inset 0 -3px 0 #c98f3a, 0 2px 0 rgba(0, 0, 0, .3); }
 #zoom button:hover { filter: brightness(1.07); }
 #zoom button:active { transform: translateY(1px); box-shadow: inset 0 -1px 0 #c98f3a; }
+/* Pestañas del HUD: casas o aldeanos según lo que hacen */
+#hudTabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom: 6px; }
+#hudTabs button { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 3px 7px; border: 2px solid var(--wood-d); border-radius: 4px;
+  background: #e9e2d0; color: var(--wood-d); font: 700 11.5px "Segoe UI", sans-serif; cursor: pointer; }
+#hudTabs button em { font-style: normal; min-width: 16px; padding: 0 4px; border-radius: 3px; background: rgba(61, 36, 20, .12); text-align: center; }
+#hudTabs button.on { background: #f2c16b; box-shadow: inset 0 -2px 0 #c98f3a; }
+#hudTabs button.working em { background: #cfe5ff; color: #164a85; }
+#hudTabs button.needs em { background: #ffe9a6; color: #7a5200; }
+#houseList small { display: block; color: var(--ink-l); font: 11px "Segoe UI", sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#houseList span b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#houseList i.dot { border-radius: 50%; background: #c9c1ad; }
+#houseList i.dot.working { background: #4fb6ff; }
+#houseList i.dot.needs { background: #ffc400; }
+#houseList .none { padding: 6px; color: var(--ink-l); font-size: 12px; }
+/* Luz que late debajo de un aldeano que trabaja o te espera: tamaño fijo en pantalla, se ve aun con la aldea alejada */
+.beacon { position: absolute; width: calc(max(46px, var(--s, 3) * 14px)); aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; }
+.beacon::before, .beacon::after { content: ""; position: absolute; inset: 0; border-radius: 50%; }
+.beacon::before { background: radial-gradient(circle, transparent 0 22%, var(--bc) 34%, transparent 70%); animation: glow 1.4s ease-in-out infinite; }
+.beacon::after { border: 4px solid var(--bc); animation: ring 1.4s ease-out infinite; }
+.beacon.working { --bc: rgba(60, 175, 255, .9); }
+.beacon.needs { --bc: rgba(255, 200, 40, .9); }
+.beacon.needs::before, .beacon.needs::after { animation-duration: .8s; }
+.beacon.dim { opacity: .25; }
+@keyframes glow { 50% { opacity: .45; } }
+@keyframes ring { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+/* Carteles de casas con alguien trabajando o esperándote: brillan para verse de lejos */
+.sign-label.busy { border-color: #4fb6ff; box-shadow: 0 0 0 2px rgba(79, 182, 255, .5), 0 0 14px 4px rgba(79, 182, 255, .55); animation: signglow 1.4s ease-in-out infinite; }
+.sign-label.needs { border-color: #ffc400; box-shadow: 0 0 0 2px rgba(255, 196, 0, .6), 0 0 16px 5px rgba(255, 196, 0, .6); animation: signglow .8s ease-in-out infinite; }
+@keyframes signglow { 50% { filter: brightness(1.25); } }
+.beacon { z-index: 0; } .bubble, .sign-label, .name-tag { z-index: 1; }

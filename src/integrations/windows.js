@@ -33,6 +33,9 @@ function parseLine(line) {
   return null;
 }
 
+/** Nombre para mostrar: la descripción del .exe, sin colas técnicas ("Steam Client WebHelper" → "Steam", "WhatsApp.Root" → "WhatsApp"). */
+const appName = (desc) => String(desc ?? "").replace(/\s+(Client\s+)?(Web)?Helper$/i, "").replace(/^(\w+)(\.\w+)+$/, "$1").trim();
+
 /**
  * Agrupa las ventanas por programa, en el orden en que aparecieron (como la barra de Windows: los íconos no saltan de lugar).
  * order: Map programa → orden de llegada (se actualiza aquí). → [{ key, name, path, windows, fg, min }]
@@ -41,7 +44,7 @@ function groupApps(windows, order) {
   const groups = new Map();
   for (const w of windows) {
     const key = (w.path || w.title).toLowerCase();
-    if (!groups.has(key)) groups.set(key, { key, name: w.desc || path.basename(w.path || "", ".exe") || w.title, path: w.path, windows: [] });
+    if (!groups.has(key)) groups.set(key, { key, name: appName(w.desc) || path.basename(w.path || "", ".exe") || w.title, path: w.path, windows: [] });
     groups.get(key).windows.push({ h: w.h, title: w.title, min: w.min, fg: w.fg });
   }
   for (const key of groups.keys()) if (!order.has(key)) order.set(key, order.size ? Math.max(...order.values()) + 1 : 0);
@@ -54,8 +57,9 @@ function groupApps(windows, order) {
  * @param binDir   dónde guardar el .exe compilado
  * @param onApps   (apps) => cada vez que cambian las ventanas
  * @param onAutoHide (0|1) => estado de la barra de Windows
+ * @param hide     esconder la barra de Windows mientras el programa corre (vuelve sola al apagarlo, aunque Nimbo se cierre de golpe)
  */
-function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => {}, platform = process.platform }) {
+function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => {}, hide = false, platform = process.platform }) {
   let child = null;
   let want = false;
   let restart = 0;
@@ -67,7 +71,9 @@ function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => 
     if (!want || child || platform !== "win32") return;
     let exe;
     try { exe = ensureExe(binDir); } catch (e) { want = false; return onError(e.message === "csc" ? "csc" : "compile"); }
-    child = spawn(exe, [String(process.pid)], { windowsHide: true });
+    // detached: si no, Node lo mete en un "job" de Windows que lo mata junto con Nimbo, y si Nimbo se cierra de golpe la barra no
+    // alcanza a volver. Suelto, nota que Nimbo ya no está (se le cierra la entrada), devuelve la barra y se va.
+    child = spawn(exe, hide ? [String(process.pid), "hide"] : [String(process.pid)], { windowsHide: true, detached: true });
     let buf = "";
     child.stdout.on("data", (d) => {
       buf += d;
@@ -81,12 +87,25 @@ function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => 
     });
     child.stdin.on("error", () => {});
     const me = child;
-    me.on("exit", () => { if (child === me) child = null; if (want) restart = setTimeout(launch, Math.min(30_000, 1000 * 2 ** fails++)); });
+    // Si no arranca (pasó al prender el PC: Windows todavía revisaba el programa) o se cae, se vuelve a intentar cada vez más espaciado.
+    const again = () => { if (child !== me) return; child = null; if (want) { clearTimeout(restart); restart = setTimeout(launch, Math.min(30_000, 1000 * 2 ** fails++)); } };
+    me.on("error", again);
+    me.on("exit", again);
   }
 
   const send = (line) => { if (child && child.exitCode === null) child.stdin.write(line + "\n"); };
   return {
-    set(on) { want = !!on && platform === "win32"; if (want) launch(); else { clearTimeout(restart); const c = child; child = null; c?.stdin.end(); c?.kill(); onApps([]); } },
+    set(on) {
+      want = !!on && platform === "win32";
+      if (want) return launch();
+      clearTimeout(restart);
+      const c = child;
+      child = null;
+      // Cerrarle la entrada lo hace terminar solo y devolver la barra; matarlo de una la dejaría escondida.
+      c?.stdin.end();
+      if (c) setTimeout(() => { if (c.exitCode === null) c.kill(); }, 1500).unref();
+      onApps([]);
+    },
     /** focus / min / close de una ventana que esté en la última lista (la página nunca manda otra cosa). */
     act(action, h) {
       if (!["focus", "min", "close"].includes(action) || !last.some((w) => w.h === String(h))) return false;
@@ -99,7 +118,7 @@ function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => 
   };
 }
 
-module.exports = { createWindows, parseLine, groupApps, ensureExe };
+module.exports = { createWindows, parseLine, groupApps, ensureExe, appName };
 
 // Autoprueba: node src/integrations/windows.js  (en Windows también compila el programa y lee las ventanas de verdad)
 if (require.main === module) (async () => {
@@ -116,6 +135,7 @@ if (require.main === module) (async () => {
   assert.deepStrictEqual(g.map((x) => [x.name, x.windows.length, x.fg]), [["code", 2, false], ["brave", 1, true]]);
   g = groupApps([w("2", "C:\\b\\brave.exe"), w("1", "C:\\a\\code.exe"), w("9", "C:\\c\\spotify.exe")], order);
   assert.deepStrictEqual(g.map((x) => x.name), ["code", "brave", "spotify"]); // el nuevo va al final; los demás no se mueven
+  assert.deepStrictEqual(["Steam Client WebHelper", "WhatsApp.Root", "Visual Studio Code", "Brave Browser"].map(appName), ["Steam", "WhatsApp", "Visual Studio Code", "Brave Browser"]);
   assert.strictEqual(groupApps([w("5", "C:\\c\\x.exe", false, true)], new Map())[0].min, true);
   if (process.platform !== "win32") return console.log("windows.js ok (sin Windows: solo lo básico)");
   // De verdad: compila, arranca, recibe la lista y no acepta ventanas que no estén en ella.

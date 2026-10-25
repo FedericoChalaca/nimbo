@@ -734,6 +734,7 @@ let lastTasks = null; // la última lista: se reenvía cuando la página carga (
 let taskbarArming = false; // prendiendo: falta leer cómo estaba la barra antes de ocultarla
 const windows = createWindows({
   binDir: path.join(app.getPath("userData"), "bin"),
+  hide: true, // el auto-ocultar solo no basta: con un botón parpadeando la barra de Windows se queda a la vista
   onApps: async (apps) => {
     const out = await Promise.all(apps.map(async (a) => ({ key: a.key, name: a.name, icon: await iconOf(a.path), fg: a.fg, min: a.min,
       windows: a.windows.map((w) => ({ h: w.h, title: w.title, fg: w.fg, min: w.min })) })));

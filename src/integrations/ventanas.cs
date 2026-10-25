@@ -2,7 +2,9 @@
 // auto-ocultar de la barra de Windows. Lo compila windows.js con el csc.exe que trae Windows (sin instalar nada) y lo lanza Nimbo.
 // Escribe una línea JSON con la lista cada vez que cambia: [{"h":"123","t":"título","p":"C:\\ruta.exe","d":"descripción","m":false,"f":true}]
 // Lee órdenes por la entrada estándar: focus <h> · min <h> · close <h> · autohide 1|0 · state
-// Argumento: el id del proceso de Nimbo; si Nimbo deja de existir, este programa se cierra solo.
+// Argumentos: el id del proceso de Nimbo (si Nimbo deja de existir, este programa se cierra solo) y "hide": esconder la barra de Windows
+// mientras corre. El auto-ocultar de Windows NO basta: con un botón parpadeando (WhatsApp, Brave pidiendo atención) la barra se queda
+// a la vista. Así que se esconde de verdad y solo sale con el mouse en el borde de abajo (o con Inicio abierto); al salir se devuelve.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -35,6 +37,13 @@ static class Ventanas {
   [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder s, ref int n);
+  [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
+  [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr m, ref MONITORINFO mi);
+  [StructLayout(LayoutKind.Sequential)] struct POINT { public int x, y; }
+  [StructLayout(LayoutKind.Sequential)] struct RECT { public int l, t, r, b; }
+  [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int cbSize; public RECT mon, work; public uint flags; }
 
   [StructLayout(LayoutKind.Sequential)]
   struct APPBARDATA { public int cbSize; public IntPtr hWnd; public uint uCallbackMessage; public uint uEdge; public int left, top, right, bottom; public IntPtr lParam; }
@@ -44,7 +53,7 @@ static class Ventanas {
   const int GWL_EXSTYLE = -20;
   const int WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000, WS_EX_NOACTIVATE = 0x8000000;
   const uint GW_OWNER = 4;
-  const int SW_RESTORE = 9, SW_MINIMIZE = 6;
+  const int SW_RESTORE = 9, SW_MINIMIZE = 6, SW_HIDE = 0, SW_SHOWNA = 8;
   const uint WM_CLOSE = 0x10;
 
   static readonly Dictionary<uint, string> paths = new Dictionary<uint, string>();
@@ -104,6 +113,7 @@ static class Ventanas {
       if (!IsAppWindow(h)) return true;
       var t = new StringBuilder(512); GetWindowText(h, t, 512);
       uint pid; GetWindowThreadProcessId(h, out pid);
+      if (pid == (uint)parent) return true;
       string path = PathOf(pid);
       // Apps de la Tienda: la ventana es de ApplicationFrameHost; el programa real es su ventana hija de otro proceso.
       if (path.EndsWith("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase)) {
@@ -120,7 +130,9 @@ static class Ventanas {
     return sb.Append(']').ToString();
   }
 
-  static void Say(string line) { lock (outLock) { Console.Out.WriteLine(line); Console.Out.Flush(); } }
+  // Entrada y salida directas (sin consola: Nimbo lo lanza suelto, sin ventana de consola, y Console.OutputEncoding fallaría).
+  static readonly System.IO.StreamWriter output = new System.IO.StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
+  static void Say(string line) { lock (outLock) { output.Write(line + "\n"); output.Flush(); } }
 
   // Traer una ventana al frente: Windows no deja que cualquier proceso "robe" el foco; se une un momento a la cola de entrada de la
   // ventana que lo tiene (AttachThreadInput) y, si aun así no lo suelta, se simula soltar la tecla Alt (truco conocido y sin efectos).
@@ -146,12 +158,55 @@ static class Ventanas {
     SHAppBarMessage(ABM_SETSTATE, ref d);
   }
 
+  // --- Esconder la barra de Windows (una por pantalla) ---
+  static volatile bool quitting = false;
+  static int parent = 0; // Nimbo: sus ventanas no van en la lista
+  // (La barra misma no cuenta: al cerrarse una ventana Windows le pasa el foco y se quedaría a la vista.)
+  static readonly HashSet<string> SHELL = new HashSet<string> { "NotifyIconOverflowWindow",
+    "TopLevelWindowForOverflowXamlIsland", "Xaml_WindowedPopupClass", "Windows.UI.Core.CoreWindow" }; // Inicio, búsqueda, reloj, íconos ocultos
+  static string ClassOf(IntPtr h) { var c = new StringBuilder(64); GetClassName(h, c, 64); return c.ToString(); }
+  static List<IntPtr> Trays() {
+    var list = new List<IntPtr>();
+    EnumWindows((h, l) => { string c = ClassOf(h); if (c == "Shell_TrayWnd" || c == "Shell_SecondaryTrayWnd") list.Add(h); return true; }, IntPtr.Zero);
+    return list;
+  }
+  static void ShowTrays() { foreach (var t in Trays()) if (!IsWindowVisible(t)) ShowWindow(t, SW_SHOWNA); }
+  static void TrayLoop() {
+    try { TrayTick(); } catch { quitting = true; ShowTrays(); }
+  }
+  static void TrayTick() {
+    var near = new Dictionary<IntPtr, DateTime>(); // última vez que el mouse (o Inicio abierto en esa pantalla) la necesitó
+    while (!quitting) {
+      POINT p; GetCursorPos(out p);
+      IntPtr fg = GetForegroundWindow();
+      IntPtr fgMon = SHELL.Contains(ClassOf(fg)) ? MonitorFromWindow(fg, 2) : IntPtr.Zero;
+      foreach (var t in Trays()) {
+        IntPtr mon = MonitorFromWindow(t, 2);
+        var mi = new MONITORINFO(); mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+        if (!GetMonitorInfo(mon, ref mi)) continue;
+        RECT r; GetWindowRect(t, out r);
+        bool edge = p.x >= mi.mon.l && p.x < mi.mon.r && p.y >= mi.mon.b - 2 && p.y < mi.mon.b;
+        bool onBar = IsWindowVisible(t) && p.x >= r.l && p.x < r.r && p.y >= r.t && p.y < r.b;
+        if (edge || onBar || mon == fgMon) near[t] = DateTime.UtcNow;
+        DateTime last;
+        bool keep = near.TryGetValue(t, out last) && (DateTime.UtcNow - last).TotalMilliseconds < 700;
+        if (quitting) break;
+        if (keep != IsWindowVisible(t)) ShowWindow(t, keep ? SW_SHOWNA : SW_HIDE);
+      }
+      Thread.Sleep(150);
+    }
+  }
+  static void Quit() { quitting = true; Thread.Sleep(200); ShowTrays(); Environment.Exit(0); }
+
   static void Main(string[] args) {
-    int parent = args.Length > 0 ? int.Parse(args[0]) : 0;
-    Console.OutputEncoding = new UTF8Encoding(false);
+    parent = args.Length > 0 ? int.Parse(args[0]) : 0;
+    // Pase lo que pase (hasta un error), la barra de Windows no se queda escondida.
+    AppDomain.CurrentDomain.UnhandledException += (s, e) => { quitting = true; ShowTrays(); };
+    if (args.Length > 1 && args[1] == "hide") new Thread(TrayLoop) { IsBackground = true }.Start();
     var reader = new Thread(() => {
       string line;
-      while ((line = Console.In.ReadLine()) != null) {
+      var input = new System.IO.StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
+      while ((line = input.ReadLine()) != null) {
         var parts = line.Trim().Split(' ');
         try {
           IntPtr h = parts.Length > 1 ? new IntPtr(long.Parse(parts[1])) : IntPtr.Zero;
@@ -164,13 +219,13 @@ static class Ventanas {
           }
         } catch { }
       }
-      Environment.Exit(0); // Nimbo cerró la entrada: se terminó
+      Quit(); // Nimbo cerró la entrada: se terminó (y la barra vuelve)
     });
     reader.IsBackground = true;
     reader.Start();
     string last = "";
     while (true) {
-      if (parent != 0) { try { Process.GetProcessById(parent); } catch { return; } }
+      if (parent != 0) { try { Process.GetProcessById(parent); } catch { Quit(); } } // Nimbo se cerró de golpe: la barra vuelve
       string now = List();
       if (now != last) { last = now; Say("{\"windows\":" + now + "}"); }
       Thread.Sleep(400);

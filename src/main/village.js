@@ -178,7 +178,8 @@ function createVillage({ listSessions, configFile, page, preload, name }) {
     const rest = houses.filter((h) => !h.hall).sort((a, b) => (b.chats.length > 0) - (a.chats.length > 0) || b.at - a.at).slice(0, MAX_HOUSES);
     const shown = [...(hall ? [hall] : []), ...rest];
     const out = await Promise.all(shown.map(async (h) => ({ ...h, projects: await Promise.all(h.folders.slice(0, 5).map(async (d, i) => ({ i, name: path.basename(d), path: d, git: await gitInfo(d) }))) })));
-    return { houses: out, plaza: plaza.sort((a, b) => b.at - a.at).slice(0, 10).map(pub), name: name(), broken: !!cfg.broken, file: configFile };
+    return { houses: out, plaza: plaza.sort((a, b) => b.at - a.at).slice(0, 10).map(pub), name: name(), broken: !!cfg.broken, file: configFile,
+      events: [...recent.values()].flat() };
   }
   const house = (id) => houses.find((h) => h.id === id);
   const fromVillage = (e) => win && e.sender === win.webContents;
@@ -250,16 +251,26 @@ function createVillage({ listSessions, configFile, page, preload, name }) {
   }
 
   /** Un evento de Claude Code, recortado a lo que la aldea muestra (título del chat y el paso, nunca el contenido de archivos). */
+  // Los últimos eventos de cada chat se guardan aunque la aldea esté cerrada: al abrirla, quien estaba trabajando o esperándote ya se ve así.
+  const recent = new Map(); // id del chat → últimos 3 eventos
   function hook(p) {
-    if (!win || win.isDestroyed()) return;
+    const ev = event(p);
+    if (!ev.session) return;
+    const list = recent.get(ev.session) ?? [];
+    recent.delete(ev.session);
+    recent.set(ev.session, [...list.slice(-2), ev]);
+    if (recent.size > 100) recent.delete(recent.keys().next().value);
+    if (win && !win.isDestroyed()) win.webContents.send("village-hook", ev);
+  }
+  function event(p) {
     const input = p.tool_input ?? {};
     // De un comando se muestra su descripción (Claude Code la manda), no el comando crudo.
     const detail = input.description ?? (input.command && String(input.command).split(/\s+/)[0]) ?? (input.file_path && path.basename(String(input.file_path))) ?? input.pattern ?? input.query ?? "";
-    win.webContents.send("village-hook", {
+    return {
       session: String(p.session_id ?? ""), event: String(p.hook_event_name ?? ""), title: String(p.title ?? "").slice(0, 60),
       tool: String(p.tool_name ?? ""), detail: String(detail).slice(0, 60), prompt: String(p.prompt ?? "").replace(/\s+/g, " ").slice(0, 70),
-      message: String(p.message ?? "").slice(0, 80), context: p.context ?? null,
-    });
+      message: String(p.message ?? "").slice(0, 80), kind: String(p.notification_type ?? ""), context: p.context ?? null, at: Date.now(),
+    };
   }
 
   return { open, hook, isOpen: () => !!win };

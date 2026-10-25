@@ -776,15 +776,51 @@
     if (path) player.path = path;
   });
 
-  // --- HUD: la lista de casas lleva la cámara (y a ti) a cada una ---
+  // --- HUD: pestañas (casas, o los aldeanos según lo que hacen) y la lista, que lleva la cámara (y a ti) a cada uno ---
   let hudKey = "";
+  let hudTab = "houses";
+  try { hudTab = localStorage.getItem("aldea-tab") || "houses"; } catch {}
+  const groupOf = (v) => { const st = stateOf(v); return st === "working" || st === "needs" ? st : "free"; };
+  const TABS = [["houses", t("Casas")], ["working", t("Trabajando")], ["needs", t("Esperándote")], ["free", t("Libres")]];
   function renderHud() {
     const busy = villagers.filter((v) => stateOf(v) === "working").length;
     $("hudStats").textContent = t("{0} casas · {1} aldeanos · {2} trabajando", houses.length + (hallHouse ? 1 : 0), villagers.length, busy);
+    const count = { houses: houses.length + (hallHouse ? 1 : 0), working: 0, needs: 0, free: 0 };
+    for (const v of villagers) count[groupOf(v)]++;
+    const people = hudTab === "houses" ? [] : villagers.filter((v) => groupOf(v) === hudTab).sort((a, b) => b.chat.at - a.chat.at);
     const list = [...(hallHouse ? [hallHouse] : []), ...houses, ...(plazaHome?.chats.length ? [plazaHome] : [])];
-    const key = list.map((h) => h.id + h.chats.length).join() + broken;
+    const key = hudTab + JSON.stringify(count) + (hudTab === "houses" ? list.map((h) => h.id + h.chats.length).join() + broken : people.map((v) => v.id).join());
     if (key === hudKey) return; // sin cambios no se redibuja: reemplazar los botones se comería el clic en curso
     hudKey = key;
+    $("hudTabs").replaceChildren(...TABS.map(([id, name]) => {
+      const b = el("button", `${id}${id === hudTab ? " on" : ""}`);
+      b.type = "button";
+      b.append(el("span", "", name), el("em", "", String(count[id])));
+      b.onclick = () => { hudTab = id; try { localStorage.setItem("aldea-tab", id); } catch {} hudKey = ""; renderHud(); };
+      return b;
+    }));
+    if (hudTab !== "houses") {
+      const rows = people.map((v) => {
+        const b = el("button");
+        b.type = "button";
+        const sw = el("i", `dot ${stateOf(v)}`);
+        const l = live.get(v.id);
+        const what = stateOf(v) === "working" ? l?.step : stateOf(v) === "needs" ? l?.message : v.chat.lastPrompt;
+        const txt = el("span");
+        txt.append(el("b", "", nameOf(v)), el("small", "", [v.house.isPlaza ? t("Plaza") : v.house.name, what ? short(what, 40) : ago(v.chat.at)].join(" · ")));
+        b.append(sw, txt);
+        b.onclick = () => { // ir hasta él y hablarle
+          v.inside = false;
+          player.x = v.x + 12; player.y = v.y; player.path = null; buddy.trail = [];
+          talkTo(v);
+          canvas.focus();
+        };
+        return b;
+      });
+      const empty = { working: t("Nadie está trabajando ahora."), needs: t("Nadie te está esperando."), free: t("Todos están ocupados.") }[hudTab];
+      $("houseList").replaceChildren(...(rows.length ? rows : [el("div", "none", empty)]));
+      return;
+    }
     const rows = list.map((h) => {
       const b = el("button");
       b.type = "button";
@@ -814,14 +850,20 @@
   }
   function drawLabels(now) {
     for (const e of pool.values()) e.dataset.used = "";
-    label("hall", "sign-label home", hallHouse ? `Nimbo · ${short(hallHouse.name, 18)}` : "Nimbo", (HALL.x + HALL.w / 2) * TILE, HALL.y * TILE - 2);
+    const hallVs = villagers.filter((v) => v.house === hallHouse);
+    const hallCls = hallVs.some((v) => stateOf(v) === "needs") ? " needs" : hallVs.some((v) => stateOf(v) === "working") ? " busy" : "";
+    label("hall", "sign-label home" + hallCls, hallHouse ? `Nimbo · ${short(hallHouse.name, 18)}` : "Nimbo", (HALL.x + HALL.w / 2) * TILE, HALL.y * TILE - 2);
     for (const h of houses) {
       const vs = villagers.filter((v) => v.house === h);
       const cls = vs.some((v) => stateOf(v) === "needs") ? " needs" : vs.some((v) => stateOf(v) === "working") ? " busy" : "";
       label("h" + h.id, "sign-label" + cls, short(h.name, 22), (h.x + HW / 2) * TILE, h.y * TILE - 6);
     }
+    labels.style.setProperty("--s", SCALE);
     for (const v of villagers) {
       if (v.inside) continue;
+      const st = stateOf(v);
+      // Una luz que late debajo de quien trabaja (azul) o te espera (amarilla): del mismo tamaño en pantalla, se ve aun con la aldea lejos.
+      if (st === "working" || st === "needs") label("l" + v.id, `beacon ${st}${(hudTab === "working" || hudTab === "needs") && hudTab !== st ? " dim" : ""}`, "", v.x, v.y - 7);
       if (v.bubble) label("b" + v.id, `bubble ${v.bubble.kind}`, v.bubble.text, v.x, v.y - 20 - v.jump);
       if (hover === v) label("n" + v.id, "name-tag", nameOf(v), v.x, v.y + 3);
     }
@@ -896,6 +938,7 @@
       NAME = d.name || "";
       broken = !!d.broken;
       const first = !staticLayer;
+      for (const ev of d.events ?? []) applyHook(ev); // lo que pasó mientras la aldea estaba cerrada
       buildMap(d.houses ?? [], d.plaza ?? []);
       makeVillagers();
       if (first) { player.x = (HALL.x + 3) * TILE + 8; player.y = (HALL.y + HALL.h + 1) * TILE + 12; cam.x = player.x - VW / 2; cam.y = player.y - VH / 2; }
@@ -907,13 +950,21 @@
   }
   let refreshTimer = 0;
   const TOOLS = { Bash: t("ejecutando"), PowerShell: t("ejecutando"), Read: t("leyendo"), Write: t("escribiendo"), Edit: t("editando"), MultiEdit: t("editando"), Glob: t("buscando"), Grep: t("buscando"), WebSearch: t("buscando en la web"), WebFetch: t("leyendo una página"), Agent: t("con un ayudante"), Task: t("con un ayudante") };
-  api.onHook((h) => {
+  // "Claude está esperando tu mensaje" (el aviso que llega un minuto después de terminar) no es pedirte algo: ese chat queda libre.
+  const IDLE_NOTE = /waiting for your input|esperando tu/i;
+  function applyHook(h) {
     if (!h.session) return;
     const prev = live.get(h.session) ?? {};
+    const at = h.at ?? Date.now();
+    if (prev.at > at) return;
     const step = h.event === "PreToolUse" ? `${TOOLS[h.tool] ?? h.tool}${h.detail ? " " + short(h.detail, 34) : ""}` : h.event === "UserPromptSubmit" ? t("pensando en «{0}»", short(h.prompt, 34)) : prev.step;
-    const state = { UserPromptSubmit: "thinking", PreToolUse: "working", PostToolUse: "working", PostToolUseFailure: "working", Notification: "needs", Stop: "finished", StopFailure: "error", SessionEnd: "idle", SessionStart: "idle" }[h.event] ?? prev.state;
-    live.set(h.session, { ...prev, state, step, at: Date.now(), ctx: h.context ?? prev.ctx, message: h.event === "Notification" ? h.message : prev.message, shown: prev.shown });
-    if (!villagers.some((v) => v.id === h.session)) { clearTimeout(refreshTimer); refreshTimer = setTimeout(load, 2500); } // un chat nuevo: llega a la aldea
+    const idleNote = h.event === "Notification" && (h.kind === "idle_prompt" || IDLE_NOTE.test(h.message ?? ""));
+    const state = idleNote ? "idle" : { UserPromptSubmit: "thinking", PreToolUse: "working", PostToolUse: "working", PostToolUseFailure: "working", Notification: "needs", Stop: "finished", StopFailure: "error", SessionEnd: "idle", SessionStart: "idle" }[h.event] ?? prev.state;
+    live.set(h.session, { ...prev, state, step, at, ctx: h.context ?? prev.ctx, message: h.event === "Notification" ? h.message : prev.message, shown: prev.shown });
+  }
+  api.onHook((h) => {
+    applyHook(h);
+    if (h.session && !villagers.some((v) => v.id === h.session)) { clearTimeout(refreshTimer); refreshTimer = setTimeout(load, 2500); } // un chat nuevo: llega a la aldea
   });
   load();
   setInterval(load, 60_000);
