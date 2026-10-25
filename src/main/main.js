@@ -10,6 +10,7 @@ const path = require("path");
 const { createOrchestrator, sessionTitle, sessionContext, claudeFound, listSessions } = require("./orchestrator");
 const { createVillage } = require("./village");
 const { createWake, createLive } = require("../integrations/wake");
+const { createWindows } = require("../integrations/windows");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -128,6 +129,7 @@ function createWindow() {
     // Primera vez: se abre solo el panel de conexiones para dejar todo andando.
     if (!prefs.onboarded) setTimeout(() => { if (!mini && !win.isDestroyed()) win.webContents.send("setup-open"); }, 4500);
     if (whatsapp) win.webContents.send("whatsapp", whatsapp);
+    if (lastTasks) win.webContents.send("tasks", lastTasks);
   });
 
   // Cada 33 ms: los ojos siguen al cursor por toda la pantalla, y si el cursor está
@@ -701,6 +703,62 @@ ipcMain.on("wake-done", syncWake);
 app.on("before-quit", () => wake.stop());
 app.whenReady().then(() => { syncWake(); powerMonitor.on("resume", () => { if (prefs.wakeWord === true) setTimeout(() => wake.restart(), 3000); }); });
 
+// --- Nimbo como barra de tareas (windows.js, solo Windows): tus programas abiertos en la isla y la barra de Windows en auto-ocultar. ---
+// prefs.taskbarMode lo prende (menú). Al prenderlo se guarda cómo estaba la barra (prefs.taskbarPrevAutoHide) para dejarla igual al apagarlo.
+const iconCache = new Map(); // ruta del programa → data: URL de su ícono (32 px)
+async function iconOf(file) {
+  if (!file) return "";
+  if (!iconCache.has(file)) iconCache.set(file, (async () => (await storeLogo(file)) || app.getFileIcon(file, { size: "normal" }).then((i) => (i.isEmpty() ? "" : i.toDataURL())).catch(() => ""))());
+  return iconCache.get(file);
+}
+// Apps de la Tienda (C:\Program Files\WindowsApps\<paquete>\…): el .exe suele traer un ícono genérico; su logo de verdad está en el
+// AppxManifest.xml del paquete (Square44x44Logo), en varios tamaños: se usa el más cercano a 48 px.
+async function storeLogo(file) {
+  const m = /^(.*\\WindowsApps\\[^\\]+)\\/i.exec(file);
+  if (!m) return "";
+  try {
+    const manifest = await fs.promises.readFile(path.join(m[1], "AppxManifest.xml"), "utf8");
+    const rel = /Square44x44Logo="([^"]+)"/.exec(manifest)?.[1] ?? /<Logo>([^<]+)<\/Logo>/.exec(manifest)?.[1];
+    if (!rel) return "";
+    const dir = path.join(m[1], path.dirname(rel));
+    const stem = path.basename(rel, path.extname(rel)).toLowerCase();
+    const files = (await fs.promises.readdir(dir)).filter((n) => n.toLowerCase().startsWith(stem) && /\.png$/i.test(n) && !/contrast|unplated/i.test(n));
+    const size = (n) => { const tgt = /targetsize-(\d+)/i.exec(n); const sc = /scale-(\d+)/i.exec(n); return tgt ? Number(tgt[1]) : sc ? (44 * Number(sc[1])) / 100 : 44; };
+    const best = files.sort((a, b) => Math.abs(size(a) - 48) - Math.abs(size(b) - 48))[0];
+    if (!best) return "";
+    const img = nativeImage.createFromPath(path.join(dir, best));
+    return img.isEmpty() ? "" : img.resize({ width: 32, height: 32, quality: "best" }).toDataURL();
+  } catch { return ""; }
+}
+let lastTasks = null; // la última lista: se reenvía cuando la página carga (el ayudante solo avisa cuando algo cambia)
+let taskbarArming = false; // prendiendo: falta leer cómo estaba la barra antes de ocultarla
+const windows = createWindows({
+  binDir: path.join(app.getPath("userData"), "bin"),
+  onApps: async (apps) => {
+    const out = await Promise.all(apps.map(async (a) => ({ key: a.key, name: a.name, icon: await iconOf(a.path), fg: a.fg, min: a.min,
+      windows: a.windows.map((w) => ({ h: w.h, title: w.title, fg: w.fg, min: w.min })) })));
+    lastTasks = out;
+    if (win && !win.isDestroyed()) win.webContents.send("tasks", out);
+  },
+  onAutoHide: (v) => {
+    if (!taskbarArming) return;
+    taskbarArming = false;
+    prefs.taskbarPrevAutoHide = v;
+    savePrefs();
+    windows.autoHide(true);
+  },
+  onError: (e) => { if (win && !win.isDestroyed()) win.webContents.send("ai-error", e === "csc" ? t("No encontré el compilador de C# de Windows (.NET Framework 4): sin él Nimbo no puede leer tus ventanas.") : t("No pude preparar la barra de tareas de Nimbo.")); },
+});
+function setTaskbarMode(on) {
+  prefs.taskbarMode = on;
+  savePrefs();
+  if (on) { windows.set(true); taskbarArming = true; setTimeout(() => windows.state(), 1500); } // primero se lee cómo estaba la barra; después se oculta
+  else { windows.autoHide(prefs.taskbarPrevAutoHide === 1); setTimeout(() => windows.set(false), 600); }
+}
+ipcMain.on("task-do", (_e, action, h) => { windows.act(String(action), String(h)); });
+app.whenReady().then(() => { if (prefs.taskbarMode === true) windows.set(true); });
+app.on("before-quit", () => windows.stop());
+
 // --- La aldea (village.js): cada carpeta con chats es una casa y cada chat, un aldeano. Ventana aparte, opaca (barata de dibujar). ---
 const village = createVillage({
   listSessions: () => listSessions(CHAT_DIR, { limit: 60, includeScratch: true }),
@@ -774,6 +832,7 @@ async function setupStatus() {
     theme: prefs.theme,
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
     wake: process.platform === "win32" ? prefs.wakeWord === true : null, // null = no se puede (solo Windows)
+    taskbar: process.platform === "win32" ? prefs.taskbarMode === true : null,
     whatsappRead: prefs.whatsappRead === true,
     whatsappBrain: prefs.whatsappRead === true ? await wa.brain() : "",
     autostart: autostartOn(),
@@ -844,6 +903,7 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
       case "theme": setTheme(String(value)); break;
       case "speak": setSpeak(value === true); break;
       case "wake": prefs.wakeWord = value === true; savePrefs(); syncWake(); break;
+      case "taskbar": setTaskbarMode(value === true); break;
       case "whatsapp-rules": shell.openPath(wa.rulesFile); break;
       case "trello": await refreshTrello(); break;
       case "spotify-id": {
@@ -1049,6 +1109,13 @@ function buildMenu() {
       type: "checkbox",
       checked: prefs.musicBar !== false,
       click: (item) => { prefs.musicBar = item.checked; savePrefs(); if (item.checked) musicBar.reset(); else musicBar.sync(); },
+    },
+    {
+      label: t("Nimbo como barra de tareas"),
+      type: "checkbox",
+      checked: prefs.taskbarMode === true,
+      visible: process.platform === "win32",
+      click: (item) => setTaskbarMode(item.checked),
     },
     {
       label: t("«Oye Nimbo»: escuchar siempre"),

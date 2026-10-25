@@ -62,7 +62,7 @@ function layout() {
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
     measure.textContent = text;
-    const pipsW = (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10) + (mailBtn.classList.contains("hidden") ? 0 : mailBtn.offsetWidth + 8);
+    const pipsW = (tasksEl.children.length ? tasksEl.offsetWidth + 10 : 0) + (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10) + (mailBtn.classList.contains("hidden") ? 0 : mailBtn.offsetWidth + 8);
     // El texto ocupa lo que quepa (el resto se corta con "…"): la isla no pasa de MAX_W.
     const textW = text ? Math.min(measure.offsetWidth, 270, MAX_W - 116 - 12 - pipsW - 16) : 0;
     w = text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150;
@@ -342,6 +342,8 @@ function waViewed() {
 }
 function hidePanel() {
   if (openApp === "wa") waViewed();
+  taskBox.classList.add("hidden");
+  openTask = null;
   sessionBox.classList.add("hidden");
   liveBox.classList.add("hidden");
   appsBox.classList.add("hidden");
@@ -462,6 +464,80 @@ function renderSessions() {
   top.append(el("span", "", head), toVillage);
   sessionBox.replaceChildren(top, ...rows);
 }
+
+// --- Nimbo como barra de tareas: tus programas abiertos (windows.js en main) ---
+// En la barra de la isla, chiquitos a la derecha de Nimbo (como la barra de Windows: el que está al frente lleva una rayita y los
+// minimizados se ven apagados). Al pasar el mouse, en grande; un clic lo trae al frente, o lo minimiza si ya estaba al frente.
+const tasksEl = document.getElementById("tasks");
+const taskBox = document.getElementById("taskBox");
+const MAX_TASKS = 7;
+let tasks = []; // [{ key, name, icon, fg, min, windows: [{ h, title, fg, min }] }]
+let openTask = null; // el programa con varias ventanas que tiene su lista abierta
+let lastTasksKey = "";
+const taskIcon = (a, size) => {
+  if (a.icon) return Object.assign(el("img"), { src: a.icon, alt: "", width: size, height: size, draggable: false });
+  return el("span", "noicon", (a.name || "?").slice(0, 1).toUpperCase());
+};
+// Un clic sobre un programa: si su ventana está al frente se minimiza; si no, viene al frente (la más reciente, si tiene varias).
+function taskClick(a) {
+  if (!a) return;
+  const front = a.windows.find((w) => w.fg && !w.min);
+  if (front) return api.taskDo("min", front.h);
+  api.taskDo("focus", (a.windows.find((w) => !w.min) ?? a.windows[0]).h);
+}
+function renderTasks() {
+  const key = mini ? "" : tasks.slice(0, MAX_TASKS).map((a) => a.key + a.fg + a.min + !!a.icon).join("|") + tasks.length;
+  if (key === lastTasksKey) return;
+  lastTasksKey = key;
+  if (mini) { tasksEl.replaceChildren(); relayout(); return; }
+  const shown = tasks.slice(0, MAX_TASKS).map((a) => {
+    const b = el("button", `tk${a.fg ? " fg" : ""}${a.min ? " min" : ""}`);
+    b.type = "button";
+    b.dataset.key = a.key;
+    b.title = a.windows.length > 1 ? t("{0} · {1} ventanas", a.name, a.windows.length) : a.name;
+    b.append(taskIcon(a, 20));
+    return b;
+  });
+  if (tasks.length > MAX_TASKS) shown.push(el("span", "tkmore", `+${tasks.length - MAX_TASKS}`));
+  tasksEl.replaceChildren(...shown);
+  relayout();
+}
+function renderTaskBox() {
+  if (taskBox.classList.contains("hidden")) return;
+  const tiles = el("div", "tgrid");
+  for (const a of tasks) {
+    const tile = el("button", `tile${a.fg ? " fg" : ""}${a.min ? " min" : ""}${openTask === a.key ? " on" : ""}`);
+    tile.type = "button";
+    tile.title = a.windows.map((w) => w.title).join("\n");
+    tile.append(taskIcon(a, 34), el("span", "", a.name));
+    if (a.windows.length > 1) tile.append(el("b", "", String(a.windows.length)));
+    tile.onclick = () => {
+      if (a.windows.length > 1) { openTask = openTask === a.key ? null : a.key; renderTaskBox(); return; }
+      taskClick(a);
+    };
+    tiles.append(tile);
+  }
+  const rows = [];
+  const open = tasks.find((a) => a.key === openTask);
+  if (open) for (const w of open.windows) {
+    const r = el("div", `arow link twin${w.fg ? " fg" : ""}`);
+    r.onclick = () => api.taskDo(w.fg && !w.min ? "min" : "focus", w.h);
+    const x = el("button", "done", "✕");
+    x.type = "button";
+    x.title = t("Cerrar esta ventana");
+    x.onclick = (e) => { e.stopPropagation(); api.taskDo("close", w.h); };
+    r.append(el("span", "name", w.title), x);
+    rows.push(r);
+  }
+  taskBox.replaceChildren(el("div", "head", t("{0} programas abiertos", tasks.length)), tiles, ...rows);
+}
+api.onTasks((list) => {
+  tasks = Array.isArray(list) ? list : [];
+  if (openTask && !tasks.some((a) => a.key === openTask)) openTask = null;
+  renderTasks();
+  renderTaskBox();
+  if (!tasks.length) taskBox.classList.add("hidden");
+});
 
 // --- Apps: píldoras (Chats, Trello, GitHub, WhatsApp, Pendientes) y la vista de cada una ---
 // Al pasar el mouse solo sale la fila de píldoras, y solo las que tienen algo (cuenta > 0);
@@ -1155,6 +1231,8 @@ function blink(double = Math.random() < .22) {
 
 api.onMini((m) => {
   mini = m;
+  lastTasksKey = "";
+  renderTasks();
   root.classList.toggle("mini", m);
   if (m) toggleChat(false);
   else { lastSize = { w: 0, h: 0 }; relayout(); showReminder(); }
@@ -1193,9 +1271,9 @@ api.onHover((on) => {
       if (Date.now() - lastLove > 6000 && !emoting()) { lastLove = Date.now(); emote("love", 1500); SOUNDS.love(); }
     }, 1900);
     if (state === "sleeping") setState("idle");
-    if (!mini && chat.classList.contains("hidden") && card.classList.contains("hidden") && remindCard.classList.contains("hidden") && setupBox.classList.contains("hidden") && appsList().length) {
-      appsBox.classList.remove("hidden");
-      renderApps();
+    if (!mini && chat.classList.contains("hidden") && card.classList.contains("hidden") && remindCard.classList.contains("hidden") && setupBox.classList.contains("hidden")) {
+      if (tasks.length) { taskBox.classList.remove("hidden"); renderTaskBox(); } // tus programas abiertos, en grande
+      if (appsList().length) { appsBox.classList.remove("hidden"); renderApps(); }
     }
   } else {
     hoverTimer = setTimeout(() => hidePanel(), 700);
@@ -1266,6 +1344,9 @@ function renderSetup(s) {
   const wakeRow = s.wake === null ? null
     : s.wake ? row(true, t("«Oye Nimbo»"), t("Escuchando la frase de activación (con el reconocedor de Windows, sin internet). Di «Oye Nimbo» y luego lo que necesitas."), btn(t("Apagar"), "wake", false))
     : row(null, t("«Oye Nimbo»"), t("Como «Oye Siri»: di «Oye Nimbo» y te escucha sin tocar nada. El micrófono queda abierto, pero solo reconoce esa frase y nada sale de tu PC."), btn(t("Activar"), "wake", true));
+  const taskRow = s.taskbar === null || s.taskbar === undefined ? null
+    : s.taskbar ? row(true, t("Nimbo como barra de tareas"), t("Tus programas abiertos viven en la isla y la barra de Windows se oculta sola (baja el mouse al borde para verla)."), btn(t("Apagar"), "taskbar", false))
+    : row(null, t("Nimbo como barra de tareas"), t("Tus programas abiertos en la isla, a la derecha de Nimbo; la barra de Windows se oculta sola. Se deshace con un clic."), btn(t("Activar"), "taskbar", true));
   const voiceRow = s.voice === null ? row(null, t("Voz"), t("Opcional: pon en prefs.json la dirección de un servicio de voz (`ttsUrl`)."))
     : s.voice ? row(true, t("Voz"), t("Lee sus respuestas en voz alta."), btn(t("Apagar"), "speak", false))
     : row(null, t("Voz"), t("Que Nimbo lea sus respuestas en voz alta."), btn(t("Activar"), "speak", true));
@@ -1315,7 +1396,7 @@ function renderSetup(s) {
   // Correo: tu Gmail por el conector de tu Claude (solo lectura). Apagado hasta que lo activas; al activarlo se comprueba de verdad.
   const mailRow = s.mail?.on ? row(true, t("Correo"), t("Solo revisa cuando tú lo pides: toca el botón ✉ de la barra, escribe «revisa mi correo» o usa /correo en Telegram. Ahora: {0} sin leer, {1} importantes.", s.mail.count, s.mail.important), btn(t("Revisar ahora"), "mail-refresh"), btn(t("Apagar"), "mail-off"))
     : row(null, t("Correo"), t("Opcional: Nimbo revisa tu Gmail (solo lectura, con el conector de Gmail de tu Claude) y te dice cuáles correos importan."), btn("claude.ai", "open", "connectors"), btn(t("Activar"), "mail-on", null, "allow"));
-  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, mailRow, spotify, telegramRow, aiRow, wa, look, voiceRow, wakeRow, auto].filter(Boolean);
+  const rows = [head, claude, row(s.name ? true : null, t("Tu nombre"), t("Para saludarte."), name), github, trello, mailRow, spotify, telegramRow, aiRow, wa, look, voiceRow, wakeRow, taskRow, auto].filter(Boolean);
   if (s.error) rows.push(el("div", "afoot", t("No se pudo: {0}", s.error)));
   setupBox.replaceChildren(...rows);
 }
@@ -1350,6 +1431,8 @@ let clicks = 0;
 let clickTimer;
 wrap.addEventListener("click", (e) => {
   if (e.target.closest("#menuBtn")) return api.menu();
+  const tk = e.target.closest("#tasks .tk");
+  if (tk) return taskClick(tasks.find((a) => a.key === tk.dataset.key));
   if (e.target.closest("#waBtn")) return openWaSummary();
   if (e.target.closest("#mailBtn")) return openMail();
   // composedPath y no closest(): una píldora se redibuja en su propio clic, y para cuando el
@@ -2119,7 +2202,7 @@ function leanLoop() {
   leanRaf = dragging ? requestAnimationFrame(leanLoop) : 0;
 }
 wrap.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0 || mini || e.target.closest("#content")) return;
+  if (e.button !== 0 || mini || e.target.closest("#content, #tasks")) return;
   dragDown = { x: e.screenX, id: e.pointerId };
 });
 wrap.addEventListener("pointermove", (e) => {
