@@ -608,3 +608,5 @@
   #sessions .vbtn { margin-left: auto; padding: 2px 9px; font-size: 11px; }
   /* Lo que le pediste, arriba de "Pensando…" */
   #answer .asked { color: #c9ccd3; font-style: normal; margin-bottom: 6px; }
+  /* Texto en vivo mientras dictas: gris hasta que termina */
+  #chat input.partial { color: #9aa0a8; font-style: italic; }

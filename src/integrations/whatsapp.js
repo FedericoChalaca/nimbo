@@ -271,7 +271,8 @@ const saveSeen = (file, seen) => {
   try { fs.writeFileSync(file, JSON.stringify({ dismissed: last(seen.dismissed), alerted: last(seen.alerted) })); } catch {}
 };
 
-function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", model = () => "", paused = () => false, api = null, onError = () => {} }) {
+// auto: resumir solo al llegar cada mensaje (false = SOLO cuando abres WhatsApp en Nimbo: summarize(); decisión del dueño, 2026-10-25).
+function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", model = () => "", paused = () => false, api = null, onError = () => {}, auto = () => true }) {
   let seen = { running: false, count: 0, access: false, msgs: [] };
   const kept = new Map(); // id → mensaje, lo que sigue sin leer (ver remember)
   let chats = []; // lo ya clasificado, con los ids de cada chat
@@ -296,6 +297,7 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
     return wanted === "claude" ? "claude" : wanted || (await localModel()) || "claude";
   };
   const schedule = () => {
+    if (!auto()) return; // a pedido: no se resume nada hasta que abras la pestaña de WhatsApp
     clearTimeout(timer);
     timer = setTimeout(classify, DEBOUNCE_MS);
   };
@@ -377,6 +379,12 @@ function createWhatsapp({ rulesFile, seenFile, onChange, lang = () => "es", mode
       chats = [];
       last = null;
       onChange(state(), null);
+    },
+    /** Resumir lo que todavía no está resumido (al abrir la pestaña de WhatsApp en Nimbo). */
+    summarize() {
+      if (!reading || busy) return;
+      clearTimeout(timer);
+      classify();
     },
     /** "Resumir ahora": olvida las etiquetas y vuelve a resumir todo lo que sigue sin leer. */
     refresh() {

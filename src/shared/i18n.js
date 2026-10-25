@@ -25,6 +25,11 @@ const NIMBO_EN = {
   "«Oye Nimbo»: escuchar siempre": "“Hey Nimbo”: always listen",
   "«Oye Nimbo»": "“Hey Nimbo”",
   "Me llamaste por voz": "You called me by voice",
+  "Transcribiendo…": "Transcribing…",
+  "Te entendí: «{0}»": "I heard: “{0}”",
+  "Lo envío en {0} s… (toca el cuadro o escribe para corregir)": "Sending in {0} s… (click the box or type to fix it)",
+  "Listo: corrígelo y envíalo con Enter.": "OK: fix it and send it with Enter.",
+  "Te escucho: lo que digas aparece en el cuadro.": "I'm listening: what you say shows up in the box.",
   "No tienes pendientes. 🎉": "You have nothing pending. 🎉",
   "No tienes pendientes.": "You have nothing pending.",
   "Tienes {0} pendiente:": "You have {0} pending item:",
@@ -514,7 +519,7 @@ if (typeof module !== "undefined" && require.main === module) {
   const fs = require("fs");
   const path = require("path");
   const missing = [];
-  for (const file of ["src/renderer/app.js", "src/renderer/village.js", "src/renderer/player.js", "src/main/alerts.js", "src/renderer/index.html", "src/main/main.js", "src/renderer/voice.js", "src/main/orchestrator.js", "src/main/plan.js"]) {
+  for (const file of ["src/renderer/app.js", "src/renderer/voice.js", "src/renderer/village.js", "src/renderer/player.js", "src/main/alerts.js", "src/renderer/index.html", "src/main/main.js", "src/renderer/voice.js", "src/main/orchestrator.js", "src/main/plan.js"]) {
     const code = fs.readFileSync(path.join(__dirname, "..", "..", file), "utf8");
     // t("clave"…  y también  t(cond ? "clave uno" : "clave dos"…
     for (const m of code.matchAll(/\bt\((?:[^"()]*\? )?"((?:\\.|[^"\\])*)"(?: : "((?:\\.|[^"\\])*)")?/g)) {

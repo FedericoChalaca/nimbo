@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   village: () => ipcRenderer.send("village-show"),
   onWake: (fn) => ipcRenderer.on("wake", () => fn()),
   wakeDone: () => ipcRenderer.send("wake-done"),
+  liveDictation: (on) => ipcRenderer.send("live-dictation", on === true),
+  onDictationPartial: (fn) => ipcRenderer.on("dictation-partial", (_e, text) => fn(text)),
   onQuickAsk: (fn) => ipcRenderer.on("quick-ask", () => fn()),
   ask: (msg) => ipcRenderer.invoke("ask", msg),
   dispatch: (id, prompt) => ipcRenderer.invoke("dispatch", id, prompt),
@@ -31,6 +33,7 @@ contextBridge.exposeInMainWorld("nimbo", {
   onDragAbort: (fn) => ipcRenderer.on("drag-abort", () => fn()),
   onWhatsapp: (fn) => ipcRenderer.on("whatsapp", (_e, d, alert) => fn(d, alert)),
   whatsappRefresh: () => ipcRenderer.send("whatsapp-refresh"),
+  whatsappSummarize: () => ipcRenderer.send("whatsapp-summarize"), // al abrir la pestaña de WhatsApp: resume lo que falte
   whatsappDismiss: () => ipcRenderer.send("whatsapp-dismiss"),
   copy: (text) => ipcRenderer.send("copy", text),
   tts: (text) => ipcRenderer.invoke("tts", text),

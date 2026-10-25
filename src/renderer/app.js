@@ -526,7 +526,7 @@ function renderApps() {
     p.onclick = () => {
       if (openApp === "wa") waViewed();
       openApp = openApp === a.id ? null : a.id;
-      if (openApp === "wa") waOpenedAt = Date.now();
+      if (openApp === "wa") { waOpenedAt = Date.now(); api.whatsappSummarize(); } // solo aquí se resume (lo pediste tú)
       if (openApp === "act") activitySeen = Date.now();
       renderApps();
       renderAppView();
@@ -781,7 +781,7 @@ function openWaSummary() {
   appsBox.classList.remove("hidden");
   if (openApp === "wa") waViewed();
   openApp = openApp === "wa" ? null : "wa";
-  if (openApp === "wa") waOpenedAt = Date.now();
+  if (openApp === "wa") { waOpenedAt = Date.now(); api.whatsappSummarize(); }
   renderApps();
   renderAppView();
 }

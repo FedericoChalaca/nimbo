@@ -9,9 +9,10 @@ const SCRIPT = path.join(__dirname, "wake.ps1");
 // Sin «ey nimbo»: con la voz Helena, «el nimbo es un tipo de nube» se oía como «ey nimbo» (0,64) y despertaba a Nimbo.
 const PHRASES = { es: ["oye nimbo", "hola nimbo"], en: ["hey nimbo", "hi nimbo"] };
 const CULTURE = { es: "es-ES", en: "en-US" }; // si no está, wake.ps1 usa otro del mismo idioma (es-MX, es-CO…)
-// Medido con la voz Helena (es-ES): las frases de activación dan 0,68–0,73 de confianza; frases parecidas ("Oye, mira…", "el nimbo
-// es una nube", "Hola mundo") 0,26–0,46. El umbral queda en medio. prefs.wakeMin lo cambia (más alto = menos falsas alarmas).
-const MIN = 0.6;
+// Medido con la voz Helena (es-ES): con la revisión en dos pasos de wake.ps1, las frases de activación dan 0,65–0,66 y ninguna de 10
+// frases parecidas pasa ("Hoy en el noticiero…" la despertaba con 0,65 cuando solo estaba la frase cargada: eran las falsas alarmas
+// que veía el dueño). Escuchando: ~6 % de un núcleo (el dictado compitiendo todo el tiempo costaba ~38 %). prefs.wakeMin lo cambia.
+const MIN = 0.5;
 
 /** Una línea del script → evento ({ ready } | { wake, text, conf } | { error }) o null. */
 function parseLine(line) {
@@ -74,7 +75,35 @@ function createWake({ onWake, onError = () => {}, lang = () => "es", min = () =>
   };
 }
 
-module.exports = { createWake, parseLine, PHRASES, MIN };
+/**
+ * Texto en vivo mientras dictas (live.ps1): el dictado de Windows va escribiendo lo que oye para que veas que te entiende; el texto
+ * final lo hace Whisper. Solo corre mientras dictas. onPartial(texto) con lo que lleva.
+ */
+function createLive({ onPartial, lang = () => "es", platform = process.platform, powershell }) {
+  let child = null;
+  const exe = powershell ?? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  return {
+    start() {
+      if (child || platform !== "win32") return;
+      child = spawn(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "live.ps1"),
+        "-Culture", CULTURE[lang() === "en" ? "en" : "es"], "-Parent", String(process.pid)], { windowsHide: true });
+      let buf = "";
+      child.stdout.on("data", (d) => {
+        buf += d;
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          try { const o = JSON.parse(buf.slice(0, nl)); if (typeof o.partial === "string") onPartial(o.partial.slice(0, 300)); } catch {}
+          buf = buf.slice(nl + 1);
+        }
+      });
+      const me = child;
+      me.on("exit", () => { if (child === me) child = null; });
+    },
+    stop() { const c = child; child = null; c?.kill(); },
+  };
+}
+
+module.exports = { createWake, createLive, parseLine, PHRASES, MIN };
 
 // Autoprueba: node src/integrations/wake.js  (en Windows con la voz Helena, también una prueba real con audio sintetizado)
 if (require.main === module) (async () => {
@@ -95,7 +124,7 @@ if (require.main === module) (async () => {
   // Prueba real: la voz Helena dice frases y el script (leyendo un .wav en vez del micrófono) solo debe despertarse con las de activación.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nimbo-wake-"));
   const ps = (cmd) => execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", cmd], { encoding: "utf8", windowsHide: true });
-  const phrases = { si: ["Oye Nimbo", "Hola Nimbo, ¿qué tengo hoy?"], no: ["Oye, mira este video tan chistoso", "El nimbo es un tipo de nube", "Hola mundo, esto es una prueba"] };
+  const phrases = { si: ["Oye Nimbo", "Hola Nimbo, ¿qué tengo hoy?"], no: ["Oye, mira este video tan chistoso", "El nimbo es un tipo de nube", "Hola mundo, esto es una prueba", "Hoy en el noticiero hablaron del clima", "Oye niño, ven acá", "Limbo es un juego muy bonito"] };
   const all = [...phrases.si.map((p) => [p, true]), ...phrases.no.map((p) => [p, false])];
   try {
     ps(`Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.SelectVoice('Microsoft Helena Desktop'); ` +

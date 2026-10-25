@@ -9,7 +9,7 @@ const http = require("http");
 const path = require("path");
 const { createOrchestrator, sessionTitle, sessionContext, claudeFound, listSessions } = require("./orchestrator");
 const { createVillage } = require("./village");
-const { createWake } = require("../integrations/wake");
+const { createWake, createLive } = require("../integrations/wake");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -544,6 +544,8 @@ const wa = createWhatsapp({
     : code === "limit" ? "La API de Claude dice que vas muy rápido o está saturada. Espera un momento y vuelve a intentar."
     : code === "offline" ? "No pude conectarme con la API de Claude." : "La API de Claude no pudo resumir los mensajes de WhatsApp.")),
   paused: () => mini,
+  // Los resúmenes gastan: solo se hacen cuando abres WhatsApp en Nimbo (prefs.whatsappAuto = true vuelve a resumir cada mensaje al llegar).
+  auto: () => prefs.whatsappAuto === true,
   onChange(state, alert) {
     whatsapp = state;
     if (!win || win.isDestroyed()) return;
@@ -562,6 +564,7 @@ app.on("before-quit", () => waChild?.kill());
 // Tras una suspensión, el lector de notificaciones de Windows puede quedar sin respuesta: se vuelve a lanzar.
 app.whenReady().then(() => powerMonitor.on("resume", () => setTimeout(watchWhatsapp, 3000)));
 ipcMain.on("whatsapp-refresh", () => wa.refresh());
+ipcMain.on("whatsapp-summarize", () => wa.summarize());
 ipcMain.on("whatsapp-dismiss", () => wa.dismiss());
 // Copiar la respuesta sugerida: Nimbo no escribe en WhatsApp, tú la pegas si te sirve.
 ipcMain.on("copy", (_e, text) => clipboard.writeText(String(text ?? "").slice(0, 500)));
@@ -690,6 +693,10 @@ const wake = createWake({
   onError: (e) => { if (win && !win.isDestroyed()) win.webContents.send("ai-error", e === "no-recognizer" ? t("«Oye Nimbo» necesita el reconocedor de voz de Windows en tu idioma (Configuración → Hora e idioma → Voz).") : t("«Oye Nimbo» no pudo escuchar: {0}", e)); },
 });
 function syncWake() { clearTimeout(wakeTimer); wake.set(prefs.wakeWord === true && !mini); }
+// Mientras dictas, el dictado de Windows va mostrando lo que entiende (vista previa; el texto final es de Whisper).
+const live = createLive({ lang, onPartial: (text) => { if (win && !win.isDestroyed()) win.webContents.send("dictation-partial", text); } });
+ipcMain.on("live-dictation", (_e, on) => (on === true ? live.start() : live.stop()));
+app.on("before-quit", () => live.stop());
 ipcMain.on("wake-done", syncWake);
 app.on("before-quit", () => wake.stop());
 app.whenReady().then(() => { syncWake(); powerMonitor.on("resume", () => { if (prefs.wakeWord === true) setTimeout(() => wake.restart(), 3000); }); });
