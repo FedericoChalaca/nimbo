@@ -41,7 +41,8 @@ if (process.platform !== "win32") process.env.PATH = [...new Set([...extraBinDir
 // En un AppImage el sandbox de Chromium no puede usar su ayudante con permisos especiales (Ubuntu 24.04 lo bloquea): sin esto no abre.
 if (process.env.APPIMAGE) app.commandLine.appendSwitch("no-sandbox");
 const PORT = 47823;
-const W = 440;
+// Ancho de la ventana (transparente: fuera de la isla no atrapa el mouse). En modo barra es más ancha: caben el texto, Nimbo y tus programas.
+let W = 440; // se ajusta al leer prefs (setWinWidth)
 const H = 480;
 // Alto real de la ventana: la página lo pide según lo que muestra (isla compacta ≈ 130 px, abierta = H). La ventana es
 // transparente y Windows copia la ventana ENTERA en cada cuadro animado: cuanto más chica, menos gasta.
@@ -241,6 +242,7 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
 try {
   prefs = { ...prefs, ...JSON.parse(fs.readFileSync(prefsFile, "utf8")) };
 } catch {}
+W = prefs.taskbarMode === true ? 640 : 440;
 let corner = prefs.corner;
 const savePrefs = () => fs.writeFileSync(prefsFile, JSON.stringify({ ...prefs, corner }));
 // Idioma: el elegido en el menú (prefs.lang) o, si no, el de Windows. Los textos están en
@@ -831,6 +833,8 @@ const windows = createWindows({
 function setTaskbarMode(on) {
   prefs.taskbarMode = on;
   savePrefs();
+  W = on ? 640 : 440;
+  if (win && !win.isDestroyed() && !mini) placeWindow();
   if (on) { windows.set(true); taskbarArming = true; setTimeout(() => windows.state(), 1500); } // primero se lee cómo estaba la barra; después se oculta
   else { windows.autoHide(prefs.taskbarPrevAutoHide === 1); setTimeout(() => windows.set(false), 600); }
 }

@@ -5,7 +5,7 @@
   .hidden { display: none !important; }
 
   /* Color de cada estado: brillo de la isla, aura del personaje, insignia y puntitos */
-  #nimbo { position: relative; width: 440px; height: 480px; --sc: #8a8f98; --cloud2: #dfe3f2;
+  #nimbo { position: relative; width: 100vw; height: 480px; --sc: #8a8f98; --cloud2: #dfe3f2;
     --accent-a: #9d95ff; --accent-b: #ffffff; }
   #nimbo.state-thinking { --sc: #9b87ff; --cloud2: #ddd6ff; }
   #nimbo.state-working { --sc: #4da3ff; --cloud2: #d2e4ff; }
@@ -355,8 +355,8 @@
   #nimbo.mini { width: 100px; height: 60px; }
   .mini #wrap { left: 0; transform: none; width: 100px !important; height: 60px !important; transition: none; }
   .mini #island { background: transparent; box-shadow: none; border-radius: 0; }
-  .mini .ear, .mini #island::before, .mini #bar, .mini #content, .mini #dock { display: none; }
-  .mini #island { right: 0 !important; }
+  .mini .ear, .mini #island::before, .mini #bar, .mini #content, .mini #dock, .mini #info { display: none; }
+  .mini #island { right: 0 !important; left: 0 !important; }
   .mini #char { left: 0; top: 2px; width: 100px; height: 58px; }
 
   /* "Siempre" va pegado a "Permitir", los dos a la derecha */
@@ -622,7 +622,19 @@
     background: radial-gradient(circle at 100% 100%, transparent 11.5px, #000 12px); }
   .docked #dock { visibility: visible; }
   .docked #island { right: var(--dock, 0px); border-bottom-right-radius: 20px; }
-  #island { transition: border-radius .4s, right .52s cubic-bezier(.32, 1.22, .42, 1); }
+  #island { transition: border-radius .4s, right .52s cubic-bezier(.32, 1.22, .42, 1), left .52s cubic-bezier(.32, 1.22, .42, 1); }
+  /* A la izquierda, lo mismo al revés: el texto de lo que hace Claude y los puntitos de los chats; la isla queda solo con Nimbo */
+  #info { position: absolute; top: 0; left: 0; height: 34px; width: var(--info, 0px); display: flex; align-items: center; gap: 8px;
+    padding: 0 10px 0 16px; box-sizing: border-box; background: #000; border-radius: 0 0 0 14px; box-shadow: 0 10px 24px rgba(0, 0, 0, .38);
+    visibility: hidden; transition: width .52s cubic-bezier(.32, 1.22, .42, 1); }
+  #info::after { content: ""; position: absolute; right: 0; top: 100%; width: 12px; height: 12px;
+    background: radial-gradient(circle at 0 100%, transparent 11.5px, #000 12px); }
+  .split #info { visibility: visible; }
+  .split #island { left: var(--info, 0px); border-bottom-left-radius: 20px; }
+  .split #char { left: calc(50% - 55px); }
+  #info #ticker { flex: none; width: var(--tw, 0px); height: 18px; }
+  #info #ticker span { font-size: 12.5px; line-height: 18px; }
+  #info :is(#waBtn, #mailBtn) { height: 20px; min-width: 20px; font-size: 11px; }
   #tasks { display: flex; align-items: center; gap: 1px; flex: none; }
   #tasks:empty { display: none; }
   #tasks .tk { position: relative; width: 26px; height: 26px; padding: 0; border-radius: 7px; background: transparent; display: grid; place-items: center; }

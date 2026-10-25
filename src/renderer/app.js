@@ -30,13 +30,16 @@ const pips = document.getElementById("pips");
 const waBtn = document.getElementById("waBtn");
 const mailBtn = document.getElementById("mailBtn");
 const measure = document.getElementById("measure");
+const bar = document.getElementById("bar");
+const ticker = document.getElementById("ticker");
+const info = document.getElementById("info");
 const badge = document.getElementById("badge");
 
 // --- Tamaño de la isla ---
 // Compacta: se ajusta al largo del texto (como una "isla dinámica"). Abierta: crece hasta el
 // contenido. Crecer usa resorte con rebote; encoger, la clase .closing (rápido, sin rebote).
 const BAR_H = 68;
-// La ventana mide 440 y a cada lado de la isla va una esquina invertida de 14: más ancha que
+// La ventana mide 440 (640 en modo barra, donde la isla compacta puede ser más ancha) y a cada lado de la isla va una esquina invertida de 14: más ancha que
 // esto, la ventana la recorta y pierde las curvas.
 const MAX_W = 412;
 let lastSize = { w: 0, h: 0 };
@@ -44,7 +47,7 @@ function layout() {
   layoutQueued = 0;
   if (mini) return;
   if (root.classList.contains("dropping")) {
-    root.classList.remove("open", "solo", "docked");
+    root.classList.remove("open", "solo", "docked", "split");
     wrap.classList.remove("closing");
     wrap.style.setProperty("--w", `${MAX_W}px`);
     wrap.style.setProperty("--h", "152px");
@@ -60,6 +63,12 @@ function layout() {
   const dockW = !open && tasksEl.children.length ? tasksEl.offsetWidth + 14 : 0;
   root.classList.toggle("docked", dockW > 0);
   wrap.style.setProperty("--dock", `${dockW}px`);
+  // Modo barra: el texto y los puntitos se mudan a su franja de la izquierda (#info) y la isla queda solo con Nimbo; abierta, vuelven arriba.
+  const split = dockW > 0 && state !== "sleeping";
+  if (split && ticker.parentNode !== info) info.append(ticker, mailBtn, waBtn, pips);
+  if (!split && ticker.parentNode !== bar) bar.prepend(ticker, mailBtn, waBtn, pips);
+  root.classList.toggle("split", split);
+  let infoW = 0;
   if (open) {
     w = MAX_W;
     h = Math.min(470, BAR_H + content.offsetHeight + 14);
@@ -68,12 +77,21 @@ function layout() {
     measure.textContent = text;
     const pipsW = (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10) + (mailBtn.classList.contains("hidden") ? 0 : mailBtn.offsetWidth + 8);
     // El texto ocupa lo que quepa (el resto se corta con "…"): la isla no pasa de MAX_W.
-    const textW = text ? Math.min(measure.offsetWidth, 270, MAX_W - 116 - 12 - pipsW - 16 - dockW) : 0;
-    w = (text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150) + dockW;
+    if (split) {
+      const textW = text ? Math.min(measure.offsetWidth * 12.5 / 13.5, 260, innerWidth - 28 - 150 - dockW - pipsW - 34) : 0;
+      infoW = text || pipsW ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
+      wrap.style.setProperty("--tw", `${Math.ceil(textW)}px`);
+      w = infoW + 150 + dockW;
+    } else {
+      const textW = text ? Math.min(measure.offsetWidth, 270, innerWidth - 28 - 116 - 12 - pipsW - 16 - dockW) : 0;
+      w = (text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150) + dockW;
+    }
     h = BAR_H;
     if (state === "sleeping") { w = 132 + dockW; h = 60; }
     root.classList.toggle("solo", !text && !pipsW);
+    if (split && !infoW) root.classList.remove("split"); // nada que contar: sin franja
   }
+  wrap.style.setProperty("--info", `${infoW}px`);
   const shrinking = w < lastSize.w - 1 || h < lastSize.h - 1;
   wrap.classList.toggle("closing", shrinking);
   if (open !== root.classList.contains("was-open")) (open ? SOUNDS.open : SOUNDS.close)();
@@ -94,6 +112,7 @@ let layoutQueued = 0;
 const relayout = () => { layoutQueued ||= requestAnimationFrame(layout); };
 new MutationObserver(relayout).observe(content, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
 new ResizeObserver(relayout).observe(content);
+addEventListener("resize", relayout); // la ventana cambia de ancho al prender o apagar el modo barra
 
 // --- Etiqueta: el texto viejo sube y se apaga mientras el nuevo entra desde abajo ---
 const EASE_TICK = "cubic-bezier(.4, 0, .2, 1)";
