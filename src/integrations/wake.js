@@ -42,7 +42,7 @@ function createWake({ onWake, onError = () => {}, lang = () => "es", min = () =>
     if (!want || child || platform !== "win32") return;
     const l = lang() === "en" ? "en" : "es";
     child = spawn(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
-      "-Culture", CULTURE[l], "-Phrases", PHRASES[l].join("|"), "-Min", String(min())], { windowsHide: true });
+      "-Culture", CULTURE[l], "-Phrases", PHRASES[l].join("|"), "-Min", String(min()), "-Parent", String(process.pid)], { windowsHide: true });
     let buf = "";
     child.stdout.on("data", (d) => {
       buf += d;

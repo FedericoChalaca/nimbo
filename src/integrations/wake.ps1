@@ -8,7 +8,8 @@ param(
   [string]$Culture = "es-ES",
   [string]$Phrases = "oye nimbo|hola nimbo",
   [double]$Min = 0.6,
-  [string]$Wav = ""
+  [string]$Wav = "",
+  [int]$Parent = 0 # el proceso de Nimbo: si ya no existe (lo cerraron a la fuerza), este también se cierra y suelta el micrófono
 )
 $ErrorActionPreference = "Stop"
 function Say($obj) { [Console]::Out.WriteLine(($obj | ConvertTo-Json -Compress)); [Console]::Out.Flush() }
@@ -28,6 +29,7 @@ try {
   if ($Wav) { $eng.SetInputToWaveFile($Wav) } else { $eng.SetInputToDefaultAudioDevice() }
   Say @{ ready = $true; culture = $info.Culture.Name }
   while ($true) {
+    if ($Parent -and -not (Get-Process -Id $Parent -ErrorAction SilentlyContinue)) { break }
     $r = $eng.Recognize([TimeSpan]::FromSeconds(8))
     if (-not $r) { if ($Wav) { break } else { continue } } # silencio (o fin del archivo de prueba)
     if ($r.Confidence -ge $Min) { Say @{ wake = $true; text = $r.Text; conf = [math]::Round($r.Confidence, 2) } }
