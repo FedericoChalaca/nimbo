@@ -10,7 +10,7 @@
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   if (LANG === "en") {
     document.documentElement.lang = "en";
-    for (const e of document.querySelectorAll("#hud *, #help, #house h2, #houseClose")) {
+    for (const e of document.querySelectorAll("#hud *, #help, #house h2, #houseClose, #zoom button")) {
       if (!e.children.length && e.textContent.trim()) e.textContent = t(e.textContent.trim());
       if (e.title) e.title = t(e.title);
     }
@@ -552,8 +552,20 @@
   const canvas = $("world");
   const ctx = canvas.getContext("2d");
   let SCALE = 3, VW = 0, VH = 0, cam = { x: 0, y: 0 };
+  // Zoom: la rueda del mouse, las teclas + y − (0 vuelve a lo normal) o los botones. Siempre en pasos enteros para que los
+  // píxeles sigan nítidos: 1 = toda la aldea a la vista, 6 = muy de cerca. Se recuerda en este equipo.
+  let zoom = 0; // pasos sobre el tamaño automático
+  try { zoom = Number(localStorage.getItem("aldea-zoom")) || 0; } catch {}
+  const autoScale = () => clamp(Math.round(Math.min(innerWidth / 520, innerHeight / 330)), 2, 5); // ~34×21 baldosas a la vista
+  function setZoom(step) {
+    const next = clamp(autoScale() + step, 1, 6) - autoScale();
+    if (next === zoom && step !== 0) return;
+    zoom = next;
+    try { localStorage.setItem("aldea-zoom", String(zoom)); } catch {}
+    resize();
+  }
   function resize() {
-    SCALE = clamp(Math.round(Math.min(innerWidth / 520, innerHeight / 330)), 2, 5); // ~34×21 baldosas a la vista
+    SCALE = clamp(autoScale() + zoom, 1, 6);
     VW = Math.ceil(innerWidth / SCALE);
     VH = Math.ceil(innerHeight / SCALE);
     canvas.width = VW;
@@ -562,11 +574,15 @@
   }
   addEventListener("resize", resize);
   resize();
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); setZoom(zoom + (e.deltaY < 0 ? 1 : -1)); }, { passive: false });
+  $("zoomIn").onclick = () => setZoom(zoom + 1);
+  $("zoomOut").onclick = () => setZoom(zoom - 1);
 
   const keys = new Set();
   addEventListener("keydown", (e) => {
     if (e.key === "Escape") { closeAll(); return; }
     if (e.target.closest?.("input")) return;
+    if (["+", "=", "-", "_", "0"].includes(e.key) && !e.ctrlKey) { e.preventDefault(); setZoom(e.key === "0" ? 0 : zoom + (e.key === "-" || e.key === "_" ? -1 : 1)); return; }
     if (!$("house").classList.contains("hidden") || !$("lightbox").classList.contains("hidden")) return;
     const k = e.key.toLowerCase();
     if (["e", " ", "enter"].includes(k)) { e.preventDefault(); if (!$("dialog").classList.contains("hidden")) closeDialog(); else interact(); return; }
@@ -601,8 +617,8 @@
     buddy.y += (tgt.y - 6 - buddy.y) * Math.min(1, dt * 4);
   }
   function updateCamera(dt) {
-    const tx = clamp(player.x - VW / 2, 0, Math.max(0, MW * TILE - VW));
-    const ty = clamp(player.y - VH / 2, 0, Math.max(0, MH * TILE - VH));
+    const tx = MW * TILE <= VW ? (MW * TILE - VW) / 2 : clamp(player.x - VW / 2, 0, MW * TILE - VW);
+    const ty = MH * TILE <= VH ? (MH * TILE - VH) / 2 : clamp(player.y - VH / 2, 0, MH * TILE - VH);
     cam.x += (tx - cam.x) * Math.min(1, dt * 5);
     cam.y += (ty - cam.y) * Math.min(1, dt * 5);
   }
