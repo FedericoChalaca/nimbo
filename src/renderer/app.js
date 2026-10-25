@@ -453,7 +453,14 @@ function renderSessions() {
     return row;
   });
   const head = list.length === 1 ? t("1 chat activo") : t("{0} chats activos", list.length);
-  sessionBox.replaceChildren(el("div", "head", head), ...rows);
+  // La aldea: los mismos chats, como aldeanos con su casa (ventana aparte).
+  const toVillage = el("button", "vbtn", t("🏡 Aldea"));
+  toVillage.type = "button";
+  toVillage.title = t("Abre la aldea: tus chats como aldeanos con sus casas");
+  toVillage.onclick = () => api.village();
+  const top = el("div", "head");
+  top.append(el("span", "", head), toVillage);
+  sessionBox.replaceChildren(top, ...rows);
 }
 
 // --- Apps: píldoras (Chats, Trello, GitHub, WhatsApp, Pendientes) y la vista de cada una ---
@@ -1855,6 +1862,7 @@ const COMMANDS = [
     const r = await api.chatCmd("model", a.toLowerCase());
     return r?.changed ? t("Ahora contesto con {0}.", MODEL_NAME(r.model)) : t("Modelo actual: {0}. Escribe /modelo haiku, sonnet u opus.", MODEL_NAME(r?.model) || t("el de tu claude"));
   } },
+  { cmd: "/aldea", desc: t("Abre la aldea: tus chats como aldeanos con sus casas"), run: () => { toggleChat(false); api.village(); } },
   { cmd: "/actividad", desc: t("Lo último que pasó en tus chats"), run: () => { toggleChat(false); appsBox.classList.remove("hidden"); openApp = "act"; activitySeen = Date.now(); renderApps(); renderAppView(); } },
   { cmd: "/plan", desc: t("El plan de hoy"), run: () => answerPlan() },
   { cmd: "/correo", desc: t("Revisa tu correo"), run: () => answerMail() },

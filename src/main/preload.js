@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("nimbo", {
   toggleMini: () => ipcRenderer.send("toggle-mini"),
   chatOpen: (open) => ipcRenderer.send("chat-open", open),
   chatCmd: (action, value) => ipcRenderer.invoke("chat-cmd", action, value),
+  village: () => ipcRenderer.send("village-show"),
   onQuickAsk: (fn) => ipcRenderer.on("quick-ask", () => fn()),
   ask: (msg) => ipcRenderer.invoke("ask", msg),
   dispatch: (id, prompt) => ipcRenderer.invoke("dispatch", id, prompt),

@@ -7,7 +7,8 @@ const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
-const { createOrchestrator, sessionTitle, sessionContext, claudeFound } = require("./orchestrator");
+const { createOrchestrator, sessionTitle, sessionContext, claudeFound, listSessions } = require("./orchestrator");
+const { createVillage } = require("./village");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -671,6 +672,15 @@ ipcMain.on("chat-open", (_e, open) => {
   if (open) win.focus();
 });
 
+// --- La aldea (village.js): cada carpeta con chats es una casa y cada chat, un aldeano. Ventana aparte, opaca (barata de dibujar). ---
+const village = createVillage({
+  listSessions: () => listSessions(CHAT_DIR, { limit: 40 }),
+  page: () => `nimbo://app/src/renderer/village.html?lang=${lang()}`,
+  preload: path.join(__dirname, "village-preload.js"),
+  name: () => String(prefs.name ?? ""),
+});
+ipcMain.on("village-show", () => village.open());
+
 // --- Conexiones y ajustes: el estado de cada conexión y las acciones del panel ---
 // La app instalada no exige tener Node: un .cmd corre hook.js con el propio ejecutable de Nimbo
 // en modo Node (ELECTRON_RUN_AS_NODE). En desarrollo se usa `node hook.js`.
@@ -989,6 +999,7 @@ function buildMenu() {
       })),
     },
     { label: t("Nueva conversación"), click: () => { orchestrator.reset(); aiHistory.clear(); } },
+    { label: t("Aldea de agentes"), click: () => village.open() },
     { type: "separator" },
     {
       label: t("Avisos al celular (Telegram)"),
@@ -1121,7 +1132,7 @@ http
       try { remote.onHook(payload); } catch {} // estado de los chats para la app del iPhone
       if (req.url === "/permission") return askPermission(payload, nonce, res);
       res.writeHead(204).end();
-      const deliver = () => { if (win && !win.isDestroyed()) win.webContents.send("hook", payload); };
+      const deliver = () => { if (win && !win.isDestroyed()) win.webContents.send("hook", payload); try { village.hook(payload); } catch {} };
       // "Silencio si estoy mirando": si el trabajo terminó con la terminal o el chat de Claude al frente, la isla no suena (solo cambia de estado).
       if (payload.hook_event_name === "Stop" && prefs.quietWhenWatching !== false) foreground().then((name) => { payload.watching = isWatching(name); deliver(); }, deliver);
       else deliver();

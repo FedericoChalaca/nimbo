@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Aldea de Nimbo</title>
+<link rel="stylesheet" href="village.css">
+</head>
+<body>
+<canvas id="world"></canvas>
+<div id="labels"></div>
+
+<div id="hud">
+  <b id="hudTitle">Aldea de Nimbo</b>
+  <span id="hudStats"></span>
+  <div id="houseList"></div>
+</div>
+<div id="help">WASD o flechas: caminar · E: hablar o entrar · clic: ir ahí</div>
+<div id="clock"></div>
+
+<div id="dialog" class="hidden">
+  <div id="dlgName"></div>
+  <div id="dlgText"></div>
+  <div id="dlgBtns"></div>
+  <span id="dlgMore">▼</span>
+</div>
+
+<div id="house" class="hidden">
+  <div class="sign">
+    <button id="houseClose" type="button" title="Cerrar">✕</button>
+    <h1 id="houseName"></h1>
+    <div id="housePath"></div>
+    <div id="houseGit"></div>
+    <div id="houseBtns"></div>
+    <h2 id="houseChatsTitle">Quién vive aquí</h2>
+    <div id="houseChats"></div>
+    <h2 id="housePhotosTitle">Fotos del proyecto</h2>
+    <div id="housePhotos"></div>
+  </div>
+</div>
+<div id="lightbox" class="hidden"><img id="lightImg" alt=""><span id="lightCap"></span></div>
+<div id="empty" class="hidden"></div>
+
+<script src="../shared/i18n.js"></script>
+<script src="village.js"></script>
+</body>
+</html>

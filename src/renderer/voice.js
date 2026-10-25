@@ -14,8 +14,12 @@
 
   // El worker se crea al primer uso (al abrir el chat o dictar): importar Whisper pesa y no hace falta al arrancar.
   let worker = null;
+  // Con el modelo cargado el worker ocupa ~350 MB: si pasan 3 min sin dictar, se cierra y la memoria vuelve (la próxima vez carga desde la caché en unos segundos).
+  let idleTimer = 0;
   function getWorker() {
     if (!worker) { worker = new Worker("stt-worker.js", { type: "module" }); worker.onmessage = onWorkerMessage; }
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { if (!waiting.size && !rec) { worker.terminate(); worker = null; } }, 3 * 60_000);
     return worker;
   }
   let nextId = 0;

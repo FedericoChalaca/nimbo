@@ -603,3 +603,6 @@
   .theme-jarvis #label { letter-spacing: .015em; }
   .theme-jarvis .prop { border-top-color: rgba(255, 140, 26, .18); }
   .theme-jarvis .crow { border-top-color: rgba(255, 140, 26, .12); }
+  /* Botón de la aldea en la cabecera de los chats */
+  #sessions .head { display: flex; align-items: center; }
+  #sessions .vbtn { margin-left: auto; padding: 2px 9px; font-size: 11px; }

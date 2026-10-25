@@ -229,7 +229,7 @@ async function readEdges(file, size) {
 const sessionCache = new Map(); // archivo → { mtime, size, session | null }: lo que no cambió no se vuelve a leer
 
 /** Tus chats más recientes que tienen carpeta de proyecto. */
-async function listSessions(excludeCwd) {
+async function listSessions(excludeCwd, { limit = 16 } = {}) {
   const files = [];
   for (const dir of await fs.promises.readdir(PROJECTS, { withFileTypes: true })) {
     if (!dir.isDirectory()) continue;
@@ -244,14 +244,14 @@ async function listSessions(excludeCwd) {
 
   // El chat más reciente del vault entra siempre, aunque no esté entre los más nuevos.
   const vaultFile = VAULT ? files.find((f) => f.dir === projectDirName(VAULT)) : null;
-  const candidates = [vaultFile, ...files.slice(0, 30).filter((f) => f !== vaultFile)].filter(Boolean);
+  const candidates = [vaultFile, ...files.slice(0, limit * 2).filter((f) => f !== vaultFile)].filter(Boolean);
 
   const sessions = [];
   for (const { full, mtime, size } of candidates) {
     const hit = sessionCache.get(full);
     if (hit && hit.mtime === mtime && hit.size === size && hit.exclude === excludeCwd) {
-      if (hit.session) sessions.push({ ...hit.session, active: Date.now() - mtime < ACTIVE_MS });
-      if (sessions.length === 16) break;
+      if (hit.session) sessions.push({ ...hit.session, at: mtime, active: Date.now() - mtime < ACTIVE_MS });
+      if (sessions.length === limit) break;
       continue;
     }
     const text = await readEdges(full, size).catch(() => "");
@@ -271,7 +271,8 @@ async function listSessions(excludeCwd) {
       lastPrompt: (lastMatch(text, new RegExp(`"lastPrompt":${STR}`, "g")) ?? "").slice(0, 140),
       active: Date.now() - mtime < ACTIVE_MS,
     }));
-    if (sessions.length === 16) break; // el del vault + los 15 más nuevos
+    sessions[sessions.length - 1].at = mtime; // cuándo se movió por última vez (la aldea ordena las casas con esto)
+    if (sessions.length === limit) break; // el del vault + los más nuevos (16 para el chat de Nimbo; la aldea pide más)
   }
   return sessions;
 }
