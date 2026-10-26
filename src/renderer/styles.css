@@ -704,14 +704,12 @@
   .edge-right #dock::before { left: auto; right: 100%; top: auto; bottom: 0; background: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px); }
   :is(.edge-left, .edge-right) #tasks .tk::before { left: 0 !important; right: auto !important; top: 9px; bottom: 9px; width: 2px; height: auto; }
   .edge-right #tasks .tk::before { left: auto !important; right: 0 !important; }
-  :is(.edge-left, .edge-right) #info { top: calc(var(--dock, 0px) + var(--ih, 76px)); width: 40px; height: var(--info, 0px); padding: 16px 0 10px;
-    writing-mode: vertical-rl; transition: height .52s cubic-bezier(.32, 1.22, .42, 1); }
-  .edge-left #info { left: 0; border-radius: 0 0 14px 0; }
-  .edge-right #info { left: auto; right: 0; border-radius: 0 0 0 14px; }
-  .edge-left #info::after { right: auto; left: 100%; top: 0; background: radial-gradient(circle at 100% 100%, transparent 11.5px, #000 12px); }
-  .edge-right #info::after { right: 100%; top: 0; background: radial-gradient(circle at 0 100%, transparent 11.5px, #000 12px); }
-  :is(.edge-left, .edge-right) #info #ticker { width: 18px; height: var(--tw, 0px); -webkit-mask-image: none; }
-  :is(.edge-left, .edge-right) #info #ticker span { max-width: none; max-height: 100%; }
+  /* El texto va en horizontal, justo debajo de Nimbo y del mismo ancho */
+  :is(.edge-left, .edge-right) #info { top: calc(var(--dock, 0px) + var(--ih, 76px)); width: 132px; height: var(--info, 0px); padding: 0 10px 0 12px; gap: 6px; }
+  .edge-left #info { left: 0; border-radius: 0 0 22px 0; }
+  .edge-right #info { left: auto; right: 0; border-radius: 0 0 0 22px; }
+  :is(.edge-left, .edge-right) #info::after { display: none; }
+  :is(.edge-left, .edge-right) #info #ticker { flex: 1; width: auto; min-width: 0; }
 
   /* Flotando: una isla redonda con la nube y, colgando debajo, tus 4 últimos programas. Sin texto. */
   .edge-float #wrap { left: 50%; top: 14px; transform: translateX(-50%); }
@@ -728,3 +726,28 @@
     background: radial-gradient(circle at 100% 100%, transparent 11.5px, #000 12px); }
   /* Arrastrando cerca de un borde: brilla, "se va a pegar ahí" */
   .snap-hint #island { box-shadow: 0 0 0 2px var(--accent-a), 0 0 22px color-mix(in srgb, var(--accent-a) 55%, transparent), 0 16px 36px rgba(0, 0, 0, .42); }
+
+  /* Esquina: con Nimbo contra el borde izquierdo o derecho (arriba o abajo), Nimbo ocupa la esquina y las dos franjas
+     (lo que hace Claude y tus programas) se apilan a su lado, cada una de media altura. */
+  :is(.corner-l, .corner-r) #island { border-radius: 0 0 22px 22px !important; }
+  .corner-l #island { left: 0 !important; right: var(--blk, 0px) !important; }
+  .corner-r #island { right: 0 !important; left: var(--blk, 0px) !important; }
+  :is(.corner-l, .corner-r) :is(#dock, #info) { width: var(--blk, 0px); height: 34px; transform: none; border-radius: 0; }
+  :is(.corner-l, .corner-r) :is(#dock, #info)::before, :is(.corner-l, .corner-r) :is(#dock, #info)::after { display: none; }
+  :is(.corner-l, .corner-r) #info { top: 0; }
+  :is(.corner-l, .corner-r) #dock { top: 34px; }
+  .corner-l :is(#dock, #info) { left: auto; right: 0; }
+  .corner-r :is(#dock, #info) { right: auto; left: 0; }
+  .corner-l #dock { border-radius: 0 0 14px 0; }
+  .corner-r #dock { border-radius: 0 0 0 14px; }
+  .corner-l #info { border-radius: 0 0 0 0; }
+  .edge-bottom:is(.corner-l, .corner-r) #island { border-radius: 22px 22px 0 0 !important; }
+  .edge-bottom:is(.corner-l, .corner-r) #info { top: auto; bottom: 34px; }
+  .edge-bottom:is(.corner-l, .corner-r) #dock { top: auto; bottom: 0; }
+  .edge-bottom.corner-l #dock { border-radius: 0 14px 0 0; }
+  .edge-bottom.corner-r #dock { border-radius: 14px 0 0 0; }
+  /* Sin curva en el lado donde Nimbo se une a las franjas */
+  .corner-l #island { border-radius: 0 0 0 22px !important; }
+  .corner-r #island { border-radius: 0 0 22px 0 !important; }
+  .edge-bottom.corner-l #island { border-radius: 22px 0 0 0 !important; }
+  .edge-bottom.corner-r #island { border-radius: 0 22px 0 0 !important; }

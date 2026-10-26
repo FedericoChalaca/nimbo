@@ -92,6 +92,11 @@ function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => 
     });
     child.stdin.on("error", () => {});
     const me = child;
+    // Al encender el PC Windows puede tardar en dejar correr el programa: si en 10 s no manda su primera lista, se reinicia.
+    let first = false;
+    const watchdog = setTimeout(() => { if (!first && child === me) me.kill(); }, 10_000);
+    me.stdout.once("data", () => { first = true; clearTimeout(watchdog); });
+    me.on("exit", () => clearTimeout(watchdog));
     // Si no arranca (pasó al prender el PC: Windows todavía revisaba el programa) o se cae, se vuelve a intentar cada vez más espaciado.
     const again = () => { if (child !== me) return; child = null; if (want) { clearTimeout(restart); restart = setTimeout(launch, Math.min(30_000, 1000 * 2 ** fails++)); } };
     me.on("error", again);

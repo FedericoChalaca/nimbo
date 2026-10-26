@@ -836,20 +836,56 @@ function taskbarPins() {
   }
   return prefs.taskbarPins;
 }
+// Las apps de la Tienda ancladas en la barra de Windows (Xbox, Claude, Apple Music…) no dejan acceso directo: Windows las guarda en el
+// registro (Taskband\FavoritesResolve) con su identificador (AUMID). Se importan una vez (prefs.taskbarPinsV): nombre con Get-StartApps y
+// carpeta con Get-AppxPackage (de ahí sale su ícono). Solo lectura; lo que ya anclaste desde Nimbo no se toca.
+const IMPORT_PINS = String.raw`
+$b = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband').FavoritesResolve
+if (-not $b) { '[]'; exit }
+$txt = @(); foreach ($o in 0,1) { $seg = New-Object byte[] ($b.Length - $o); [Array]::Copy($b, $o, $seg, 0, $seg.Length); $txt += [System.Text.Encoding]::Unicode.GetString($seg) }
+$ids = $txt | ForEach-Object { [regex]::Matches($_, '[A-Za-z0-9.\-_]{3,}![A-Za-z0-9.\-_]{2,}') | ForEach-Object { $_.Value } } | Select-Object -Unique
+$apps = Get-StartApps; $pk = Get-AppxPackage
+$out = foreach ($id in $ids) {
+  $fam = $id.Split('!')[0]
+  $loc = ($pk | Where-Object { $_.PackageFamilyName -eq $fam } | Select-Object -First 1).InstallLocation
+  [pscustomobject]@{ aumid = $id; name = ($apps | Where-Object { $_.AppID -eq $id } | Select-Object -First 1).Name; dir = $loc }
+}
+@($out) | ConvertTo-Json -Compress
+`;
+function importWindowsPins() {
+  if (process.platform !== "win32" || prefs.taskbarPinsV === 1) return;
+  execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", IMPORT_PINS], { windowsHide: true, timeout: 60_000, maxBuffer: 1 << 20 }, (err, out) => {
+    if (err) return;
+    let list = [];
+    try { list = [].concat(JSON.parse(String(out).trim() || "[]")); } catch { return; }
+    const pins = taskbarPins();
+    for (const x of list) {
+      if (!AUMID.test(String(x?.aumid ?? "")) || pins.some((q) => q.aumid === x.aumid)) continue;
+      pins.push({ key: `aumid:${x.aumid.toLowerCase()}`, name: String(x.name || x.aumid.split("!")[0].split("_")[0]).slice(0, 60), aumid: x.aumid,
+        path: x.dir && /WindowsApps/i.test(x.dir) ? path.join(String(x.dir), "AppxManifest.xml") : "" }); // el "archivo" solo sirve para sacar el ícono
+    }
+    prefs.taskbarPins = pins;
+    prefs.taskbarPinsV = 1;
+    savePrefs();
+    sendTasks();
+  });
+}
 // Las ventanas de Nimbo que no son "un programa" (la isla y la barra de música) no van en la lista; la aldea sí, como "Nimbo".
 const hwndOf = (w) => { try { return w.getNativeWindowHandle().readBigUInt64LE(0).toString(); } catch { return ""; } };
 const NIMBO_ICON = () => nativeImage.createFromPath(path.join(ROOT, "assets", "icon.png")).resize({ width: 32, height: 32 }).toDataURL();
 let lastApps = [];
 const usedAt = new Map(); // programa → cuándo estuvo al frente por última vez (flotando, Nimbo muestra los 4 últimos que usaste)
 async function sendTasks() {
+  if (prefs.taskbarMode !== true) { lastTasks = []; if (win && !win.isDestroyed()) win.webContents.send("tasks", []); return; }
   const own = process.execPath.toLowerCase();
   const skip = new Set(BrowserWindow.getAllWindows().filter((w) => w !== village.window()).map(hwndOf));
   const apps = lastApps.map((a) => ({ ...a, windows: a.windows.filter((w) => !skip.has(w.h)) })).filter((a) => a.windows.length);
   for (const a of apps) if (a.fg) usedAt.set(a.key, Date.now());
   const pins = taskbarPins();
-  const running = new Map(apps.map((a) => [a.key, a]));
-  const list = [...pins.map((p) => ({ ...(running.get(p.key) ?? { key: p.key, name: p.name, path: p.path, windows: [], fg: false, min: false }), pinned: true })),
-    ...apps.filter((a) => !pins.some((p) => p.key === a.key))];
+  // Un anclado se reconoce abierto por su ruta o, si es de la Tienda, por su identificador (AUMID).
+  const match = (p, a) => a.key === p.key || (p.aumid && a.aumid === p.aumid);
+  const list = [...pins.map((p) => { const r = apps.find((a) => match(p, a)); return { ...(r ?? { windows: [], fg: false, min: false }), key: p.key, name: r?.name || p.name, path: p.path || r?.path, pinned: true }; }),
+    ...apps.filter((a) => !pins.some((p) => match(p, a)))];
   const out = await Promise.all(list.map(async (a) => ({ key: a.key, name: a.key === own ? "Nimbo" : a.name, icon: a.key === own ? NIMBO_ICON() : await iconOf(a.path),
     fg: a.fg, min: a.min, pinned: !!a.pinned, used: usedAt.get(a.key) ?? 0, windows: a.windows.map((w) => ({ h: w.h, title: w.title, fg: w.fg, min: w.min })) })));
   lastTasks = out;
@@ -899,7 +935,12 @@ function setTaskbarMode(on) {
   else { windows.autoHide(prefs.taskbarPrevAutoHide === 1); setTimeout(() => windows.set(false), 600); }
 }
 ipcMain.on("task-do", (_e, action, h) => { windows.act(String(action), String(h)); });
-app.whenReady().then(() => { if (prefs.taskbarMode === true) windows.set(true); });
+app.whenReady().then(() => {
+  if (prefs.taskbarMode !== true) return;
+  windows.set(true);
+  sendTasks(); // las ancladas salen ya: al encender el PC el lector de ventanas puede tardar en responder
+  importWindowsPins();
+});
 app.on("before-quit", () => windows.stop());
 
 // --- La aldea (village.js): cada carpeta con chats es una casa y cada chat, un aldeano. Ventana aparte, opaca (barata de dibujar). ---

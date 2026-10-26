@@ -44,6 +44,7 @@ const BAR_H = 68;
 const MAX_W = 412;
 let lastSize = { w: 0, h: 0 };
 let edge = "top"; // dónde vive Nimbo (lo dice main)
+let anchorF = 0.5; // dónde está a lo largo del borde (0 = pegado a la izquierda/arriba, 1 = a la derecha/abajo)
 const EDGE_CLASSES = ["edge-top", "edge-bottom", "edge-left", "edge-right", "edge-float"];
 const curEdge = () => (dragging ? "float" : edge);
 function layout() {
@@ -66,13 +67,17 @@ function layout() {
   // flotando = la nube con tus 4 últimos programas debajo, sin texto. Arrastrando se ve como flotando.
   const e = curEdge();
   const vert = e === "left" || e === "right";
+  // Arriba o abajo y contra una esquina (arrastrado hasta el borde): Nimbo ocupa la esquina y sus dos franjas van a su lado.
+  const corner = (e === "top" || e === "bottom") ? (anchorF <= 0.03 ? "l" : anchorF >= 0.97 ? "r" : "") : "";
+  root.classList.toggle("corner-l", corner === "l");
+  root.classList.toggle("corner-r", corner === "r");
   for (const x of EDGE_CLASSES) root.classList.toggle(x, x === `edge-${e}`);
   // Tus programas van en su franja (#dock), salvo con la isla abierta (ahí salen en grande). En columna se mide su alto.
   const dockW = !open && tasksEl.children.length ? (vert ? tasksEl.offsetHeight : tasksEl.offsetWidth) + 14 : 0;
   root.classList.toggle("docked", dockW > 0);
   wrap.style.setProperty("--dock", `${dockW}px`);
   // Modo barra: el texto y los puntitos se mudan a su franja (#info) y la isla queda solo con Nimbo; abierta, vuelven arriba.
-  const split = !open && state !== "sleeping" && (vert || (e !== "float" && dockW > 0));
+  const split = !open && state !== "sleeping" && (vert || !!corner || (e !== "float" && dockW > 0));
   if (split && ticker.parentNode !== info) info.append(ticker, mailBtn, waBtn, pips);
   if (!split && ticker.parentNode !== bar) bar.prepend(ticker, mailBtn, waBtn, pips);
   root.classList.toggle("split", split);
@@ -86,13 +91,18 @@ function layout() {
     const pipsW = (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10) + (mailBtn.classList.contains("hidden") ? 0 : mailBtn.offsetWidth + 8);
     // El texto ocupa lo que quepa (el resto se corta con "…"): la isla no pasa de MAX_W.
     if (vert) {
-      const textL = text ? Math.min(measure.offsetWidth * 12.5 / 13.5, 220, innerHeight - 28 - 76 - dockW - pipsW - 34) : 0;
-      infoW = text || pipsW ? 16 + textL + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
-      wrap.style.setProperty("--tw", `${Math.ceil(Math.max(0, textL))}px`);
+      infoW = (text || pipsW) && state !== "sleeping" ? 34 : 0; // aquí "infoW" es el alto de la línea de texto, debajo de Nimbo
       const ih = state === "sleeping" ? 60 : 76;
       wrap.style.setProperty("--ih", `${ih}px`);
       w = 132;
       h = dockW + ih + infoW;
+    } else if (corner) {
+      const textW = text ? Math.min(measure.offsetWidth * 12.5 / 13.5, 230, innerWidth - 28 - 150 - 34 - pipsW) : 0;
+      infoW = text || pipsW ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
+      wrap.style.setProperty("--tw", `${Math.ceil(Math.max(0, textW))}px`);
+      const blk = Math.max(infoW, dockW);
+      wrap.style.setProperty("--blk", `${Math.round(blk)}px`);
+      w = 150 + blk;
     } else if (e === "float") {
       w = Math.max(150, dockW + 28);
       h = BAR_H + (dockW ? 34 : 0);
@@ -2263,7 +2273,7 @@ api.onWhatsNew((i) => {
 });
 
 // Posición a lo largo del borde superior (la guarda main.js)
-api.onAnchor((f) => root.style.setProperty("--f", f));
+api.onAnchor((f) => { anchorF = Number(f); root.style.setProperty("--f", f); relayout(); });
 api.onDock((e) => { edge = ["top", "bottom", "left", "right", "float"].includes(e) ? e : "top"; renderTasks(); relayout(); });
 api.onDragSnap((e) => root.classList.toggle("snap-hint", !!e));
 
@@ -2273,6 +2283,8 @@ api.onDragSnap((e) => root.classList.toggle("snap-hint", !!e));
 // soltarlo aterriza con un rebote.
 let dragDown = null; // { x, id } desde que se presiona
 let dragging = false;
+let peeling = false; // jalándolo pero aún con retención
+const PEEL = 64; // píxeles de resistencia antes de despegarse
 let suppressClick = false;
 let lean = 0, leanTarget = 0, leanRaf = 0, lastDragX = 0;
 const islandEl = document.getElementById("island");
@@ -2293,9 +2305,24 @@ wrap.addEventListener("pointermove", (e) => {
   if (!dragDown) return;
   // Si llega un movimiento sin botón presionado, es que la suelta se perdió: terminar.
   if (e.buttons === 0) return endDrag();
-  if (!dragging && Math.hypot(e.screenX - dragDown.x, e.screenY - dragDown.y) > 6) {
+  // Retención: al principio Nimbo se resiste: sigue al cursor un poquito y se estira, como pegado al borde. Pasados PEEL px se suelta
+  // de golpe (con rebote); si sueltas antes, regresa como resorte. Menos de 6 px sigue siendo un clic.
+  const pdx = e.screenX - dragDown.x, pdy = e.screenY - dragDown.y, pd = Math.hypot(pdx, pdy);
+  if (!dragging && pd > 6 && pd <= PEEL) {
+    if (!peeling) { peeling = true; wrap.setPointerCapture(dragDown.id); }
+    const k = Math.min(1, pd / PEEL);
+    islandEl.getAnimations().forEach((a) => a.cancel());
+    islandEl.style.translate = `${(pdx * 0.28).toFixed(1)}px ${(pdy * 0.28).toFixed(1)}px`;
+    // Se estira a lo largo del jalón (más cuanto más cerca de soltarse)
+    islandEl.style.scale = Math.abs(pdx) > Math.abs(pdy) ? `${(1 + k * 0.1).toFixed(3)} ${(1 - k * 0.05).toFixed(3)}` : `${(1 - k * 0.05).toFixed(3)} ${(1 + k * 0.1).toFixed(3)}`;
+    return;
+  }
+  if (!dragging && pd > PEEL) {
     dragging = true;
-    wrap.setPointerCapture(dragDown.id);
+    peeling = false;
+    islandEl.style.translate = "";
+    islandEl.style.scale = "";
+    if (!wrap.hasPointerCapture(dragDown.id)) wrap.setPointerCapture(dragDown.id);
     root.classList.add("dragging");
     hidePanel();
     toggleChat(false);
@@ -2318,6 +2345,17 @@ wrap.addEventListener("pointermove", (e) => {
   }
 });
 function endDrag() {
+  if (peeling && !dragging) {
+    // No alcanzó a despegarse: regresa al sitio con un rebote de resorte, y el clic que llega tras soltar no abre nada.
+    peeling = false;
+    suppressClick = true;
+    setTimeout(() => (suppressClick = false), 250);
+    const from = { translate: islandEl.style.translate || "0px 0px", scale: islandEl.style.scale || "1 1" };
+    islandEl.style.translate = "";
+    islandEl.style.scale = "";
+    islandEl.animate([from, { translate: "0px 0px", scale: "1.0 1.0" }], { duration: 520, easing: "cubic-bezier(.3, 1.7, .5, 1)" });
+    SOUNDS.close();
+  }
   if (dragging) {
     dragging = false;
     suppressClick = true; // el clic que llega tras soltar no debe abrir el chat

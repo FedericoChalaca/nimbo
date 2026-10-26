@@ -202,7 +202,11 @@
     const pcm = wavToPcm(bytes);
     if (!pcm) return true; // sin audio que revisar: se confía en Windows, como antes
     const text = (await transcribe(prepClip(pcm))).trim();
-    const ok = said(text);
+    // Datos reales (historial del 2026-10-26): con 1 s de audio Whisper oye "y", "de", "Adiós" aunque Windows acierte siempre ("hola nimbo"
+    // 0,53–0,60 en 7 de 7 llamadas de verdad), así que una palabra suelta (o 3 mal oídas, "y ahí está") no prueba nada. Lo que SÍ delata a un video es que Whisper oiga una
+    // frase de 5 o más palabras que no tiene nimbo ("las roguías de colchile a la fejación"): eso se descarta.
+    const words = (text.match(/\p{L}+/gu) ?? []).length;
+    const ok = said(text) || words <= 4;
     api.wakeLog?.("check", text, ok ? "ok" : "no");
     return ok;
   }
