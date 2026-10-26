@@ -272,8 +272,11 @@ function dockBounds() {
   const d = dockState();
   const a = displayOf(d).workArea;
   const clampIn = (v, from, len, size) => Math.round(Math.min(from + len - size, Math.max(from, v)));
-  if (d.edge === "top") return { x: Math.round(a.x + d.pos * (a.width - W)), y: a.y, width: W, height: winH };
-  if (d.edge === "bottom") return { x: Math.round(a.x + d.pos * (a.width - W)), y: a.y + a.height - winH, width: W, height: winH };
+  // Contra una esquina la ventana se corre 14 px hacia afuera de la pantalla (esa franja es transparente: son las "orejas" de la isla),
+  // así la isla queda pegada al borde de verdad.
+  const rowX = () => Math.round(a.x + d.pos * (a.width - W) + (d.pos <= 0.03 ? -14 : d.pos >= 0.97 ? 14 : 0));
+  if (d.edge === "top") return { x: rowX(), y: a.y, width: W, height: winH };
+  if (d.edge === "bottom") return { x: rowX(), y: a.y + a.height - winH, width: W, height: winH };
   const sideH = Math.min(SIDE_H, a.height);
   if (d.edge === "left") return { x: a.x, y: Math.round(a.y + d.pos * (a.height - sideH)), width: SIDE_W, height: sideH };
   if (d.edge === "right") return { x: a.x + a.width - SIDE_W, y: Math.round(a.y + d.pos * (a.height - sideH)), width: SIDE_W, height: sideH };
@@ -745,6 +748,23 @@ $s.SetOutputToWaveFile($env:NIMBO_OUT)
 $s.Speak($env:NIMBO_TEXT)
 $s.Dispose()
 `;
+// Voz amable (opcional): Piper, voz neuronal sin internet. Federico descargó piper.exe y una voz en español a D:\piper (2026-10-26); se usa
+// SOLO si lo enciende en el menú (prefs.voiceEngine = "piper"). Texto por la entrada estándar, sin shell; solo frases de frases.json (≤ 80 letras).
+const piperDir = () => String(prefs.piperDir || "D:\\piper");
+const piperExe = () => path.join(piperDir(), "piper", "piper.exe");
+const piperModel = () => { try { return fs.readdirSync(piperDir()).filter((f) => /\.onnx$/i.test(f)).map((f) => path.join(piperDir(), f))[0] ?? ""; } catch { return ""; } };
+const havePiper = () => process.platform === "win32" && fs.existsSync(piperExe()) && !!piperModel();
+const usePiper = () => prefs.voiceEngine === "piper" && havePiper();
+function renderPiper(text, out) {
+  return new Promise((res, rej) => {
+    const c = require("child_process").spawn(piperExe(), ["--model", piperModel(), "--output_file", out], { windowsHide: true, cwd: path.dirname(piperExe()) });
+    const timer = setTimeout(() => { c.kill(); rej(new Error("timeout")); }, 30_000);
+    c.on("error", (e) => { clearTimeout(timer); rej(e); });
+    c.on("exit", (code) => { clearTimeout(timer); code === 0 ? res() : rej(new Error("piper " + code)); });
+    c.stdin.on("error", () => {});
+    c.stdin.end(text + "\n");
+  });
+}
 let lastPhrase = "";
 ipcMain.handle("say-phrase", async (_e, kind) => {
   if (prefs.cueVoice === false || process.platform !== "win32") return null;
@@ -752,8 +772,10 @@ ipcMain.handle("say-phrase", async (_e, kind) => {
   if (text === lastPhrase) text = pickPhrase("escuchando") || text; // que no se repita seguido
   lastPhrase = text;
   if (!text) return null;
-  const file = path.join(VOICE_DIR, require("crypto").createHash("sha1").update(lang() + "|" + text).digest("hex").slice(0, 16) + ".wav");
+  const engine = usePiper() ? "piper:" + path.basename(piperModel()) : "sapi";
+  const file = path.join(VOICE_DIR, require("crypto").createHash("sha1").update(engine + "|" + lang() + "|" + text).digest("hex").slice(0, 16) + ".wav");
   try {
+    if (!fs.existsSync(file) && engine !== "sapi") { fs.mkdirSync(VOICE_DIR, { recursive: true }); await renderPiper(text, file); }
     if (!fs.existsSync(file)) {
       fs.mkdirSync(VOICE_DIR, { recursive: true });
       const ps = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -1375,6 +1397,13 @@ function buildMenu() {
       checked: prefs.cueVoice !== false,
       visible: process.platform === "win32",
       click: (item) => { prefs.cueVoice = item.checked; savePrefs(); },
+    },
+    {
+      label: t("Voz amable de Piper (en D:\\piper)"),
+      type: "checkbox",
+      checked: prefs.voiceEngine === "piper",
+      visible: havePiper(),
+      click: (item) => { prefs.voiceEngine = item.checked ? "piper" : ""; savePrefs(); },
     },
     {
       label: t("Historial de «Oye Nimbo»"),

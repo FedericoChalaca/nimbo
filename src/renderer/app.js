@@ -68,7 +68,8 @@ function layout() {
   const e = curEdge();
   const vert = e === "left" || e === "right";
   // Arriba o abajo y contra una esquina (arrastrado hasta el borde): Nimbo ocupa la esquina y sus dos franjas van a su lado.
-  const corner = (e === "top" || e === "bottom") ? (anchorF <= 0.03 ? "l" : anchorF >= 0.97 ? "r" : "") : "";
+  const corner = !open && (e === "top" || e === "bottom") ? (anchorF <= 0.03 ? "l" : anchorF >= 0.97 ? "r" : "") : "";
+  if (open) { wrap.style.setProperty("--blk", "0px"); wrap.style.setProperty("--iw", "0px"); }
   root.classList.toggle("corner-l", corner === "l");
   root.classList.toggle("corner-r", corner === "r");
   for (const x of EDGE_CLASSES) root.classList.toggle(x, x === `edge-${e}`);

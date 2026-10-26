@@ -84,6 +84,7 @@ const NIMBO_EN = {
   "Falló": "Failed",
   "Tranquilo": "Relaxing",
   "Casas": "Houses",
+  "Voz amable de Piper (en D:\\piper)": "Friendly Piper voice (in D:\\piper)",
   "Decir «te escucho» al llamarlo": "Say “I'm listening” when called",
   "Posición de Nimbo": "Nimbo's position",
   "Arriba": "Top",
