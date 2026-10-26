@@ -2104,7 +2104,10 @@ async function runSlash(text) {
 api.onWake((clip, meta) => {
   if (mini || !card.classList.contains("hidden") || asking) return api.wakeDone(); // jugando, con un permiso esperando o ya pensando: nada
   const gate = clip && window.voiceCheckWake ? window.voiceCheckWake(clip, meta).catch(() => true) : Promise.resolve(true);
-  gate.then((ok) => {
+  // Respuesta INSTANTÁNEA: si el chequeo rápido (confianza de Windows y duración) pasa, Nimbo contesta ya ("te escucho") sin esperar a Whisper;
+  // Whisper sigue revisando por detrás y, si resulta ser una voz de fondo, lo descarta (dictate(gate) tira lo grabado).
+  const quick = !clip || !window.voiceCheapWake || window.voiceCheapWake(clip, meta);
+  (quick ? Promise.resolve(true) : gate).then((ok) => {
     if (!ok) return;
     hidePanel();
     if (!setupBox.classList.contains("hidden")) closeSetup();
@@ -2115,7 +2118,9 @@ api.onWake((clip, meta) => {
     logActivity("needs", "Nimbo", t("Me llamaste por voz"));
     window.nimboSay?.("escuchando"); // "Aquí estoy" / "Te escucho"… con voz, para saber que ya está escuchando
   });
-  Promise.resolve(window.voiceDictate?.({ autoSend: true, gate })).finally(() => api.wakeDone());
+  // Si ya contestó pero Whisper después dice que era una voz de fondo, se deshace: la isla vuelve a su sitio.
+  if (quick) gate.then((ok) => { if (!ok) { allOpen = false; toggleChat(false); setState("idle"); logActivity("idle", "Nimbo", t("Falsa alarma: era una voz de fondo")); } });
+  Promise.resolve(window.voiceDictate?.({ autoSend: true, gate, instant: quick })).finally(() => api.wakeDone());
 });
 
 // Atajo global (Ctrl+Alt+Espacio, como el acceso rápido de la app de Claude): abre el chat de Nimbo listo para escribir.

@@ -215,18 +215,38 @@
     return ok;
   }
   window.voiceCheckWake = checkWake;
+  /** Chequeo INSTANTÁNEO de una llamada (sin Whisper): Windows estuvo seguro (≥ 0,55) y el audio dura lo que "hola nimbo" (0,6–1,8 s). */
+  window.voiceCheapWake = (bytes, meta = {}) => {
+    const pcm = wavToPcm(bytes);
+    if (!pcm) return true;
+    const dur = pcm.length / SR;
+    return (Number(meta.conf) || 0) >= 0.55 && dur >= 0.6 && dur <= 1.8;
+  };
   // "Aquí estoy / Te escucho…": una frase al azar de la base chica (main: frases.json), con la voz de Windows. Si no hay voz, silencio.
-  window.nimboSay = async (kind = "escuchando") => {
+  let nextCue = null; // la próxima frase, ya cargada en memoria
+  async function prepareCue(kind = "escuchando") {
     try {
       const bytes = await api.sayPhrase?.(kind);
       if (!bytes) return;
       const audio = new Audio(URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })));
       audio.volume = 0.9;
+      audio.preload = "auto";
+      audio.load();
+      nextCue = audio;
+    } catch {}
+  }
+  window.nimboSay = async (kind = "escuchando") => {
+    try {
+      const audio = nextCue ?? (await prepareCue(kind), nextCue);
+      nextCue = null;
+      if (!audio) return;
       muteUntil = performance.now() + 4000;
       audio.onended = () => { muteUntil = performance.now() + 250; URL.revokeObjectURL(audio.src); };
       await audio.play();
+      prepareCue(kind); // y se deja lista otra para la próxima vez
     } catch { muteUntil = 0; }
   };
+  setTimeout(() => prepareCue(), 6000); // al arrancar, cuando main ya generó las frases
 
   // Lo que se oye después de una llamada falsa suele ser basura: una palabra suelta ("de", "¡Oh!") o Whisper repitiendo lo mismo
   // ("si, si, si…" 40 veces). Eso no se manda solo: queda dicho por qué. → motivo, o "" si se puede mandar.
@@ -241,7 +261,7 @@
   // autoSend: lo pidió "Oye Nimbo": al terminar de hablar, lo que dijiste se envía solo (como Siri).
   // gate: promesa de la revisión de la llamada (checkWake). Mientras tanto ya se graba (para no perder lo que digas), pero nada se ve;
   // si resulta falsa alarma, se descarta en silencio.
-  async function dictate({ autoSend = false, gate = null } = {}) {
+  async function dictate({ autoSend = false, gate = null, instant = false } = {}) {
     if (dictating) return finish(); // segundo clic = ya terminé
     stopSpeaking(); // si Nimbo estaba hablando, se calla para escucharte
     dictating = true;
@@ -258,8 +278,9 @@
         if (autoSend) { answer.classList.remove("wait"); answer.replaceChildren(el("div", "afoot", t("Te escucho: lo que digas aparece en el cuadro."))); answerBox.classList.remove("hidden"); }
       };
       let real = true;
-      if (gate) gate.then((ok) => { real = ok; if (!dictating) return; if (ok) show(); else { const r = rec; rec = null; r?.resolve(null); } });
-      else show();
+      // instant: ya contestó "te escucho" sin esperar a Whisper → se muestra ya; la revisión corre por detrás y, si descarta la llamada, tira lo grabado.
+      if (gate) gate.then((ok) => { real = ok; if (!dictating) return; if (ok) { if (!instant) show(); } else { const r = rec; rec = null; r?.resolve(null); } });
+      if (!gate || instant) show();
       const heard = await heardP;
       api.liveDictation?.(false);
       if (gate && !(await gate)) { msg.value = base; return; } // falsa alarma: como si nada

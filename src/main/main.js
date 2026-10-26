@@ -766,26 +766,42 @@ function renderPiper(text, out) {
   });
 }
 let lastPhrase = "";
+// Archivo de audio de una frase (se genera la primera vez y queda guardado; la próxima es instantánea).
+async function phraseFile(text) {
+  const engine = usePiper() ? "piper:" + path.basename(piperModel()) : "sapi";
+  const file = path.join(VOICE_DIR, require("crypto").createHash("sha1").update(engine + "|" + lang() + "|" + text).digest("hex").slice(0, 16) + ".wav");
+  if (fs.existsSync(file)) return file;
+  fs.mkdirSync(VOICE_DIR, { recursive: true });
+  if (engine !== "sapi") { await renderPiper(text, file); return file; }
+  const ps = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  await new Promise((res, rej) => execFile(ps, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(SAY_PS, "utf16le").toString("base64")],
+    { windowsHide: true, timeout: 20_000, env: { ...process.env, NIMBO_TEXT: text, NIMBO_OUT: file, NIMBO_LANG: lang(), NIMBO_VOICE: lang() === "en" ? "Microsoft Zira Desktop" : "Microsoft Helena Desktop" } },
+    (err) => (err ? rej(err) : res())));
+  return file;
+}
 ipcMain.handle("say-phrase", async (_e, kind) => {
   if (prefs.cueVoice === false || process.platform !== "win32") return null;
-  let text = pickPhrase(String(kind) === "escuchando" ? "escuchando" : "escuchando");
+  let text = pickPhrase("escuchando");
   if (text === lastPhrase) text = pickPhrase("escuchando") || text; // que no se repita seguido
   lastPhrase = text;
   if (!text) return null;
-  const engine = usePiper() ? "piper:" + path.basename(piperModel()) : "sapi";
-  const file = path.join(VOICE_DIR, require("crypto").createHash("sha1").update(engine + "|" + lang() + "|" + text).digest("hex").slice(0, 16) + ".wav");
-  try {
-    if (!fs.existsSync(file) && engine !== "sapi") { fs.mkdirSync(VOICE_DIR, { recursive: true }); await renderPiper(text, file); }
-    if (!fs.existsSync(file)) {
-      fs.mkdirSync(VOICE_DIR, { recursive: true });
-      const ps = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-      await new Promise((res, rej) => execFile(ps, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(SAY_PS, "utf16le").toString("base64")],
-        { windowsHide: true, timeout: 20_000, env: { ...process.env, NIMBO_TEXT: text, NIMBO_OUT: file, NIMBO_LANG: lang(), NIMBO_VOICE: lang() === "en" ? "Microsoft Zira Desktop" : "Microsoft Helena Desktop" } },
-        (err) => (err ? rej(err) : res())));
-    }
-    return new Uint8Array(await fs.promises.readFile(file));
-  } catch { return null; }
+  try { return new Uint8Array(await fs.promises.readFile(await phraseFile(text))); } catch { return null; }
 });
+// Al arrancar (y al cambiar de voz) se generan TODAS las frases: así, cuando lo llamas, el "te escucho" sale al instante sin esperar a la voz.
+let warming = false;
+async function warmPhrases() {
+  if (warming || prefs.cueVoice === false || process.platform !== "win32") return;
+  warming = true;
+  try {
+    pickPhrase("escuchando"); // crea frases.json si no existe
+    let db = {};
+    try { db = JSON.parse(fs.readFileSync(PHRASES_FILE, "utf8")); } catch {}
+    for (const text of (db[lang()]?.escuchando ?? DEFAULT_PHRASES[lang()].escuchando).filter((x) => typeof x === "string" && x.trim() && x.length <= 80)) {
+      try { await phraseFile(text); } catch {}
+    }
+  } finally { warming = false; }
+}
+app.whenReady().then(() => setTimeout(warmPhrases, 4000));
 
 // Historial de «Oye Nimbo» (menú → "Historial de «Oye Nimbo»"): cada posible llamada, qué oyó cada paso y qué se mandó después, para
 // entender por qué se activa solo. Texto plano, SOLO en este PC, las últimas 400 líneas. Lleva pedacitos de lo que se oyó cerca del micrófono.
@@ -1403,7 +1419,7 @@ function buildMenu() {
       type: "checkbox",
       checked: prefs.voiceEngine === "piper",
       visible: havePiper(),
-      click: (item) => { prefs.voiceEngine = item.checked ? "piper" : ""; savePrefs(); },
+      click: (item) => { prefs.voiceEngine = item.checked ? "piper" : ""; savePrefs(); warmPhrases(); },
     },
     {
       label: t("Historial de «Oye Nimbo»"),
