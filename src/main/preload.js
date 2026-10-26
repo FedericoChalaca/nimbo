@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   onSetupOpen: (fn) => ipcRenderer.on("setup-open", () => fn()),
   onName: (fn) => ipcRenderer.on("name", (_e, n) => fn(n)),
   onAnchor: (fn) => ipcRenderer.on("anchor", (_e, f) => fn(f)),
+  onDock: (fn) => ipcRenderer.on("dock", (_e, edge) => fn(String(edge))), // top · bottom · left · right · float
+  onDragSnap: (fn) => ipcRenderer.on("drag-snap", (_e, edge) => fn(String(edge))), // arrastrando: el borde donde se pegaría ("" = flotando)
   dragStart: (d) => ipcRenderer.send("drag-start", d),
   dragEnd: () => ipcRenderer.send("drag-end"),
   onDragAbort: (fn) => ipcRenderer.on("drag-abort", () => fn()),

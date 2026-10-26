@@ -98,12 +98,9 @@ let tray; // se guarda aquí para que no lo recoja el recolector de basura
 let muted = false;
 
 function createWindow() {
-  const { workArea } = screen.getPrimaryDisplay();
+  const start = dockBounds();
   win = new BrowserWindow({
-    width: W,
-    height: H,
-    x: Math.round(workArea.x + prefs.pos * (workArea.width - W)),
-    y: workArea.y,
+    ...start,
     transparent: true,
     frame: false,
     resizable: false,
@@ -123,7 +120,8 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("did-finish-load", () => {
     win.webContents.send("theme", prefs.theme);
-    win.webContents.send("anchor", prefs.pos);
+    win.webContents.send("dock", dockState().edge);
+    win.webContents.send("anchor", dockState().pos);
     if (mini) win.webContents.send("mini", true); // tras recargar (cambio de idioma)
     if (plan) win.webContents.send("plan", planView(false)); // idem: la página recargada vuelve a tener el plan
     win.webContents.send("name", String(prefs.name ?? ""));
@@ -151,19 +149,11 @@ function createWindow() {
       win.webContents.send("drag-abort");
     }
     if (drag) {
-      // La isla se alinea dentro de la ventana según f (0 izquierda … 1 derecha), así llega a
-      // las esquinas sin cortarse. Se despeja la x de la ventana para que la isla quede justo
-      // bajo el punto por donde la agarraste. A cada lado se reservan 14 px para sus esquinas
-      // invertidas: islaIzq = winX + 14 + f·(W − 28 − w), f = (winX − a.x)/span.
-      const a = screen.getPrimaryDisplay().workArea;
-      const span = a.width - W;
-      const k = (W - 28 - drag.w) / span;
-      const wx = Math.round(Math.min(a.x + span, Math.max(a.x, (p.x - drag.grab - 14 + a.x * k) / (1 + k))));
-      prefs.pos = (wx - a.x) / span;
-      if (wx !== b.x) {
-        win.setBounds({ x: wx, y: a.y, width: W, height: winH });
-        win.webContents.send("anchor", prefs.pos);
-      }
+      // Arrastrando, Nimbo flota pegado al cursor (en cualquier pantalla); cerca de un borde, la página muestra que se va a pegar ahí.
+      const wx = Math.round(p.x - FLOAT_W / 2), wy = Math.round(p.y - 14 - 34);
+      if (wx !== b.x || wy !== b.y || b.width !== FLOAT_W) win.setBounds({ x: wx, y: wy, width: FLOAT_W, height: FLOAT_H });
+      const snap = snapEdge(p);
+      if (snap !== drag.snap) { drag.snap = snap; win.webContents.send("drag-snap", snap); }
       return;
     }
     const x = p.x - b.x;
@@ -184,17 +174,26 @@ function createWindow() {
 // Arrastrar a Nimbo por el borde superior: la página avisa cuándo empieza (con el ancho de
 // la isla y el punto de agarre) y cuándo termina; el bucle del cursor mueve la ventana.
 let drag = null;
-ipcMain.on("drag-start", (_e, d) => {
-  const w = Number(d?.w);
-  const grab = Number(d?.grab);
-  if (mini || !Number.isFinite(w) || !Number.isFinite(grab)) return;
-  drag = { w: Math.min(Math.max(w, 60), W), grab: Math.min(Math.max(grab, 0), W), since: Date.now() };
+ipcMain.on("drag-start", () => {
+  if (mini) return;
+  drag = { since: Date.now(), snap: dockState().edge === "float" ? "" : dockState().edge };
   win.setIgnoreMouseEvents(false); // mientras se arrastra, la ventana no suelta el mouse
 });
+// Al soltar: cerca de un borde (de la pantalla donde está el cursor) se pega a ese borde en ese punto; lejos, queda flotando ahí.
 ipcMain.on("drag-end", () => {
   if (!drag) return;
   drag = null;
+  const p = screen.getCursorScreenPoint();
+  const disp = screen.getDisplayNearestPoint(p);
+  const a = disp.workArea;
+  const edge = snapEdge(p) || "float";
+  const frac = (v, from, len, size) => Math.min(1, Math.max(0, (v - from - size / 2) / Math.max(1, len - size)));
+  prefs.dock = edge === "float" ? { edge, display: disp.id, x: Math.round(p.x), y: Math.round(p.y - 34) }
+    : { edge, display: disp.id, pos: edge === "top" || edge === "bottom" ? frac(p.x, a.x, a.width, W) : frac(p.y, a.y, a.height, SIDE_H) };
   savePrefs();
+  placeWindow();
+  win.webContents.send("dock", edge);
+  win.webContents.send("anchor", dockState().pos);
 });
 
 ipcMain.on("win-height", (_e, h) => {
@@ -202,8 +201,10 @@ ipcMain.on("win-height", (_e, h) => {
   if (!Number.isFinite(h)) return;
   winH = Math.min(H, Math.max(100, h));
   if (mini || drag || !win || win.isDestroyed()) return;
+  const edge = dockState().edge;
+  if (edge !== "top" && edge !== "bottom") return; // a los lados y flotando la ventana tiene tamaño fijo
   const b = win.getBounds();
-  if (b.height !== winH) win.setBounds({ ...b, height: winH });
+  if (b.height !== winH) win.setBounds(dockBounds());
 });
 
 // Zonas tocables (la nube y las cajas visibles), en coordenadas de la ventana.
@@ -254,10 +255,45 @@ const MINI_W = 100;
 const MINI_H = 60;
 const MARGIN = 8;
 
+// --- Dónde vive Nimbo (prefs.dock): pegado a un borde (arriba, abajo, izquierda, derecha) de cualquier pantalla, o flotando ---
+// { edge, display (id de la pantalla), pos (0…1 a lo largo del borde), x, y (flotando: el centro de arriba de la isla) }.
+const EDGES = ["top", "bottom", "left", "right", "float"];
+const SIDE_W = 440, SIDE_H = 640; // a los lados: la ventana es vertical
+const FLOAT_W = 440, FLOAT_H = 500; // abierta mide hasta 470 + 14 de margen arriba
+function dockState() {
+  const d = prefs.dock ?? {};
+  return { edge: EDGES.includes(d.edge) ? d.edge : "top", display: d.display, pos: Number.isFinite(d.pos) ? d.pos : Number(prefs.pos) || 0.5, x: d.x, y: d.y };
+}
+const displayOf = (d) => screen.getAllDisplays().find((s) => s.id === d.display) ?? screen.getPrimaryDisplay();
+function dockBounds() {
+  const d = dockState();
+  const a = displayOf(d).workArea;
+  const clampIn = (v, from, len, size) => Math.round(Math.min(from + len - size, Math.max(from, v)));
+  if (d.edge === "top") return { x: Math.round(a.x + d.pos * (a.width - W)), y: a.y, width: W, height: winH };
+  if (d.edge === "bottom") return { x: Math.round(a.x + d.pos * (a.width - W)), y: a.y + a.height - winH, width: W, height: winH };
+  const sideH = Math.min(SIDE_H, a.height);
+  if (d.edge === "left") return { x: a.x, y: Math.round(a.y + d.pos * (a.height - sideH)), width: SIDE_W, height: sideH };
+  if (d.edge === "right") return { x: a.x + a.width - SIDE_W, y: Math.round(a.y + d.pos * (a.height - sideH)), width: SIDE_W, height: sideH };
+  return { x: clampIn((d.x ?? a.x + a.width / 2) - FLOAT_W / 2, a.x, a.width, FLOAT_W), y: clampIn((d.y ?? a.y + 40) - 14, a.y, a.height, FLOAT_H), width: FLOAT_W, height: FLOAT_H };
+}
+function setDock(d) {
+  prefs.dock = { edge: d.edge, display: displayOf(d).id, pos: Number.isFinite(d.pos) ? d.pos : 0.5, x: d.x, y: d.y };
+  savePrefs();
+  if (!win || win.isDestroyed() || mini) return;
+  placeWindow();
+  win.webContents.send("dock", d.edge);
+  win.webContents.send("anchor", dockState().pos);
+}
+// ¿Cerca de qué borde está el cursor? (70 px; "" = lejos de todos: flotando)
+function snapEdge(p) {
+  const a = screen.getDisplayNearestPoint(p).workArea;
+  const near = [["top", p.y - a.y], ["bottom", a.y + a.height - p.y], ["left", p.x - a.x], ["right", a.x + a.width - p.x]].filter(([, dist]) => dist < 70).sort((x, y) => x[1] - y[1]);
+  return near[0]?.[0] ?? "";
+}
 function placeWindow() {
   const { workArea: a } = screen.getPrimaryDisplay();
   if (!mini) {
-    win.setBounds({ x: Math.round(a.x + prefs.pos * (a.width - W)), y: a.y, width: W, height: winH });
+    win.setBounds(dockBounds());
     return;
   }
   const [v, h] = corner.split("-");
@@ -804,16 +840,18 @@ function taskbarPins() {
 const hwndOf = (w) => { try { return w.getNativeWindowHandle().readBigUInt64LE(0).toString(); } catch { return ""; } };
 const NIMBO_ICON = () => nativeImage.createFromPath(path.join(ROOT, "assets", "icon.png")).resize({ width: 32, height: 32 }).toDataURL();
 let lastApps = [];
+const usedAt = new Map(); // programa → cuándo estuvo al frente por última vez (flotando, Nimbo muestra los 4 últimos que usaste)
 async function sendTasks() {
   const own = process.execPath.toLowerCase();
   const skip = new Set(BrowserWindow.getAllWindows().filter((w) => w !== village.window()).map(hwndOf));
   const apps = lastApps.map((a) => ({ ...a, windows: a.windows.filter((w) => !skip.has(w.h)) })).filter((a) => a.windows.length);
+  for (const a of apps) if (a.fg) usedAt.set(a.key, Date.now());
   const pins = taskbarPins();
   const running = new Map(apps.map((a) => [a.key, a]));
   const list = [...pins.map((p) => ({ ...(running.get(p.key) ?? { key: p.key, name: p.name, path: p.path, windows: [], fg: false, min: false }), pinned: true })),
     ...apps.filter((a) => !pins.some((p) => p.key === a.key))];
   const out = await Promise.all(list.map(async (a) => ({ key: a.key, name: a.key === own ? "Nimbo" : a.name, icon: a.key === own ? NIMBO_ICON() : await iconOf(a.path),
-    fg: a.fg, min: a.min, pinned: !!a.pinned, windows: a.windows.map((w) => ({ h: w.h, title: w.title, fg: w.fg, min: w.min })) })));
+    fg: a.fg, min: a.min, pinned: !!a.pinned, used: usedAt.get(a.key) ?? 0, windows: a.windows.map((w) => ({ h: w.h, title: w.title, fg: w.fg, min: w.min })) })));
   lastTasks = out;
   if (win && !win.isDestroyed()) win.webContents.send("tasks", out);
 }
@@ -1221,6 +1259,17 @@ function buildMenu() {
       checked: prefs.taskbarMode === true,
       visible: process.platform === "win32",
       click: (item) => setTaskbarMode(item.checked),
+    },
+    {
+      // También se puede arrastrar: cerca de un borde se pega ahí; lejos, queda flotando.
+      label: t("Posición de Nimbo"),
+      submenu: [["top", t("Arriba")], ["bottom", t("Abajo")], ["left", t("A la izquierda")], ["right", t("A la derecha")], ["float", t("Flotando")]].map(([edge, label]) => ({
+        label, type: "radio", checked: dockState().edge === edge, click: () => setDock({ ...dockState(), edge }),
+      })).concat(screen.getAllDisplays().length > 1 ? [{ type: "separator" }, { label: t("Pasar a la otra pantalla"), click: () => {
+        const all = screen.getAllDisplays();
+        const now = displayOf(dockState());
+        setDock({ ...dockState(), display: all[(all.findIndex((d) => d.id === now.id) + 1) % all.length].id, x: undefined, y: undefined });
+      } }] : []),
     },
     {
       label: t("«Oye Nimbo»: escuchar siempre"),

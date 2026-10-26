@@ -43,6 +43,9 @@ const BAR_H = 68;
 // esto, la ventana la recorta y pierde las curvas.
 const MAX_W = 412;
 let lastSize = { w: 0, h: 0 };
+let edge = "top"; // dónde vive Nimbo (lo dice main)
+const EDGE_CLASSES = ["edge-top", "edge-bottom", "edge-left", "edge-right", "edge-float"];
+const curEdge = () => (dragging ? "float" : edge);
 function layout() {
   layoutQueued = 0;
   if (mini) return;
@@ -59,12 +62,17 @@ function layout() {
   root.classList.toggle("open", open);
   if (open) root.classList.remove("solo");
   let w, h;
-  // Tus programas van en su franja (#dock) a la derecha de la isla, salvo con la isla abierta (ahí salen en grande).
-  const dockW = !open && tasksEl.children.length ? tasksEl.offsetWidth + 14 : 0;
+  // Dónde vive (main: prefs.dock): arriba o abajo = fila; a los lados = columna (programas arriba, Nimbo, lo que hace Claude abajo);
+  // flotando = la nube con tus 4 últimos programas debajo, sin texto. Arrastrando se ve como flotando.
+  const e = curEdge();
+  const vert = e === "left" || e === "right";
+  for (const x of EDGE_CLASSES) root.classList.toggle(x, x === `edge-${e}`);
+  // Tus programas van en su franja (#dock), salvo con la isla abierta (ahí salen en grande). En columna se mide su alto.
+  const dockW = !open && tasksEl.children.length ? (vert ? tasksEl.offsetHeight : tasksEl.offsetWidth) + 14 : 0;
   root.classList.toggle("docked", dockW > 0);
   wrap.style.setProperty("--dock", `${dockW}px`);
-  // Modo barra: el texto y los puntitos se mudan a su franja de la izquierda (#info) y la isla queda solo con Nimbo; abierta, vuelven arriba.
-  const split = dockW > 0 && state !== "sleeping";
+  // Modo barra: el texto y los puntitos se mudan a su franja (#info) y la isla queda solo con Nimbo; abierta, vuelven arriba.
+  const split = !open && state !== "sleeping" && (vert || (e !== "float" && dockW > 0));
   if (split && ticker.parentNode !== info) info.append(ticker, mailBtn, waBtn, pips);
   if (!split && ticker.parentNode !== bar) bar.prepend(ticker, mailBtn, waBtn, pips);
   root.classList.toggle("split", split);
@@ -77,7 +85,18 @@ function layout() {
     measure.textContent = text;
     const pipsW = (pips.children.length ? pips.children.length * 12 + 6 : 0) + (waBtn.classList.contains("hidden") ? 0 : waBtn.offsetWidth + 10) + (mailBtn.classList.contains("hidden") ? 0 : mailBtn.offsetWidth + 8);
     // El texto ocupa lo que quepa (el resto se corta con "…"): la isla no pasa de MAX_W.
-    if (split) {
+    if (vert) {
+      const textL = text ? Math.min(measure.offsetWidth * 12.5 / 13.5, 220, innerHeight - 28 - 76 - dockW - pipsW - 34) : 0;
+      infoW = text || pipsW ? 16 + textL + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
+      wrap.style.setProperty("--tw", `${Math.ceil(Math.max(0, textL))}px`);
+      const ih = state === "sleeping" ? 60 : 76;
+      wrap.style.setProperty("--ih", `${ih}px`);
+      w = 132;
+      h = dockW + ih + infoW;
+    } else if (e === "float") {
+      w = Math.max(150, dockW + 28);
+      h = BAR_H + (dockW ? 34 : 0);
+    } else if (split) {
       const textW = text ? Math.min(measure.offsetWidth * 12.5 / 13.5, 260, innerWidth - 28 - 150 - dockW - pipsW - 34) : 0;
       infoW = text || pipsW ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
       wrap.style.setProperty("--tw", `${Math.ceil(textW)}px`);
@@ -86,9 +105,11 @@ function layout() {
       const textW = text ? Math.min(measure.offsetWidth, 270, innerWidth - 28 - 116 - 12 - pipsW - 16 - dockW) : 0;
       w = (text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150) + dockW;
     }
-    h = BAR_H;
-    if (state === "sleeping") { w = 132 + dockW; h = 60; }
-    root.classList.toggle("solo", !text && !pipsW);
+    if (!vert && e !== "float") {
+      h = BAR_H;
+      if (state === "sleeping") { w = 132 + dockW; h = 60; }
+    }
+    root.classList.toggle("solo", e === "float" || (!text && !pipsW));
     if (split && !infoW) root.classList.remove("split"); // nada que contar: sin franja
   }
   wrap.style.setProperty("--info", `${infoW}px`);
@@ -509,12 +530,15 @@ function taskClick(a) {
   if (front) return api.taskDo("min", front.h);
   api.taskDo("focus", (a.windows.find((w) => !w.min) ?? a.windows[0]).h);
 }
+// Flotando solo van los 4 últimos que usaste (abiertos); pegado a un borde, todos (hasta MAX_TASKS) con los anclados primero.
+const shownTasks = () => curEdge() === "float" ? tasks.filter((a) => a.windows.length).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 4) : tasks.slice(0, MAX_TASKS);
 function renderTasks() {
-  const key = mini ? "" : tasks.slice(0, MAX_TASKS).map((a) => a.key + a.fg + a.min + !!a.icon + a.windows.length).join("|") + tasks.length;
+  const list = shownTasks();
+  const key = mini ? "" : curEdge() + list.map((a) => a.key + a.fg + a.min + !!a.icon + a.windows.length).join("|") + tasks.length;
   if (key === lastTasksKey) return;
   lastTasksKey = key;
   if (mini) { tasksEl.replaceChildren(); relayout(); return; }
-  const shown = tasks.slice(0, MAX_TASKS).map((a) => {
+  const shown = list.map((a) => {
     const b = el("button", `tk${a.fg ? " fg" : ""}${a.min ? " min" : ""}${a.windows.length ? "" : " off"}`);
     b.type = "button";
     b.dataset.key = a.key;
@@ -522,7 +546,7 @@ function renderTasks() {
     b.append(taskIcon(a, 20));
     return b;
   });
-  if (tasks.length > MAX_TASKS) shown.push(el("span", "tkmore", `+${tasks.length - MAX_TASKS}`));
+  if (curEdge() !== "float" && tasks.length > MAX_TASKS) shown.push(el("span", "tkmore", `+${tasks.length - MAX_TASKS}`));
   tasksEl.replaceChildren(...shown);
   relayout();
 }
@@ -1269,6 +1293,7 @@ api.onMini((m) => {
   lastTasksKey = "";
   renderTasks();
   root.classList.toggle("mini", m);
+  if (m) root.classList.remove(...EDGE_CLASSES, "docked", "split"); // en mini manda su esquina
   if (m) toggleChat(false);
   else { lastSize = { w: 0, h: 0 }; relayout(); showReminder(); }
 });
@@ -2239,6 +2264,8 @@ api.onWhatsNew((i) => {
 
 // Posición a lo largo del borde superior (la guarda main.js)
 api.onAnchor((f) => root.style.setProperty("--f", f));
+api.onDock((e) => { edge = ["top", "bottom", "left", "right", "float"].includes(e) ? e : "top"; renderTasks(); relayout(); });
+api.onDragSnap((e) => root.classList.toggle("snap-hint", !!e));
 
 // --- Arrastrar a Nimbo por el borde de arriba ---
 // Se agarra de la barra de la isla. Menos de 6 px de movimiento sigue siendo un clic.
@@ -2260,20 +2287,27 @@ function leanLoop() {
 }
 wrap.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 || mini || e.target.closest("#content, #tasks")) return;
-  dragDown = { x: e.screenX, id: e.pointerId };
+  dragDown = { x: e.screenX, y: e.screenY, id: e.pointerId };
 });
 wrap.addEventListener("pointermove", (e) => {
   if (!dragDown) return;
   // Si llega un movimiento sin botón presionado, es que la suelta se perdió: terminar.
   if (e.buttons === 0) return endDrag();
-  if (!dragging && Math.abs(e.screenX - dragDown.x) > 6) {
+  if (!dragging && Math.hypot(e.screenX - dragDown.x, e.screenY - dragDown.y) > 6) {
     dragging = true;
     wrap.setPointerCapture(dragDown.id);
     root.classList.add("dragging");
     hidePanel();
-    api.dragStart({ w: wrap.offsetWidth, grab: e.clientX - wrap.getBoundingClientRect().left });
+    toggleChat(false);
+    allOpen = false;
+    api.dragStart();
     SOUNDS.open();
-    islandEl.animate([{ transform: "scale(1)" }, { transform: "scale(1.05, .94)" }, { transform: "scale(1)" }], { duration: 260, easing: "ease-out" });
+    // Se despega del borde: se estira como si estuviera pegado, se suelta y queda colgando del cursor (flotando).
+    const peel = edge === "float" ? [{ transform: "scale(1)" }, { transform: "scale(1.05, .94)" }, { transform: "scale(1)" }]
+      : [{ transform: "scale(1)" }, { transform: "scale(.94, 1.18)", offset: .35 }, { transform: "scale(1.06, .9)", offset: .65 }, { transform: "scale(1)" }];
+    islandEl.animate(peel, { duration: edge === "float" ? 260 : 460, easing: "cubic-bezier(.3, 1.3, .5, 1)" });
+    renderTasks();
+    relayout();
     lastDragX = e.screenX;
     leanLoop();
   }
@@ -2289,7 +2323,7 @@ function endDrag() {
     suppressClick = true; // el clic que llega tras soltar no debe abrir el chat
     setTimeout(() => (suppressClick = false), 250);
     api.dragEnd();
-    root.classList.remove("dragging");
+    root.classList.remove("dragging", "snap-hint");
     charEl.style.removeProperty("--lean");
     lastSize = { w: 0, h: 0 };
     relayout();
