@@ -698,18 +698,40 @@ function wakeLog(line) {
     await fs.promises.writeFile(WAKE_LOG, [...old.split(/\r?\n/).filter(Boolean).slice(-399), `${when}  ${clean}`].join("\r\n") + "\r\n");
   }).catch(() => {});
 }
+// Los últimos 5 audios de llamadas aceptadas por Windows (oye-nimbo-clips, solo en este PC): para entender qué oyó Whisper si falla.
+const CLIPS_DIR = path.join(app.getPath("userData"), "oye-nimbo-clips");
+async function keepClip(bytes) {
+  try {
+    await fs.promises.mkdir(CLIPS_DIR, { recursive: true });
+    const name = new Date().toISOString().replace(/[:.]/g, "-") + ".wav";
+    await fs.promises.writeFile(path.join(CLIPS_DIR, name), bytes);
+    const all = (await fs.promises.readdir(CLIPS_DIR)).filter((f) => f.endsWith(".wav")).sort();
+    for (const old of all.slice(0, -5)) await fs.promises.rm(path.join(CLIPS_DIR, old), { force: true });
+    wakeLog(`   audio guardado: oye-nimbo-clips\\${name}`);
+  } catch {}
+}
 const WHY = { "otra-frase": "el dictado de Windows oyó otra frase", "poca-confianza": "poca seguridad" };
 const wake = createWake({
   lang,
-  min: () => (Number(prefs.wakeMin) > 0 && Number(prefs.wakeMin) < 1 ? Number(prefs.wakeMin) : 0.6),
-  onCand: (c) => wakeLog(c.ok ? `POSIBLE LLAMADA: Windows oyó «${c.step1}» (${pct(c.conf1)}) y en la revisión «${c.step2}» (${pct(c.conf2)})`
-    : `descartado (${WHY[c.why] ?? c.why}): «${c.step1}» (${pct(c.conf1)}) · revisión: «${c.step2}» (${pct(c.conf2)})`),
+  // 0,4 y no 0,6: con la voz de Federico la revisión da 0,43–0,64 cuando de verdad lo llama (historial del 2026-10-25: casi todas sus
+  // llamadas se perdían por "poca seguridad"). Lo que separa una llamada de otra frase es que en la revisión GANE la frase sobre el
+  // dictado; la última palabra la tiene Whisper (voice.js checkWake).
+  min: () => (Number(prefs.wakeMin) > 0 && Number(prefs.wakeMin) < 1 ? Number(prefs.wakeMin) : 0.4),
+  onCand: (c) => {
+    // Algo sonó parecido: que Whisper se vaya cargando, por si es una llamada (así no hay que esperarlo).
+    if (win && !win.isDestroyed()) win.webContents.send("wake-warm");
+    // Solo se anotan las posibles llamadas (en la revisión ganó la frase); lo demás era gente hablando y llenaba el historial.
+    if (c.why === "otra-frase") return;
+    wakeLog(c.ok ? `POSIBLE LLAMADA: Windows oyó «${c.step1}» (${pct(c.conf1)}) y en la revisión «${c.step2}» (${pct(c.conf2)})`
+      : `descartado (${WHY[c.why] ?? c.why}): «${c.step1}» (${pct(c.conf1)}) · revisión: «${c.step2}» (${pct(c.conf2)})`);
+  },
   onWake: async (ev) => {
     if (mini || !win || win.isDestroyed()) return;
     wake.set(false); // mientras te escucha el dictado, la palabra de activación descansa
     // El pedacito de audio de la llamada: la página lo revisa con Whisper antes de despertarse (Windows solo se confundía con videos).
     let clip = null;
     if (ev.clip) { clip = await fs.promises.readFile(ev.clip).catch(() => null); fs.promises.rm(ev.clip, { force: true }).catch(() => {}); }
+    if (clip) keepClip(clip);
     if (clip && clip.length > 2_000_000) clip = null;
     win.webContents.send("wake", clip ? new Uint8Array(clip) : null);
     clearTimeout(wakeTimer);

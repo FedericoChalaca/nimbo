@@ -12,7 +12,7 @@ const CULTURE = { es: "es-ES", en: "en-US" }; // si no está, wake.ps1 usa otro 
 // Medido con la voz Helena (es-ES): con la revisión en dos pasos de wake.ps1, las frases de activación dan 0,65–0,66 y ninguna de 10
 // frases parecidas pasa ("Hoy en el noticiero…" la despertaba con 0,65 cuando solo estaba la frase cargada: eran las falsas alarmas
 // que veía el dueño). Escuchando: ~6 % de un núcleo (el dictado compitiendo todo el tiempo costaba ~38 %). prefs.wakeMin lo cambia.
-const MIN = 0.5;
+const MIN = 0.4; // 2026-10-25: con la voz del dueño la revisión da 0,43–0,64 en llamadas de verdad; las frases parecidas pierden contra el dictado (no es la confianza lo que las separa)
 
 /** Una línea del script → evento ({ ready } | { wake, text, conf, clip } | { cand } | { error }) o null. */
 function parseLine(line) {

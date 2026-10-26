@@ -178,12 +178,30 @@
     for (let i = 0; i < out.length; i++) { const x = (i * fmt.rate) / SR, k = Math.floor(x), f = x - k; out[i] = mono[k] * (1 - f) + (mono[k + 1] ?? mono[k]) * f; }
     return out;
   }
-  // "nimbo" y cómo lo escribe Whisper cuando no está seguro: Nimo (así oye a la voz de Windows), Nimbu, Nimbus, Limbo… Pero no "niño" ni "ánimo".
-  const said = (text) => text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z]+/).some((w) => /^[nl][iy](m|mb|nb)(o|os|u|us)$/.test(w));
+  // ¿La llamada era para Nimbo? Windows ya vio que en ese pedacito gana "hola/oye nimbo" sobre cualquier otra frase; Whisper solo tiene
+  // que descartar lo que no tiene nada que ver ("de la ciudad.", "y"). Vale si oye algo como nimbo (Nimo, Nino, Limbo, Nimbus: con
+  // micrófono bajito y ruido Whisper oye "Hola, Nino") o un saludo corto ("¡Oye!", "Hola"); "ánimo" o "mi primo" no.
+  const said = (text) => {
+    const words = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z]+/).filter(Boolean);
+    if (words.some((w) => /^[nlm][iy](m|mb|nb|n)?(o|os|u|us)$/.test(w))) return true;
+    return words.length > 0 && words.length <= 3 && /^(hola|oye|oiga|ey|hey|ei|hoy)$/.test(words[0]);
+  };
+  // Con el micrófono el pedacito llega bajito, con ruido y de medio segundo: así Whisper inventaba ("de la ciudad.", "y"). Se sube el
+  // volumen hasta un pico de 0,9 (hasta ×80) y se le pone medio segundo de silencio antes y después (sobre audio pelado Whisper alucina más).
+  function prepClip(pcm) {
+    let peak = 0;
+    for (const v of pcm) peak = Math.max(peak, Math.abs(v));
+    const gain = peak > 0.003 ? Math.min(0.9 / peak, 80) : 1; // el micrófono le llega a Windows muy bajito (pico de 0,016 en una llamada real)
+    const pad = SR / 2;
+    const out = new Float32Array(pcm.length + pad * 2);
+    for (let i = 0; i < pcm.length; i++) out[pad + i] = pcm[i] * gain;
+    return out;
+  }
+  api.onWakeWarm?.(() => getWorker().postMessage({ type: "load" }));
   async function checkWake(bytes) {
     const pcm = wavToPcm(bytes);
     if (!pcm) return true; // sin audio que revisar: se confía en Windows, como antes
-    const text = (await transcribe(pcm)).trim();
+    const text = (await transcribe(prepClip(pcm))).trim();
     const ok = said(text);
     api.wakeLog?.("check", text, ok ? "ok" : "no");
     return ok;
