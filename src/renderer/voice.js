@@ -235,16 +235,23 @@
       nextCue = audio;
     } catch {}
   }
+  // Devuelve una promesa que se cumple cuando la frase TERMINA de sonar (o a los 4 s como máximo): el micrófono se abre después. Windows baja
+  // el volumen de los demás sonidos (hasta un 80 %) en cuanto se abre un micrófono ("actividad de comunicaciones"), así que hablar con el
+  // micrófono ya abierto se oía casi mudo.
   window.nimboSay = async (kind = "escuchando") => {
     try {
       const audio = nextCue ?? (await prepareCue(kind), nextCue);
       nextCue = null;
       if (!audio) return;
-      muteUntil = performance.now() + 4000;
-      audio.onended = () => { muteUntil = performance.now() + 250; URL.revokeObjectURL(audio.src); };
-      await audio.play();
+      await new Promise((resolve) => {
+        const done = () => { clearTimeout(cap); URL.revokeObjectURL(audio.src); resolve(); };
+        const cap = setTimeout(done, 4000);
+        audio.onended = done;
+        audio.onerror = done;
+        audio.play().catch(done);
+      });
       prepareCue(kind); // y se deja lista otra para la próxima vez
-    } catch { muteUntil = 0; }
+    } catch {}
   };
   setTimeout(() => prepareCue(), 6000); // al arrancar, cuando main ya generó las frases
 
