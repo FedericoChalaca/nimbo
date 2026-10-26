@@ -179,11 +179,13 @@ let drag = null;
 ipcMain.on("drag-start", () => {
   if (mini) return;
   const wb = win.getBounds(), cur = screen.getCursorScreenPoint();
+  windows.watchLeft(); // red de seguridad: el botón izquierdo de verdad (si la página pierde el "soltar", igual se suelta)
   drag = { since: Date.now(), snap: dockState().edge === "float" ? "" : dockState().edge, gx: cur.x - wb.x, gy: cur.y - wb.y, w: wb.width, h: wb.height };
   win.setIgnoreMouseEvents(false); // mientras se arrastra, la ventana no suelta el mouse
 });
 // Al soltar: cerca de un borde (de la pantalla donde está el cursor) se pega a ese borde en ese punto; lejos, queda flotando ahí.
-ipcMain.on("drag-end", () => {
+ipcMain.on("drag-end", () => finishDrag(false));
+function finishDrag(fromHelper) {
   if (!drag) return;
   drag = null;
   const p = screen.getCursorScreenPoint();
@@ -197,7 +199,8 @@ ipcMain.on("drag-end", () => {
   placeWindow();
   win.webContents.send("dock", edge);
   win.webContents.send("anchor", dockState().pos);
-});
+  if (fromHelper) win.webContents.send("drag-abort"); // la página termina su arrastre (si no lo había hecho ya)
+}
 
 ipcMain.on("win-height", (_e, h) => {
   h = Math.round(Number(h));
@@ -996,8 +999,19 @@ ipcMain.on("task-menu", (_e, key) => {
   if (app_?.windows.length) items.push({ type: "separator" }, { label: app_.windows.length > 1 ? t("Cerrar las {0} ventanas", app_.windows.length) : t("Cerrar ventana"), click: () => app_.windows.forEach((w) => windows.act("close", w.h)) });
   Menu.buildFromTemplate(items).popup({ window: win });
 });
+// Registro de la barra de tareas (%APPDATA%\nimbo\barra.log, solo texto técnico, últimas ~200 líneas): si al encender el PC falla algo, ahí queda por qué.
+const BARRA_LOG = path.join(app.getPath("userData"), "barra.log");
+function barraLog(line) {
+  try {
+    let old = [];
+    try { old = fs.readFileSync(BARRA_LOG, "utf8").split(/\r?\n/).filter(Boolean).slice(-199); } catch {}
+    fs.writeFileSync(BARRA_LOG, [...old, `${new Date().toISOString()} ${String(line).slice(0, 300)}`].join("\r\n") + "\r\n");
+  } catch {}
+}
 const windows = createWindows({
   binDir: path.join(app.getPath("userData"), "bin"),
+  log: barraLog,
+  onLeftUp: () => finishDrag(true), // soltaron el botón: si la página no se enteró, se suelta igual
   hide: true, // el auto-ocultar solo no basta: con un botón parpadeando la barra de Windows se queda a la vista
   onApps: (apps) => {
     // Un programa anclado guarda su identificador de la Tienda la primera vez que se ve abierto (para poder abrirlo cerrado).
@@ -1025,7 +1039,8 @@ function setTaskbarMode(on) {
 ipcMain.on("task-do", (_e, action, h) => { windows.act(String(action), String(h)); });
 app.whenReady().then(() => {
   if (prefs.taskbarMode !== true) return;
-  windows.set(true);
+  barraLog("arranque de Nimbo: se prende la barra");
+  try { windows.set(true); } catch (e) { barraLog("windows.set falló: " + e.message); } // un fallo aquí NO puede impedir que salgan las ancladas
   sendTasks(); // las ancladas salen ya: al encender el PC el lector de ventanas puede tardar en responder
   importWindowsPins();
 });

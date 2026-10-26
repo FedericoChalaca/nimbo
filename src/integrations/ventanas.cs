@@ -32,6 +32,7 @@ static class Ventanas {
   [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool attach);
   [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string cls, string title);
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int value, int size);
   [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
@@ -206,6 +207,7 @@ static class Ventanas {
 
   // --- Esconder la barra de Windows (una por pantalla) ---
   static volatile bool quitting = false;
+  static volatile bool watching = false;
   static int parent = 0; // el proceso de Nimbo
   // (La barra misma no cuenta: al cerrarse una ventana Windows le pasa el foco y se quedaría a la vista.)
   static readonly HashSet<string> SHELL = new HashSet<string> { "NotifyIconOverflowWindow",
@@ -262,6 +264,8 @@ static class Ventanas {
             case "close": if (IsWindow(h) && IsAppWindow(h)) PostMessage(h, WM_CLOSE, IntPtr.Zero, IntPtr.Zero); break;
             case "autohide": SetAutoHide(parts.Length > 1 && parts[1] == "1"); Say("{\"autohide\":" + AutoHide() + "}"); break;
             case "state": Say("{\"autohide\":" + AutoHide() + "}"); break;
+            // Vigila el botón izquierdo del mouse hasta que lo suelten (mientras arrastran a Nimbo): lo avisa una sola vez.
+            case "watchlb": if (!watching) { watching = true; new Thread(() => { Thread.Sleep(150); while ((GetAsyncKeyState(0x01) & 0x8000) != 0 && !quitting) Thread.Sleep(15); watching = false; Say("{\"lb\":0}"); }) { IsBackground = true }.Start(); } break;
           }
         } catch { }
       }
@@ -269,6 +273,7 @@ static class Ventanas {
     });
     reader.IsBackground = true;
     reader.Start();
+    Say("{\"hello\":1}"); // saludo YA: Nimbo sabe que arrancó aunque la primera lista tarde (al encender el PC puede tardar)
     string last = "";
     while (true) {
       if (parent != 0) { try { Process.GetProcessById(parent); } catch { Quit(); } } // Nimbo se cerró de golpe: la barra vuelve

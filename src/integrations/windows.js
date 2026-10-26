@@ -34,6 +34,8 @@ function parseLine(line) {
     return { windows: o.windows.filter((w) => /^\d{1,20}$/.test(w?.h)).map((w) => ({ h: w.h, title: String(w.t ?? "").slice(0, 200), path: String(w.p ?? ""), desc: String(w.d ?? "").slice(0, 80), min: w.m === true, fg: w.f === true, aumid: AUMID.test(w.a ?? "") ? w.a : "" })) };
   }
   if (o && (o.autohide === 0 || o.autohide === 1)) return { autohide: o.autohide };
+  if (o?.lb === 0) return { leftUp: true }; // soltaron el botón izquierdo del mouse (lo avisa el programa mientras se arrastra a Nimbo)
+  if (o?.hello === 1) return { hello: true };
   return null;
 }
 
@@ -64,21 +66,25 @@ function groupApps(windows, order) {
  * @param onAutoHide (0|1) => estado de la barra de Windows
  * @param hide     esconder la barra de Windows mientras el programa corre (vuelve sola al apagarlo, aunque Nimbo se cierre de golpe)
  */
-function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => {}, hide = false, platform = process.platform }) {
+function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => {}, onLeftUp = () => {}, log = () => {}, hide = false, platform = process.platform }) {
   let child = null;
   let want = false;
   let restart = 0;
   let fails = 0;
   let last = [];
+  let everListed = false;
   const order = new Map();
+  const later = (ms) => { clearTimeout(restart); restart = setTimeout(launch, ms); };
 
   function launch() {
     if (!want || child || platform !== "win32") return;
     let exe;
-    try { exe = ensureExe(binDir); } catch (e) { want = false; return onError(e.message === "csc" ? "csc" : "compile"); }
+    try { exe = ensureExe(binDir); } catch (e) { log("ensureExe falló: " + e.message); if (e.message === "csc") { want = false; return onError("csc"); } fails++; return later(Math.min(15_000, 1000 * 2 ** fails)); } // compilar puede fallar al arrancar Windows: se reintenta
     // detached: si no, Node lo mete en un "job" de Windows que lo mata junto con Nimbo, y si Nimbo se cierra de golpe la barra no
     // alcanza a volver. Suelto, nota que Nimbo ya no está (se le cierra la entrada), devuelve la barra y se va.
-    child = spawn(exe, hide ? [String(process.pid), "hide"] : [String(process.pid)], { windowsHide: true, detached: true });
+    try { child = spawn(exe, hide ? [String(process.pid), "hide"] : [String(process.pid)], { windowsHide: true, detached: true }); }
+    catch (e) { log("spawn falló: " + e.message); child = null; fails++; return later(Math.min(15_000, 1000 * 2 ** fails)); } // un fallo al lanzar NO puede dejar a Nimbo sin barra
+    log(`lector lanzado (pid ${child.pid})`);
     let buf = "";
     child.stdout.on("data", (d) => {
       buf += d;
@@ -86,22 +92,26 @@ function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => 
       while ((nl = buf.indexOf("\n")) >= 0) {
         const ev = parseLine(buf.slice(0, nl));
         buf = buf.slice(nl + 1);
-        if (ev?.windows) { fails = 0; last = ev.windows; onApps(groupApps(ev.windows, order)); }
+        if (ev?.windows) { fails = 0; everListed = true; last = ev.windows; onApps(groupApps(ev.windows, order)); }
         if (ev && "autohide" in ev) onAutoHide(ev.autohide);
+        if (ev?.leftUp) onLeftUp();
       }
     });
     child.stdin.on("error", () => {});
     const me = child;
-    // Al encender el PC Windows puede tardar en dejar correr el programa: si en 10 s no manda su primera lista, se reinicia.
+    // Al encender el PC Windows puede tardar en dejar correr el programa: si en 40 s no manda ni su saludo, se reinicia (como mucho 3 veces
+    // seguidas: matarlo en bucle sería peor que esperarlo).
     let first = false;
-    const watchdog = setTimeout(() => { if (!first && child === me) me.kill(); }, 10_000);
+    const watchdog = setTimeout(() => { if (!first && child === me && fails < 3) { log("el lector no respondió en 40 s: se reinicia"); me.kill(); } }, 40_000);
     me.stdout.once("data", () => { first = true; clearTimeout(watchdog); });
-    me.on("exit", () => clearTimeout(watchdog));
+    me.on("exit", (code, signal) => { clearTimeout(watchdog); log(`lector terminó (código ${code}, señal ${signal})`); });
     // Si no arranca (pasó al prender el PC: Windows todavía revisaba el programa) o se cae, se vuelve a intentar cada vez más espaciado.
-    const again = () => { if (child !== me) return; child = null; if (want) { clearTimeout(restart); restart = setTimeout(launch, Math.min(30_000, 1000 * 2 ** fails++)); } };
+    const again = (e) => { if (e instanceof Error) log("lector con error: " + e.message); if (child !== me) return; child = null; if (want) later(Math.min(15_000, 1000 * 2 ** fails++)); };
     me.on("error", again);
-    me.on("exit", again);
+    me.on("exit", () => again());
   }
+  // Red de seguridad: cada 20 s, si debería estar corriendo y no lo está (y nada lo va a relanzar), se lanza. Y si nunca llegó una lista, se avisa en el registro.
+  setInterval(() => { if (want && !child) { log("el lector no estaba corriendo: se relanza"); launch(); } else if (want && child && !everListed) log("todavía sin primera lista"); }, 20_000).unref?.();
 
   const send = (line) => { if (child && child.exitCode === null) child.stdin.write(line + "\n"); };
   return {
@@ -124,6 +134,8 @@ function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => 
     },
     autoHide(on) { send(`autohide ${on ? 1 : 0}`); },
     state() { send("state"); },
+    /** Mientras se arrastra a Nimbo: el programa avisa cuando sueltan el botón izquierdo (por si la página no se entera). */
+    watchLeft() { send("watchlb"); },
     stop() { this.set(false); },
   };
 }
