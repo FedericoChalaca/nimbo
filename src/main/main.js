@@ -120,6 +120,7 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("did-finish-load", () => {
     win.webContents.send("theme", prefs.theme);
+    win.webContents.send("wake-on", prefs.wakeWord === true && !mini);
     win.webContents.send("dock", dockState().edge);
     win.webContents.send("anchor", dockState().pos);
     if (mini) win.webContents.send("mini", true); // tras recargar (cambio de idioma)
@@ -149,9 +150,10 @@ function createWindow() {
       win.webContents.send("drag-abort");
     }
     if (drag) {
-      // Arrastrando, Nimbo flota pegado al cursor (en cualquier pantalla); cerca de un borde, la página muestra que se va a pegar ahí.
-      const wx = Math.round(p.x - FLOAT_W / 2), wy = Math.round(p.y - 14 - 34);
-      if (wx !== b.x || wy !== b.y || b.width !== FLOAT_W) win.setBounds({ x: wx, y: wy, width: FLOAT_W, height: FLOAT_H });
+      // Arrastrando, la ventana entera (la isla con sus franjas) viaja pegada al cursor, en cualquier pantalla, sin cambiar de forma;
+      // cerca de un borde, la página muestra que se va a pegar ahí. Solo al soltar se decide dónde queda.
+      const wx = Math.round(p.x - drag.gx), wy = Math.round(p.y - drag.gy);
+      if (wx !== b.x || wy !== b.y) win.setBounds({ x: wx, y: wy, width: drag.w, height: drag.h });
       const snap = snapEdge(p);
       if (snap !== drag.snap) { drag.snap = snap; win.webContents.send("drag-snap", snap); }
       return;
@@ -176,7 +178,8 @@ function createWindow() {
 let drag = null;
 ipcMain.on("drag-start", () => {
   if (mini) return;
-  drag = { since: Date.now(), snap: dockState().edge === "float" ? "" : dockState().edge };
+  const wb = win.getBounds(), cur = screen.getCursorScreenPoint();
+  drag = { since: Date.now(), snap: dockState().edge === "float" ? "" : dockState().edge, gx: cur.x - wb.x, gy: cur.y - wb.y, w: wb.width, h: wb.height };
   win.setIgnoreMouseEvents(false); // mientras se arrastra, la ventana no suelta el mouse
 });
 // Al soltar: cerca de un borde (de la pantalla donde está el cursor) se pega a ese borde en ese punto; lejos, queda flotando ahí.
@@ -720,6 +723,48 @@ ipcMain.on("chat-open", (_e, open) => {
 // --- "Oye Nimbo" (wake.js): el reconocedor de Windows escucha SOLO la frase de activación; al oírla, la isla abre el chat y dicta. ---
 // Apagado hasta que lo actives (prefs.wakeWord). Mientras dictas y en modo mini no escucha (se apaga el proceso, no se ignora).
 let wakeTimer = 0;
+// Frases con las que Nimbo avisa que te está escuchando (se sortea una cada vez para que no suene siempre igual). Base chica y editable:
+// %APPDATA%\nimbo\frases.json { "escuchando": [...] }. El audio se genera una vez con la voz de Windows (Helena en español) y queda en voz\.
+const PHRASES_FILE = path.join(app.getPath("userData"), "frases.json");
+const VOICE_DIR = path.join(app.getPath("userData"), "voz");
+const DEFAULT_PHRASES = { es: { escuchando: ["Aquí estoy", "Te escucho", "Dime", "Dime, te escucho", "¿Sí? Dime", "Aquí estoy, dime", "Te estoy escuchando"] },
+  en: { escuchando: ["I'm here", "I'm listening", "Go ahead", "Yes? Go ahead", "Listening"] } };
+function pickPhrase(kind) {
+  let db = {};
+  try { db = JSON.parse(fs.readFileSync(PHRASES_FILE, "utf8")); } catch {}
+  if (!fs.existsSync(PHRASES_FILE)) { try { fs.writeFileSync(PHRASES_FILE, JSON.stringify(DEFAULT_PHRASES, null, 2)); db = DEFAULT_PHRASES; } catch {} }
+  const list = (db[lang()]?.[kind] ?? DEFAULT_PHRASES[lang()][kind]).filter((x) => typeof x === "string" && x.trim() && x.length <= 80);
+  return list[Math.floor(Math.random() * list.length)] ?? "";
+}
+const SAY_PS = String.raw`
+Add-Type -AssemblyName System.Speech
+$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$want = $env:NIMBO_VOICE
+try { $s.SelectVoice($want) } catch { $first = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq $env:NIMBO_LANG } | Select-Object -First 1; if ($first) { $s.SelectVoice($first.VoiceInfo.Name) } }
+$s.SetOutputToWaveFile($env:NIMBO_OUT)
+$s.Speak($env:NIMBO_TEXT)
+$s.Dispose()
+`;
+let lastPhrase = "";
+ipcMain.handle("say-phrase", async (_e, kind) => {
+  if (prefs.cueVoice === false || process.platform !== "win32") return null;
+  let text = pickPhrase(String(kind) === "escuchando" ? "escuchando" : "escuchando");
+  if (text === lastPhrase) text = pickPhrase("escuchando") || text; // que no se repita seguido
+  lastPhrase = text;
+  if (!text) return null;
+  const file = path.join(VOICE_DIR, require("crypto").createHash("sha1").update(lang() + "|" + text).digest("hex").slice(0, 16) + ".wav");
+  try {
+    if (!fs.existsSync(file)) {
+      fs.mkdirSync(VOICE_DIR, { recursive: true });
+      const ps = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+      await new Promise((res, rej) => execFile(ps, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(SAY_PS, "utf16le").toString("base64")],
+        { windowsHide: true, timeout: 20_000, env: { ...process.env, NIMBO_TEXT: text, NIMBO_OUT: file, NIMBO_LANG: lang(), NIMBO_VOICE: lang() === "en" ? "Microsoft Zira Desktop" : "Microsoft Helena Desktop" } },
+        (err) => (err ? rej(err) : res())));
+    }
+    return new Uint8Array(await fs.promises.readFile(file));
+  } catch { return null; }
+});
+
 // Historial de «Oye Nimbo» (menú → "Historial de «Oye Nimbo»"): cada posible llamada, qué oyó cada paso y qué se mandó después, para
 // entender por qué se activa solo. Texto plano, SOLO en este PC, las últimas 400 líneas. Lleva pedacitos de lo que se oyó cerca del micrófono.
 const WAKE_LOG = path.join(app.getPath("userData"), "oye-nimbo-historial.txt");
@@ -769,13 +814,18 @@ const wake = createWake({
     if (ev.clip) { clip = await fs.promises.readFile(ev.clip).catch(() => null); fs.promises.rm(ev.clip, { force: true }).catch(() => {}); }
     if (clip) keepClip(clip);
     if (clip && clip.length > 2_000_000) clip = null;
-    win.webContents.send("wake", clip ? new Uint8Array(clip) : null);
+    win.webContents.send("wake", clip ? new Uint8Array(clip) : null, { conf: Number(ev.conf) || 0 });
     clearTimeout(wakeTimer);
     wakeTimer = setTimeout(syncWake, 60_000); // por si la página nunca avisa que terminó
   },
   onError: (e) => { if (win && !win.isDestroyed()) win.webContents.send("ai-error", e === "no-recognizer" ? t("«Oye Nimbo» necesita el reconocedor de voz de Windows en tu idioma (Configuración → Hora e idioma → Voz).") : t("«Oye Nimbo» no pudo escuchar: {0}", e)); },
 });
-function syncWake() { clearTimeout(wakeTimer); wake.set(prefs.wakeWord === true && !mini); }
+function syncWake() {
+  clearTimeout(wakeTimer);
+  const on = prefs.wakeWord === true && !mini;
+  wake.set(on);
+  if (win && !win.isDestroyed()) win.webContents.send("wake-on", on); // la isla muestra un puntito mientras escucha la frase
+}
 // Mientras dictas, el dictado de Windows va mostrando lo que entiende (vista previa; el texto final es de Whisper).
 const live = createLive({ lang, onPartial: (text) => { if (win && !win.isDestroyed()) win.webContents.send("dictation-partial", text); } });
 ipcMain.on("live-dictation", (_e, on) => (on === true ? live.start() : live.stop()));
@@ -1318,6 +1368,13 @@ function buildMenu() {
       checked: prefs.wakeWord === true,
       visible: process.platform === "win32",
       click: (item) => { prefs.wakeWord = item.checked; savePrefs(); syncWake(); },
+    },
+    {
+      label: t("Decir «te escucho» al llamarlo"),
+      type: "checkbox",
+      checked: prefs.cueVoice !== false,
+      visible: process.platform === "win32",
+      click: (item) => { prefs.cueVoice = item.checked; savePrefs(); },
     },
     {
       label: t("Historial de «Oye Nimbo»"),

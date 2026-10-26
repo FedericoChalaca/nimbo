@@ -46,7 +46,7 @@ let lastSize = { w: 0, h: 0 };
 let edge = "top"; // dónde vive Nimbo (lo dice main)
 let anchorF = 0.5; // dónde está a lo largo del borde (0 = pegado a la izquierda/arriba, 1 = a la derecha/abajo)
 const EDGE_CLASSES = ["edge-top", "edge-bottom", "edge-left", "edge-right", "edge-float"];
-const curEdge = () => (dragging ? "float" : edge);
+const curEdge = () => edge; // arrastrando, la isla conserva su forma (con sus franjas); solo al soltar cambia
 function layout() {
   layoutQueued = 0;
   if (mini) return;
@@ -100,8 +100,9 @@ function layout() {
       const textW = text ? Math.min(measure.offsetWidth * 12.5 / 13.5, 230, innerWidth - 28 - 150 - 34 - pipsW) : 0;
       infoW = text || pipsW ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
       wrap.style.setProperty("--tw", `${Math.ceil(Math.max(0, textW))}px`);
-      const blk = Math.max(infoW, dockW);
+      const blk = infoW + dockW; // una sola fila de media altura al lado de Nimbo: programas y texto, uno junto al otro
       wrap.style.setProperty("--blk", `${Math.round(blk)}px`);
+      wrap.style.setProperty("--iw", `${Math.round(infoW)}px`);
       w = 150 + blk;
     } else if (e === "float") {
       w = Math.max(150, dockW + 28);
@@ -2099,9 +2100,9 @@ async function runSlash(text) {
 }
 // "Oye Nimbo": el reconocedor de Windows oyó la frase. Abre el chat y te escucha; al callarte, lo que dijiste se envía solo.
 // Antes de despertarse, Whisper revisa el audio de la llamada (voiceCheckWake): si no oye "nimbo", no se abre ni suena nada.
-api.onWake((clip) => {
+api.onWake((clip, meta) => {
   if (mini || !card.classList.contains("hidden") || asking) return api.wakeDone(); // jugando, con un permiso esperando o ya pensando: nada
-  const gate = clip && window.voiceCheckWake ? window.voiceCheckWake(clip).catch(() => true) : Promise.resolve(true);
+  const gate = clip && window.voiceCheckWake ? window.voiceCheckWake(clip, meta).catch(() => true) : Promise.resolve(true);
   gate.then((ok) => {
     if (!ok) return;
     hidePanel();
@@ -2111,6 +2112,7 @@ api.onWake((clip) => {
     SOUNDS.hello();
     toggleChat(true);
     logActivity("needs", "Nimbo", t("Me llamaste por voz"));
+    window.nimboSay?.("escuchando"); // "Aquí estoy" / "Te escucho"… con voz, para saber que ya está escuchando
   });
   Promise.resolve(window.voiceDictate?.({ autoSend: true, gate })).finally(() => api.wakeDone());
 });
@@ -2273,6 +2275,7 @@ api.onWhatsNew((i) => {
 });
 
 // Posición a lo largo del borde superior (la guarda main.js)
+api.onWakeOn((on) => root.classList.toggle("wake-on", on));
 api.onAnchor((f) => { anchorF = Number(f); root.style.setProperty("--f", f); relayout(); });
 api.onDock((e) => { edge = ["top", "bottom", "left", "right", "float"].includes(e) ? e : "top"; renderTasks(); relayout(); });
 api.onDragSnap((e) => root.classList.toggle("snap-hint", !!e));

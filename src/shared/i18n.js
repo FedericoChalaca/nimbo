@@ -84,6 +84,7 @@ const NIMBO_EN = {
   "Falló": "Failed",
   "Tranquilo": "Relaxing",
   "Casas": "Houses",
+  "Decir «te escucho» al llamarlo": "Say “I'm listening” when called",
   "Posición de Nimbo": "Nimbo's position",
   "Arriba": "Top",
   "Abajo": "Bottom",

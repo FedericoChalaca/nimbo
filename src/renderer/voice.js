@@ -77,8 +77,9 @@
     proc = source = stream = ctx = null;
   }
 
+  let muteUntil = 0; // mientras Nimbo dice "te escucho" el micrófono no graba (se oiría a sí mismo)
   function onChunk(buf) {
-    if (!rec) return;
+    if (!rec || performance.now() < muteUntil) return;
     let sum = 0;
     for (const v of buf) sum += v * v;
     const rms = Math.sqrt(sum / buf.length);
@@ -198,7 +199,7 @@
     return out;
   }
   api.onWakeWarm?.(() => getWorker().postMessage({ type: "load" }));
-  async function checkWake(bytes) {
+  async function checkWake(bytes, meta = {}) {
     const pcm = wavToPcm(bytes);
     if (!pcm) return true; // sin audio que revisar: se confía en Windows, como antes
     const text = (await transcribe(prepClip(pcm))).trim();
@@ -206,11 +207,26 @@
     // 0,53–0,60 en 7 de 7 llamadas de verdad), así que una palabra suelta (o 3 mal oídas, "y ahí está") no prueba nada. Lo que SÍ delata a un video es que Whisper oiga una
     // frase de 5 o más palabras que no tiene nimbo ("las roguías de colchile a la fejación"): eso se descarta.
     const words = (text.match(/\p{L}+/gu) ?? []).length;
-    const ok = said(text) || words <= 4;
+    const dur = pcm.length / SR;
+    // Se despierta si Whisper oye algo como nimbo, o si oye a lo sumo 2 palabras sueltas Y Windows estuvo bastante seguro (≥ 0,55 en la
+    // revisión) Y el audio dura lo que dura "hola nimbo" (0,6–1,8 s). Frases de 3 o más palabras = alguien hablando de fondo.
+    const ok = said(text) || (words <= 2 && (Number(meta.conf) || 0) >= 0.55 && dur >= 0.6 && dur <= 1.8);
     api.wakeLog?.("check", text, ok ? "ok" : "no");
     return ok;
   }
   window.voiceCheckWake = checkWake;
+  // "Aquí estoy / Te escucho…": una frase al azar de la base chica (main: frases.json), con la voz de Windows. Si no hay voz, silencio.
+  window.nimboSay = async (kind = "escuchando") => {
+    try {
+      const bytes = await api.sayPhrase?.(kind);
+      if (!bytes) return;
+      const audio = new Audio(URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })));
+      audio.volume = 0.9;
+      muteUntil = performance.now() + 4000;
+      audio.onended = () => { muteUntil = performance.now() + 250; URL.revokeObjectURL(audio.src); };
+      await audio.play();
+    } catch { muteUntil = 0; }
+  };
 
   // Lo que se oye después de una llamada falsa suele ser basura: una palabra suelta ("de", "¡Oh!") o Whisper repitiendo lo mismo
   // ("si, si, si…" 40 veces). Eso no se manda solo: queda dicho por qué. → motivo, o "" si se puede mandar.
