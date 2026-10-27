@@ -50,16 +50,31 @@ const SECTIONS = [
 
 let model = [], setup = null, current = "general", openConn = new Set(), busy = "", lastError = "";
 const byId = (id) => model.find((x) => x.id === id);
+// Lo que escribes o pegas en un campo se guarda aquí: la ventana se redibuja (al volver a ella, al cambiar algo) y antes los campos
+// quedaban vacíos (pegabas el ID de Google con Ctrl+V y se borraba). Mientras escribes en un campo, tampoco se redibuja.
+const drafts = {};
+const typing = () => /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName ?? "");
+let renderLater = false;
 async function reload() {
   [model, setup] = await Promise.all([opt.model(), opt.setup().catch(() => null)]);
+  if (typing()) { renderLater = true; return; }
   render();
+}
+document.addEventListener("focusout", () => setTimeout(() => { if (renderLater && !typing()) { renderLater = false; render(); } }, 150));
+/** Un campo que recuerda lo escrito entre redibujos. */
+function keep(key, input) {
+  input.value = drafts[key] ?? "";
+  input.addEventListener("input", () => { drafts[key] = input.value; });
+  input.dataset.key = key;
+  return input;
 }
 async function act(id, sub) { await opt.click(id, sub); setTimeout(reload, 250); }
 async function doSetup(action, value) {
   busy = action; lastError = ""; render();
   const st = await opt.setupDo(action, value).catch((e) => ({ error: String(e?.message ?? e) }));
   busy = "";
-  if (st && !st.error) setup = st; else lastError = st?.error ?? "";
+  if (st && !st.error) { setup = st; for (const k of Object.keys(drafts)) if (k.startsWith(action.split("-")[0])) delete drafts[k]; } // guardado: el borrador sobra
+  else lastError = st?.error ?? "";
   if (st && st.error && st.name !== undefined) setup = st;
   render();
 }
@@ -172,7 +187,7 @@ function connections() {
     s.mail.on ? btn(t("Apagar Gmail"), () => doSetup("mail-off")) : btn(busy === "mail-on" ? t("Comprobando…") : t("Activar Gmail"), () => doSetup("mail-on"), "main")],
   s.trello ? t("{0} tableros de Trello.", s.trello) : ""));
   const tg = s.telegram ?? {};
-  const tok = keyInput(t("Pega el token del bot"));
+  const tok = keep("telegram-token", keyInput(t("Pega el token del bot")));
   out.push(connCard("telegram", "Telegram", tg.paired ? "ok" : tg.token ? "warn" : "", tg.paired ? t("Vinculado: habla con Nimbo y recibe avisos en tu celular") : tg.token ? t("Falta vincular tu cuenta") : t("Sin conectar"), [
     { text: t("En Telegram, abre @BotFather y escribe `/newbot`. Ponle un nombre: es TU bot."), done: !!tg.token },
     { text: t("BotFather te da un token (algo como `123456789:AAH…`). Pégalo aquí y toca «Guardar»."), done: !!tg.token },
@@ -181,7 +196,7 @@ function connections() {
   ], tg.paired ? [btn(t("Abrir mi bot"), () => doSetup("open", "telegram-bot")), btn(t("Desconectar"), () => doSetup("telegram-logout"))]
     : [!tg.token && tok, !tg.token && btn(t("Guardar"), () => doSetup("telegram-token", tok.value), "main"), tg.token && btn(t("Vincular"), () => doSetup("telegram-pair"), "main"), tg.token && btn(t("Abrir mi bot"), () => doSetup("open", "telegram-bot"))],
   tg.pairing ? t("Mándale este código a tu bot: {0} (vale 10 minutos).", tg.pairing) : t("El token queda cifrado por Windows en tu PC. Telegram puede leer lo que se manda por el bot.")));
-  const spId = $("input", "in"); spId.placeholder = t("Client ID (32 letras y números)"); spId.spellcheck = false;
+  const spId = keep("spotify-id", $("input", "in")); spId.placeholder = t("Client ID (32 letras y números)"); spId.spellcheck = false;
   out.push(connCard("spotify", t("Spotify Premium (que la canción suene)"), s.spotify ? "ok" : s.spotify === false ? "warn" : "", s.spotify ? t("Conectado") : s.spotify === false ? t("Falta iniciar sesión") : t("Opcional: sin esto, Nimbo igual muestra lo que suena"), [
     { text: t("Abre el panel de desarrollador de Spotify e inicia sesión con tu cuenta Premium.") },
     { text: t("Crea una app. En «Redirect URI» pon `http://127.0.0.1:47823/spotify` y marca «Web API»."), done: s.spotify !== null },
@@ -190,8 +205,8 @@ function connections() {
   ], [btn(t("Abrir panel de Spotify"), () => doSetup("open", "spotifyDev")), s.spotify === null && spId, s.spotify === null && btn(t("Guardar"), () => doSetup("spotify-id", spId.value), "main"),
     s.spotify === false && btn(t("Iniciar sesión"), () => doSetup("spotify-login"), "main"), s.spotify && btn(t("Desconectar"), () => doSetup("spotify-logout"))]));
   const gg = s.google ?? {};
-  const gId = $("input", "in"); gId.placeholder = t("ID de cliente (…apps.googleusercontent.com)"); gId.spellcheck = false;
-  const gSecret = keyInput(t("Secreto del cliente (GOCSPX-…)"));
+  const gId = keep("google-id", $("input", "in")); gId.placeholder = t("ID de cliente (…apps.googleusercontent.com)"); gId.spellcheck = false;
+  const gSecret = keep("google-secret", keyInput(t("Secreto del cliente (GOCSPX-…)")));
   out.push(connCard("google", t("Tu Google (Drive y Calendar)"), gg.connected ? "ok" : gg.configured ? "warn" : "", gg.connected ? t("Conectado: Nimbo ve tu agenda y su carpeta de Drive") : gg.configured ? t("Falta iniciar sesión") : t("Sin conectar"), [
     { text: t("En Google Cloud crea tu app (proyecto, API de Drive, Docs y Calendar, pantalla de permisos y un ID de cliente de tipo «App de escritorio»)."), done: !!gg.configured },
     { text: t("Pega aquí el ID de cliente y el secreto, y toca «Guardar». El secreto queda cifrado por Windows."), done: !!gg.configured },
@@ -206,7 +221,7 @@ function connections() {
   const ai = s.ai ?? {};
   const keyWhich = $("select", "in"); keyWhich.style.width = "130px";
   for (const [v, l] of [["gemini", "Gemini"], ["openai", "OpenAI"], ["anthropic", "Claude (API)"]]) { const o = $("option", "", l); o.value = v; keyWhich.append(o); }
-  const keyIn = keyInput(t("Pega la clave"));
+  const keyIn = keep("ai-key", keyInput(t("Pega la clave")));
   const ollamaOk = ai.ollama === "ok";
   out.push(connCard("ai", t("Otras IAs (Ollama, Gemini, OpenAI, Claude API)"), ollamaOk || Object.values(ai.keyed ?? {}).some(Boolean) ? "ok" : "", ollamaOk ? t("Ollama listo: IA gratis en tu PC") : t("Opcional"), [
     { text: t("Ollama (gratis, en tu PC): instálalo y ábrelo."), done: !!ai.installed },
