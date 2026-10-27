@@ -11,7 +11,7 @@ const HOST = "https://platino-smoky.vercel.app";
 const APPID = /^\d{1,10}$/;
 // Qué proceso es cada juego (para elegirlo solo cuando lo abres). Lo confirmó Platino: Sifu corre como Sifu-Win64-Shipping.exe (Sifu.exe es el lanzador).
 // Si el catálogo trae "processes", manda el catálogo.
-const PROCESSES = { 2138710: ["sifu-win64-shipping.exe", "sifu.exe"] };
+const PROCESSES = { 2138710: ["sifu-win64-shipping.exe", "sifu.exe"], 5335510: ["moonsweepers.exe"] };
 // Íconos de los logros: solo de la CDN de Steam, JPEG/PNG chicos; se pasan a data: (la página no carga nada de fuera).
 const ICON_HOSTS = /^(steamcdn-a\.akamaihd\.net|[a-z0-9-]+\.steamstatic\.com)$/;
 const str = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -63,9 +63,13 @@ function createPlatino({ dir, marksFile = "", fetch: doFetch = fetch }) {
   async function catalog(appid) {
     const hit = catalogCache.get(appid);
     if (hit && Date.now() - hit.at < 6 * 3600_000) return hit.data;
-    const r = await doFetch(`${HOST}/games/${appid}.json`, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) throw new Error(`platino ${r.status}`);
-    const data = await r.json();
+    const r = await doFetch(`${HOST}/games/${appid}.json`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+    let data;
+    if (r?.ok) data = await r.json();
+    else { // juego nuevo que Platino aún no publicó: su catálogo local (games/<appid>.json, lo escribe fetch-steam.mjs)
+      try { data = JSON.parse(fs.readFileSync(path.join(dir(), "games", `${appid}.json`), "utf8").replace(/^﻿/, "")); }
+      catch { throw new Error(`platino ${r?.status ?? "sin red"}`); }
+    }
     catalogCache.set(appid, { at: Date.now(), data });
     return data;
   }
