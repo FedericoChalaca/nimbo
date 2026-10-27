@@ -33,6 +33,26 @@ function parseLines(text) {
 function createInstinct({ google, bridge, file, onNew, topic, relay = "https://ntfy.sh", fetch: doFetch = fetch }) {
   let state = (() => { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return { version: "", seen: [], pending: [], primed: false }; } })();
   const save = () => { try { fs.writeFileSync(file, JSON.stringify(state)); } catch {} };
+  // Drive no le avisa a Instinct; tu calendario sí (Instinct quedó atento a eventos nuevos llamados exactamente «Pregunta de Nimbo»).
+  // Cada vez que Nimbo deja algo en «De Nimbo» crea uno cortito, sin alarma en tu celular, y lo borra a las 2 h para no llenarte la agenda.
+  const NUDGE = "Pregunta de Nimbo";
+  async function nudge(text, q) {
+    if (!google.createEvent) return;
+    try {
+      const id = await google.createEvent(NUDGE, `${q ? `[pregunta #${q}] ` : ""}${text}\n\nEstá en «De Nimbo».`);
+      state.nudges = [...(state.nudges ?? []), { id, at: Date.now() }].slice(-50);
+      save();
+    } catch {}
+    cleanNudges();
+    setTimeout(cleanNudges, 2 * 3600_000 + 60_000); // el que se acaba de crear, a las 2 h
+  }
+  async function cleanNudges() {
+    const old = (state.nudges ?? []).filter((n) => Date.now() - n.at > 2 * 3600_000);
+    if (!old.length) return;
+    for (const n of old) await google.deleteEvent?.(n.id);
+    state.nudges = (state.nudges ?? []).filter((n) => !old.includes(n));
+    save();
+  }
   let busy = false, stopped = true, renew = null, retry = null, stream = null, channel = null, wait = 5000;
   /** Pide a Drive el aviso (y lo renueva un rato antes de que venza). */
   async function ensureWatch() {
@@ -94,6 +114,7 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
       listen();
       ensureWatch();
       setTimeout(() => check(), 3000);
+      cleanNudges(); // los avisos de calendario viejos (si Nimbo estaba cerrado cuando tocaba borrarlos)
     },
     stop() { stopped = true; clearTimeout(renew); clearTimeout(retry); stream?.abort(); google.stopWatch(channel); channel = null; },
     restart() { this.stop(); this.start(); },
@@ -110,12 +131,13 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
       const clean = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, 1000);
       if (!b?.de || !clean) return false;
       const day = new Date().toLocaleDateString("sv");
-      if (!ask) { await google.append(b.de, `${day} ${clean}\n`); return true; }
+      if (!ask) { await google.append(b.de, `${day} ${clean}\n`); await nudge(clean, ""); return true; }
       const q = `p${(state.asked ?? 0) + 1}`;
       await google.append(b.de, `${day} [pregunta #${q}] ${clean}\n`);
       state.asked = (state.asked ?? 0) + 1;
       state.questions = { ...(state.questions ?? {}), [q]: clean };
       save();
+      await nudge(clean, q);
       return q;
     },
     /** La pregunta a la que responde una [respuesta #pN] (para mostrarlas juntas). */

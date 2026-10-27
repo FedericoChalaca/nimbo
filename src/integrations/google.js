@@ -92,6 +92,17 @@ function createGoogle({ clientId, load, save, redirect, open, fetch: doFetch = f
       return (Array.isArray(j.items) ? j.items : []).map(cleanEvent);
     },
 
+    /** Crea un evento corto en tu calendario principal. → id */
+    async createEvent(summary, description, startMs = Date.now(), minutes = 5) {
+      const j = await json("POST", `${API}/calendar/v3/calendars/primary/events`, {
+        summary: str(summary, 200), description: String(description ?? "").slice(0, 2000),
+        start: { dateTime: new Date(startMs).toISOString() }, end: { dateTime: new Date(startMs + minutes * 60_000).toISOString() },
+        reminders: { useDefault: false, overrides: [] }, // sin alarmas en tu celular: el aviso es para Neo
+      });
+      return str(j.id, 200);
+    },
+    async deleteEvent(id) { if (id) await call("DELETE", `${API}/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}`).catch(() => {}); },
+
     // --- Drive (solo lo que crea Nimbo) ---
     /** Busca o crea una carpeta de Nimbo por nombre. → { id, link } */
     async folder(name) {
