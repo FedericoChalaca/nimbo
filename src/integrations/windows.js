@@ -116,6 +116,8 @@ function createWindows({ binDir, onApps, onAutoHide = () => {}, onError = () => 
 
   const send = (line) => { if (child && child.exitCode === null) child.stdin.write(line + "\n"); };
   return {
+    /** ¿El lector de ventanas está corriendo? (la revisión del arranque lo mira) */
+    running: () => !!child && child.exitCode === null,
     set(on) {
       want = !!on && platform === "win32";
       if (want) return launch();

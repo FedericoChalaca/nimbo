@@ -260,13 +260,32 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
 // guardar borró el modo barra, las ancladas y «Oye Nimbo»): se tolera el BOM, cada arranque bueno deja una copia (prefs.json.bak) y, si el archivo
 // no se puede leer, se aparta como prefs.json.roto-<hora> y se usa la copia.
 const readPrefs = (f) => JSON.parse(fs.readFileSync(f, "utf8").replace(/^﻿/, ""));
-try {
-  prefs = { ...prefs, ...readPrefs(prefsFile) };
-  fs.copyFileSync(prefsFile, prefsFile + ".bak");
-} catch {
-  if (fs.existsSync(prefsFile)) try { fs.copyFileSync(prefsFile, `${prefsFile}.roto-${Date.now()}`); } catch {}
-  try { prefs = { ...prefs, ...readPrefs(prefsFile + ".bak") }; } catch {}
+// Al encender el PC, el archivo puede estar ocupado un momento (antivirus, indexador, OneDrive): se reintenta hasta ~3 s antes de
+// usar la copia. Antes, un fallo aquí dejaba a Nimbo con los ajustes de fábrica SIN avisar (pasó: sin barra de tareas al encender).
+let prefsFrom = "fábrica";
+for (let i = 0; i < 12 && prefsFrom === "fábrica"; i++) {
+  try { prefs = { ...prefs, ...readPrefs(prefsFile) }; prefsFrom = "prefs.json"; } catch (e) {
+    if (e.code === "ENOENT") break; // no existe: primera vez
+    if (i < 11) { const until = Date.now() + 250; while (Date.now() < until); } // espera corta (es el arranque: no hay nada más corriendo)
+  }
 }
+if (prefsFrom === "prefs.json") { try { fs.copyFileSync(prefsFile, prefsFile + ".bak"); } catch {} }
+else {
+  if (fs.existsSync(prefsFile)) try { fs.copyFileSync(prefsFile, `${prefsFile}.roto-${Date.now()}`); } catch {}
+  try { prefs = { ...prefs, ...readPrefs(prefsFile + ".bak") }; prefsFrom = "prefs.json.bak"; } catch {}
+}
+// Registro del arranque (arranque.log, solo en tu PC): de dónde salieron los ajustes y cualquier error que tumbe algo. Para entender
+// lo que pasa al encender el PC, cuando nadie está mirando.
+const BOOT_LOG = path.join(app.getPath("userData"), "arranque.log");
+function bootLog(line) {
+  try {
+    const old = fs.existsSync(BOOT_LOG) ? fs.readFileSync(BOOT_LOG, "utf8").split(/\r?\n/).filter(Boolean).slice(-299) : [];
+    fs.writeFileSync(BOOT_LOG, [...old, `${new Date().toISOString()} ${line}`].join("\n") + "\n");
+  } catch {}
+}
+bootLog(`arranque v${app.getVersion()} · ajustes de ${prefsFrom} · barra ${prefs.taskbarMode === true ? "sí" : "no"} · lleva ${Math.round(require("os").uptime())} s encendido el PC`);
+process.on("uncaughtException", (e) => bootLog(`ERROR: ${String(e?.stack ?? e).split("\n").slice(0, 3).join(" | ")}`));
+process.on("unhandledRejection", (e) => bootLog(`PROMESA RECHAZADA: ${String(e?.stack ?? e).split("\n").slice(0, 2).join(" | ")}`));
 W = prefs.taskbarMode === true ? 640 : 440;
 let corner = prefs.corner;
 // Se escribe en un archivo aparte y se cambia de nombre: si el PC se apaga a mitad, prefs.json queda entero (el viejo o el nuevo).
@@ -1172,6 +1191,10 @@ function setTaskbarMode(on) {
 }
 ipcMain.on("task-do", (_e, action, h) => { windows.act(String(action), String(h)); });
 app.whenReady().then(() => {
+  setTimeout(() => {
+    if (prefs.taskbarMode !== true || !windows.running?.()) bootLog(`revisión a los 20 s · barra ${prefs.taskbarMode === true ? "activada" : "apagada"} · lector ${windows.running?.() ? "corriendo" : "SIN correr"}`);
+    if (prefs.taskbarMode === true && windows.running && !windows.running()) { barraLog("revisión: el lector no corría, se prende"); try { windows.set(true); } catch {} sendTasks(); }
+  }, 20_000);
   if (prefs.taskbarMode !== true) return;
   barraLog("arranque de Nimbo: se prende la barra");
   try { windows.set(true); } catch (e) { barraLog("windows.set falló: " + e.message); } // un fallo aquí NO puede impedir que salgan las ancladas
