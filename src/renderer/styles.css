@@ -506,15 +506,25 @@
   .lyr .plain { white-space: pre-wrap; color: #c9ccd3; font-size: 12.5px; user-select: text; }
   .ahead button.on { background: var(--c); color: #04130a; }
   .ahead button.ico { padding: 4px 9px; font-size: 13px; }
-  /* Volumen de la app que suena */
-  .vol { display: flex; align-items: center; gap: 8px; margin: 8px 2px 0; color: #a4a9b2; font: 600 10.5px "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; }
-  .vol .vi { flex: none; width: 18px; font-size: 13px; text-align: center; }
-  .vol .pt { flex: none; width: 24px; text-align: right; }
-  .vol input { flex: 1; height: 4px; appearance: none; border-radius: 4px; cursor: pointer;
-    background: linear-gradient(90deg, var(--c) var(--v, 50%), rgba(255, 255, 255, .14) var(--v, 50%)); }
-  .vol input::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
+  /* Volumen: cápsula estilo Centro de control. Se llena con el color de la app, crece un poquito al pasar el mouse, y el parlante
+     cambia de color cuando el relleno lo alcanza (mix-blend no: se calcula con el ancho, así se ve igual en los dos temas). */
+  .vcap { position: relative; height: 26px; margin: 10px 2px 0; border-radius: 13px; overflow: hidden; cursor: ew-resize; outline: none; touch-action: none;
+    background: rgba(255, 255, 255, .08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); transition: height .18s cubic-bezier(.3, 1.4, .5, 1), margin .18s; }
+  .vcap:hover, .vcap.drag, .vcap:focus-visible { height: 32px; margin-top: 7px; }
+  .vcap:focus-visible { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 0 0 2px color-mix(in srgb, var(--c) 60%, transparent); }
+  .vfill { position: absolute; left: 0; top: 0; bottom: 0; width: var(--v, 50%); border-radius: inherit;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--c) 70%, #000), var(--c)); box-shadow: 0 0 14px color-mix(in srgb, var(--c) 45%, transparent);
+    transition: width .12s ease-out; }
+  .vcap.drag .vfill { transition: none; }
+  .vcap.mute .vfill { box-shadow: none; }
+  .vcap svg { position: absolute; left: 9px; top: 50%; width: 16px; height: 16px; margin-top: -8px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  .vcap svg path:first-child { fill: #fff; }
+  .vcap svg path { transition: opacity .2s; }
+  .vnum { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: #fff; font: 700 11px "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    font-variant-numeric: tabular-nums; opacity: .75; pointer-events: none; text-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
   /* Isla de música: Nimbo se minimiza (sin su barra ni el chat) y la tarjeta de música es toda la isla; se mueve arrastrándola */
   .music #bar { display: none; }
+  .music #content > :not(#appview) { display: none !important; } /* ni chat ni otras tarjetas: solo la música (siguen ahí al volver a Nimbo) */
   .music #content { top: 7px !important; }
   .music #appview { cursor: grab; }
   .music #appview :is(button, input, .ll, .pbar) { cursor: pointer; }

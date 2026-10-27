@@ -846,23 +846,7 @@ function renderAppView() {
       prog.append(el("span", "pt", ""), bar, el("span", "pt", ""));
       rows.push(prog);
     }
-    if (vol >= 0) {
-      const vrow = el("div", "vol");
-      const icon = el("span", "vi", vol === 0 ? "🔇" : vol < 50 ? "🔉" : "🔊");
-      const range = Object.assign(el("input"), { type: "range", min: 0, max: 100, value: vol });
-      range.title = t("Volumen de {0} (no el de Windows)", media.app || "Spotify");
-      range.style.setProperty("--v", `${vol}%`);
-      range.oninput = () => {
-        vol = Number(range.value);
-        range.style.setProperty("--v", `${vol}%`);
-        icon.textContent = vol === 0 ? "🔇" : vol < 50 ? "🔉" : "🔊";
-        clearTimeout(volTimer);
-        volTimer = setTimeout(() => api.volumeSet(vol), 60);
-      };
-      vrow.append(icon, range, el("span", "pt", `${vol}`));
-      range.addEventListener("input", () => { vrow.lastChild.textContent = String(vol); });
-      rows.push(vrow);
-    }
+    if (vol >= 0) rows.push(volumeCapsule());
     if (lyricsOn) {
       const box = el("div", "lyr");
       if (lyrics === "loading") box.append(el("div", "afoot", t("Buscando la letra…")));
@@ -1096,6 +1080,51 @@ const PLAYER_COLOR = { Spotify: "#1db954", "Apple Music": "#fa586a", Chrome: "#4
 let mediaTime = null, lyrics = null, lyricsOn = false, lyricsKey = "";
 let musicMode = false, vol = -1, volTimer = 0, volKey = "";
 const refreshVol = () => api.volumeGet?.().then((v) => { if (v !== vol) { vol = v; if (openApp === "spotify") renderAppView(); } }).catch(() => {});
+// Cápsula de volumen (como el Centro de control): toda la pastilla es el control. Arrastrar o hacer clic = ese nivel; rueda = ±5;
+// flechas del teclado = ±5. El parlante va adentro y cambia con el nivel; el número, al final. Solo la app que suena, no Windows.
+const SPEAKER = ["M4 9v6h4l5 4V5L8 9z", "M16 8.5a5 5 0 010 7", "M18.5 6a8.5 8.5 0 010 12"];
+function volumeCapsule() {
+  const cap = el("div", "vcap");
+  cap.tabIndex = 0;
+  cap.setAttribute("role", "slider");
+  cap.setAttribute("aria-valuemin", "0");
+  cap.setAttribute("aria-valuemax", "100");
+  cap.title = t("Volumen de {0} (no el de Windows)", media.app || "Spotify");
+  const fill = el("i", "vfill");
+  const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svgEl.setAttribute("viewBox", "0 0 24 24");
+  const paths = SPEAKER.map((d) => { const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", d); svgEl.append(p); return p; });
+  const num = el("span", "vnum", "");
+  cap.append(fill, svgEl, num);
+  const show = () => {
+    cap.style.setProperty("--v", `${vol}%`);
+    cap.setAttribute("aria-valuenow", String(vol));
+    num.textContent = String(vol);
+    paths[1].style.opacity = vol > 0 ? 1 : 0;
+    paths[2].style.opacity = vol >= 50 ? 1 : 0;
+    cap.classList.toggle("mute", vol === 0);
+  };
+  const setVol = (v) => {
+    vol = Math.max(0, Math.min(100, Math.round(v)));
+    show();
+    clearTimeout(volTimer);
+    volTimer = setTimeout(() => api.volumeSet(vol), 60);
+  };
+  const fromX = (x) => { const r = cap.getBoundingClientRect(); return ((x - r.left) / r.width) * 100; };
+  cap.addEventListener("pointerdown", (e) => { e.stopPropagation(); cap.setPointerCapture(e.pointerId); cap.classList.add("drag"); setVol(fromX(e.clientX)); });
+  cap.addEventListener("pointermove", (e) => { if (cap.hasPointerCapture(e.pointerId)) setVol(fromX(e.clientX)); });
+  const up = (e) => { if (cap.hasPointerCapture?.(e.pointerId)) cap.releasePointerCapture(e.pointerId); cap.classList.remove("drag"); };
+  cap.addEventListener("pointerup", up);
+  cap.addEventListener("pointercancel", up);
+  cap.addEventListener("click", (e) => e.stopPropagation()); // no cierra la isla de música
+  cap.addEventListener("wheel", (e) => { e.preventDefault(); setVol(vol + (e.deltaY < 0 ? 5 : -5)); }, { passive: false });
+  cap.addEventListener("keydown", (e) => {
+    const d = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[e.key];
+    if (d) { e.preventDefault(); setVol(vol + d); }
+  });
+  show();
+  return cap;
+}
 function enterMusic() {
   if (!media || mini) return;
   hidePanel();
@@ -1639,7 +1668,7 @@ function openAll() {
   toggleChat(true);
 }
 appView.addEventListener("click", (e) => {
-  if (musicMode && !suppressClick && !e.target.closest("button, input, .ll, .pbar, .lyr")) exitMusic();
+  if (musicMode && !suppressClick && !e.target.closest("button, input, .ll, .pbar, .lyr, .vcap")) exitMusic();
 });
 function closeAll() {
   allOpen = false;
@@ -2452,7 +2481,7 @@ function leanLoop() {
   leanRaf = dragging ? requestAnimationFrame(leanLoop) : 0;
 }
 wrap.addEventListener("pointerdown", (e) => {
-  const musicGrab = musicMode && !e.target.closest("button, input, .ll, .pbar, .lyr");
+  const musicGrab = musicMode && !e.target.closest("button, input, .ll, .pbar, .lyr, .vcap");
   if (e.button !== 0 || mini || (e.target.closest("#content") && !musicGrab) || e.target.closest("#tasks")) return;
   dragDown = { x: e.screenX, y: e.screenY, id: e.pointerId };
 });
