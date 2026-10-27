@@ -11,7 +11,8 @@ function parseOrder(text) {
   const m = String(text ?? "").match(/^\s*(.{2,80}?)\s*(?:::|\||—|:)\s*(.{2,4000})$/s);
   return m ? { chat: m[1].replace(/^chat\s+/i, "").replace(/^[«"']|[»"']$/g, "").trim(), message: m[2].trim() } : null;
 }
-const newCode = () => String(Math.floor(1000 + Math.random() * 9000));
+// Generador seguro (no Math.random, que se puede predecir). 4 cifras bastan: cada código vale UN intento (uno malo cancela) y vence en 30 min.
+const newCode = () => String(require("crypto").randomInt(1000, 10000));
 /** ¿La respuesta trae la palabra y el código? ("confirmo 4821", "Permitir: 4821") */
 const says = (text, word, code) => new RegExp(`\\b${word}\\b[^0-9]{0,12}${code}\\b`, "i").test(String(text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, ""));
 
