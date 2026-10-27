@@ -8,5 +8,6 @@ contextBridge.exposeInMainWorld("opt", {
   setup: () => ipcRenderer.invoke("setup"),
   setupDo: (action, value) => ipcRenderer.invoke("setup-do", String(action), value),
   version: () => ipcRenderer.invoke("app-version"),
+  copy: (text) => ipcRenderer.send("opt-copy", String(text).slice(0, 20_000)), // copiar al portapapeles (las instrucciones para tu IA)
   win: (what) => ipcRenderer.send("opt-win", String(what)), // "min" | "max" | "close"
 });

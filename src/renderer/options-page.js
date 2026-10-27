@@ -6,6 +6,14 @@ const t = translator(LANG);
 document.documentElement.lang = LANG;
 const $ = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
+/** Las instrucciones para tu IA de WhatsApp (se copian y se pegan en su chat). */
+const AI_RULES = () => t(`Vas a trabajar con Nimbo, mi asistente del computador. Nos comunicamos por la carpeta «Nimbo e Instinct» de mi Google Drive, que tiene dos documentos: «Para Nimbo» (escribes tú) y «De Nimbo» (escribe Nimbo).
+
+1. Cuando te pida algo «para Nimbo» (notas, ideas, tareas, cosas del calendario o pedidos), agrégalo AL FINAL de «Para Nimbo», una línea por cosa: 2026-10-27 [tarea] texto. Etiquetas: [nota], [idea], [tarea], [calendario], [pedido].
+2. Si te pido que Nimbo le diga algo a uno de mis chats de Claude, escribe: 2026-10-27 [orden] nombre del chat :: lo que quiero que haga.
+3. Cuando en «De Nimbo» aparezca algo nuevo, mándamelo por WhatsApp. Si es una [pregunta #p1] (el número cambia), házmela tal cual y escribe mi respuesta al final de «Para Nimbo» así: 2026-10-27 [respuesta #p1] lo que te dije.
+4. Activa un aviso para cuando aparezca en mi Google Calendar un evento nuevo llamado exactamente «Pregunta de Nimbo»: es Nimbo avisándote que revises «De Nimbo».
+5. Nunca borres ni cambies lo que ya está escrito, no crees documentos nuevos en esa carpeta, nunca inventes ni completes códigos de confirmación (solo copia lo que yo te responda) y nunca pongas contraseñas, claves ni datos bancarios.`);
 // Secciones: qué ajustes van en cada una (por id del menú) y qué dice cada uno.
 const SECTIONS = [
   { id: "general", icon: "⚙", name: t("General"), lead: t("Cómo se ve y se comporta Nimbo."), items: [
@@ -221,6 +229,20 @@ function connections() {
     gg.bridge && btn(t("Guardar nombre"), () => doSetup("instinct-name", drafts["instinct-name"] ?? gg.neo)),
     gg.connected && btn(t("Desconectar"), () => doSetup("google-logout"))],
   (gg.watching && gg.listening ? t("Escuchando avisos de Instinct: Drive avisa cuando escribe (nada revisa cada tanto). ") : "") + t("Permisos mínimos: Drive solo lo que crea Nimbo (no el resto de tu Drive) y tus eventos de Calendar.")));
+  // --- Tu IA de WhatsApp (Instinct u otra que lea y escriba en Google Drive y vea tu Google Calendar) ---
+  const neoName = gg.neo || "Instinct";
+  const rules = AI_RULES();
+  const copyBtn = btn(t("Copiar instrucciones"), () => { opt.copy(rules); copyBtn.textContent = t("¡Copiadas! ✓"); setTimeout(() => (copyBtn.textContent = t("Copiar instrucciones")), 2500); }, "main");
+  const pre = $("pre", "rules", rules);
+  const card = connCard("whatsai", t("Tu IA de WhatsApp ({0})", neoName), gg.watching && gg.listening ? "ok" : gg.bridge ? "warn" : "", gg.bridge ? t("Carpeta lista: falta que tu IA la use (pasos 2 a 4)") : t("Primero conecta Tu Google y crea la carpeta"), [
+    { text: t("En Nimbo: conecta «Tu Google» (arriba) y toca «Crear la carpeta con Instinct»."), done: !!gg.bridge },
+    { text: t("En tu IA de WhatsApp: conecta Google Drive y Google Calendar con la MISMA cuenta de Google que usaste en Nimbo (si es otra, comparte con ella la carpeta «Nimbo e Instinct» como Editor)."), done: false },
+    { text: t("Toca «Copiar instrucciones» y pégaselas en el chat a tu IA. Pídele que active el aviso de eventos nuevos llamados exactamente «Pregunta de Nimbo»."), done: false },
+    { text: t("Pruébalo: escríbele «anota para Nimbo: probar la conexión». En segundos aparece en la pastilla de Nimbo."), done: false },
+    { text: t("Opcional: en Avisos activa «Control remoto por WhatsApp» para mandarle órdenes a tus chats de Claude (siempre con código de confirmación)."), done: false },
+  ], [copyBtn, gg.bridge && btn(t("Abrir la carpeta"), () => doSetup("open", "google-folder"))], "");
+  card.querySelector(".body")?.append(pre);
+  out.push(card);
   const ai = s.ai ?? {};
   const keyWhich = $("select", "in"); keyWhich.style.width = "130px";
   for (const [v, l] of [["gemini", "Gemini"], ["openai", "OpenAI"], ["anthropic", "Claude (API)"]]) { const o = $("option", "", l); o.value = v; keyWhich.append(o); }

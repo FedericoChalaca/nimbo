@@ -1633,6 +1633,7 @@ const options = createOptions({
 });
 ipcMain.on("options-open", () => options.open());
 ipcMain.handle("app-version", () => app.getVersion());
+ipcMain.on("opt-copy", (_e, text) => clipboard.writeText(String(text ?? "").slice(0, 20_000)));
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(ROOT, "assets", "icon.png"));
   if (icon.isEmpty()) return; // sin icono no hay bandeja; el resto de Nimbo sigue igual
