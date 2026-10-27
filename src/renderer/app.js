@@ -684,7 +684,7 @@ function appsList() {
   if (media) out.push({ id: "spotify", name: media.app || "Spotify", color: PLAYER_COLOR[media.app] ?? "#8b93a3", count: 1, badge: media.playing ? "♪" : "❚❚" });
   if (mailData?.on) out.push({ id: "mail", name: t("Correo"), color: "#ea4335", count: mailData.emails.length || 1, badge: String(mailData.emails.length) });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
-  if (logros.length) out.push({ id: "logros", name: t("Logros"), color: "#f5b942", count: logros.reduce((n, g) => n + g.missing.length, 0) || 1, badge: "🏆" });
+  if (logros.length) out.push({ id: "logros", name: playingGame() ? t("Logros · {0}", playingGame().name) : t("Logros"), color: "#f5b942", count: logros.reduce((n, g) => n + g.missing.length, 0) || 1, badge: playingGame() ? "🎮" : "🏆" });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
   return out.filter((a) => a.count > 0);
 }
@@ -893,7 +893,7 @@ function renderAppView() {
     requestAnimationFrame(tickMusic);
   } else if (app.id === "logros") {
     // Platino: elige el juego, mira lo que te falta y la guía de cada logro (o de todos). Las guías se muestran tal cual las escribió Platino.
-    const g = logros.find((x) => x.appid === logrosGame) ?? logros[0];
+    const g = logros.find((x) => x.appid === logrosGame) ?? playingGame() ?? logros[0];
     logrosGame = g.appid;
     head.append(el("span", "sub", t("{0}: {1} de {2}", g.name, g.done, g.total)));
     const up = el("button", "", logrosBusy ? t("Actualizando…") : t("Actualizar"));
@@ -921,6 +921,8 @@ function renderAppView() {
       for (const a of [...g.missing].sort((x, y) => (y.percent ?? -1) - (x.percent ?? -1))) { // primero los más comunes (más fáciles)
         const r = el("div", "lrow" + (logrosOpen.has(a.id) ? " open" : ""));
         const top = el("div", "ltop");
+        // El ícono solo puede ser un data: de imagen (lo arma platino.js); si no hay, nada
+        if (typeof a.icon === "string" && /^data:image\/(jpeg|png);base64,/.test(a.icon)) top.append(Object.assign(el("img", "licon"), { src: a.icon, alt: "" }));
         top.append(el("b", "", a.name), el("span", "chip2", a.percent == null ? "–" : `${a.percent.toFixed(1)} %`));
         top.onclick = () => { logrosOpen.has(a.id) ? logrosOpen.delete(a.id) : logrosOpen.add(a.id); renderAppView(); };
         r.append(top);
@@ -1108,6 +1110,8 @@ let dayPlan = null; // { fecha, resumen, proyectos, solos, teNecesitan, say }
 // Logros (Platino): llegan al arrancar y cada 30 min; las guías no cambian seguido.
 let logros = [], logrosGame = null, logrosBusy = false;
 const logrosOpen = new Set();
+// ¿Estás jugando uno? Se mira en tus programas abiertos (modo barra): el ejecutable del juego.
+const playingGame = () => logros.find((g) => g.processes?.some((p) => tasks.some((a) => a.windows.length && String(a.key).toLowerCase().endsWith("\\" + p))));
 const loadLogros = () => api.logros?.().then((g) => { logros = Array.isArray(g) ? g : []; renderApps(); if (openApp === "logros") renderAppView(); }).catch(() => {});
 setTimeout(loadLogros, 5000);
 setInterval(loadLogros, 30 * 60_000);

@@ -437,6 +437,7 @@ const NIMBO_EN = {
   "Platino todavía no tiene guía para este logro.": "Platino has no guide for this achievement yet.",
   "Sin conexión con Platino: se ve tu progreso sin guías.": "No connection to Platino: showing your progress without guides.",
   "Progreso del {0}": "Progress from {0}",
+  "Logros · {0}": "Achievements · {0}",
   // Ventana de opciones (options-page.js)
   "Opciones": "Options",
   "Opciones…": "Options…",
