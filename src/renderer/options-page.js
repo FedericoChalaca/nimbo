@@ -98,10 +98,12 @@ function settingRow(id, help) {
   if (it.type === "checkbox") c.append(sw(it.checked, () => act(id), !it.enabled));
   else if (it.sub) {
     const radios = it.sub.filter((s) => s.type === "radio");
-    if (radios.length === it.sub.length) {
+    if (radios.length) {
+      // Las opciones (radio) juntas en una fila; lo demás (p. ej. "Pasar a la otra pantalla"), como botón aparte
       const seg = $("div", "seg");
-      for (const s of it.sub) { const b = $("button", s.checked ? "on" : "", s.label); b.type = "button"; b.disabled = !s.enabled || !it.enabled; b.onclick = () => act(id, s.i); seg.append(b); }
+      for (const s of radios) { const b = $("button", s.checked ? "on" : "", s.label); b.type = "button"; b.disabled = !s.enabled || !it.enabled; b.onclick = () => act(id, s.i); seg.append(b); }
       c.append(seg);
+      for (const s of it.sub.filter((x) => x.type !== "radio")) c.append(btn(s.label, () => act(id, s.i)));
     } else {
       // Mezcla (casillas, acciones): cada una como su propio control
       const box = $("div", "");
@@ -213,6 +215,7 @@ function render() {
   const tabs = document.getElementById("tabs");
   tabs.replaceChildren(...SECTIONS.map((s) => { const b = $("button", "tab" + (s.id === current ? " on" : "")); b.type = "button"; b.append($("i", "", s.icon), document.createTextNode(s.name)); b.onclick = () => { current = s.id; lastError = ""; render(); }; return b; }));
   const sec = SECTIONS.find((s) => s.id === current);
+  document.getElementById("topTitle").textContent = `${t("Opciones")} · ${sec.name}`;
   const main = document.getElementById("main");
   const keep = main.scrollTop;
   const parts = [$("h1", "", sec.name)];
@@ -232,6 +235,8 @@ function render() {
   main.scrollTop = keep;
 }
 
+for (const [id, what] of [["wmin", "min"], ["wmax", "max"], ["wclose", "close"]]) document.getElementById(id).onclick = () => opt.win(what);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") opt.win("close"); });
 let version = "";
 opt.version().then((v) => { version = v; document.getElementById("ver").textContent = `v${v}`; if (current === "about") render(); });
 opt.onChanged(reload);

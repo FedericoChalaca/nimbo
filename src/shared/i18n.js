@@ -423,6 +423,7 @@ const NIMBO_EN = {
   "Buscar": "Search",
   "Anterior": "Previous",
   // Ventana de opciones (options-page.js)
+  "Opciones": "Options",
   "Opciones…": "Options…",
   "General": "General",
   "Cómo se ve y se comporta Nimbo.": "How Nimbo looks and behaves.",

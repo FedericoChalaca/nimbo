@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld("opt", {
   setup: () => ipcRenderer.invoke("setup"),
   setupDo: (action, value) => ipcRenderer.invoke("setup-do", String(action), value),
   version: () => ipcRenderer.invoke("app-version"),
+  win: (what) => ipcRenderer.send("opt-win", String(what)), // "min" | "max" | "close"
 });

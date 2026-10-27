@@ -31,6 +31,13 @@ function clickItem(template, id, sub) {
 function createOptions({ template, page, preload, icon, skip = [] }) {
   const { BrowserWindow, ipcMain } = require("electron"); // aquí: la autoprueba corre sin Electron
   let win = null;
+  // Los botones de la barra propia. Solo para ESTA ventana.
+  ipcMain.on("opt-win", (e, what) => {
+    if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
+    if (what === "min") win.minimize();
+    else if (what === "max") win.isMaximized() ? win.unmaximize() : win.maximize();
+    else if (what === "close") win.close();
+  });
   ipcMain.handle("opt-model", () => serialize(template()).filter((x) => !skip.includes(x.id)));
   ipcMain.handle("opt-click", (_e, id, sub) => {
     if (typeof id !== "string" || skip.includes(id)) return false;
@@ -41,7 +48,8 @@ function createOptions({ template, page, preload, icon, skip = [] }) {
       if (win && !win.isDestroyed()) { win.show(); win.focus(); return; }
       win = new BrowserWindow({
         width: 880, height: 640, minWidth: 720, minHeight: 480, show: false, title: "Nimbo", backgroundColor: "#0b0c0e",
-        autoHideMenuBar: true, icon, webPreferences: { preload, contextIsolation: true, sandbox: true, nodeIntegration: false },
+        autoHideMenuBar: true, icon, frame: false, // sin el marco de Windows: la página dibuja su propia barra (arrastrar, minimizar, cerrar)
+        webPreferences: { preload, contextIsolation: true, sandbox: true, nodeIntegration: false },
       });
       win.setMenu(null);
       win.webContents.on("will-navigate", (e) => e.preventDefault());
