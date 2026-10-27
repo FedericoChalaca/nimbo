@@ -2,6 +2,13 @@
 
 **English** · [Español](README.es.md)
 
+<p>
+  <a href="https://github.com/FedericoChalaca/nimbo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/FedericoChalaca/nimbo?color=9d95ff&label=release"></a>
+  <img alt="Windows · Linux · macOS" src="https://img.shields.io/badge/Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-preview-1f2937">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3ddc84"></a>
+  <img alt="No API key needed" src="https://img.shields.io/badge/API%20key-not%20needed-f5b942">
+</p>
+
 A floating companion for [Claude Code](https://claude.com/claude-code) on Windows, and in preview on Linux and macOS. It lives on the top edge of your screen, shows what each of your chats is doing, and lets you approve permissions without switching to the terminal.
 
 No API key: it uses the `claude` you already have installed and signed in.
@@ -11,6 +18,23 @@ No API key: it uses the `claude` you already have installed and signed in.
 *▶ Click to watch the intro (10 s, Spanish captions). It is an AI-generated concept video; the real interface is the one below.*
 
 ![Nimbo in action](docs/media/nimbo.gif)
+
+## Features at a glance
+
+| | |
+|---|---|
+| 👀 **Your chats, live** | Every Claude Code session at once: thinking, working, needs you, done. The current step, diffs and terminal output. |
+| ✅ **Approve from the island** | Allow, Deny or Always, with the full command in view. Away from the PC? Answer from your phone. |
+| 💬 **Talk to Claude** | Type, dictate (local Whisper), paste images, drop files, or say **“Hey Nimbo”**. Slash commands that cost nothing. |
+| 🧭 **Orchestrator** | Ask for something that belongs to another project: Nimbo drafts the prompt for that chat and sends it when you confirm. |
+| 🗂️ **Your taskbar, reimagined** | Open and pinned apps live next to Nimbo, with search. Dock it top, bottom, left, right, in a corner, or let it float on any monitor. |
+| 🎵 **Music island** | Any player (Spotify, Apple Music, your browser): progress bar with seek, **synced lyrics**, and per-app volume. Nimbo steps aside while it plays. |
+| 📅 **Your Google** | Your agenda for the week and a Drive folder to work with your WhatsApp AI, with your own Google app and minimal permissions. |
+| 📱 **WhatsApp, safely** | Read-only urgent-message summaries, and an optional bridge with your WhatsApp AI (e.g. Instinct): notes reach Nimbo in seconds, Nimbo can ask you things on WhatsApp, and you can send orders to your Claude chats, **always with a one-time code**. |
+| 🔔 **Phone alerts** | Your own Telegram bot tells you when a long job finishes or a chat needs you, only when you are away. |
+| 🏆 **Achievements** | A pill (and an in-game overlay) with the achievements you are missing and how to get them, from the Platino companion app. |
+| ⚙️ **A real settings window** | Every option explained, and each connection with a step-by-step guide. |
+| 🪶 **Light and private** | No servers, no telemetry, no API key: it uses the `claude` you already have. Keys stay encrypted by Windows. |
 
 ## Install
 
@@ -257,6 +281,17 @@ Nimbo checks your unread Gmail and tells you which emails matter, with a one-lin
 
 It only checks when you ask: click the **✉** button on the bar (it appears once Email is on), type `check my email` in the chat, use **Check email** in the menu, or send `/correo` in Telegram. Each check takes about a minute and costs around 5 US cents. Sender, subject and a preview go to Anthropic through your own Claude, like everything else in the chat. Turning it off deletes what Nimbo saved.
 
+### 14. Your Google and your WhatsApp AI (optional)
+
+Nimbo can see your Google Calendar and share a Drive folder with an AI that lives in your WhatsApp (for example Instinct). Everything is in **Options → Connections**, with the steps and the instructions to paste:
+
+1. **Your Google.** Create your own free app in [Google Cloud](https://console.cloud.google.com) (a project, the Drive, Docs and Calendar APIs, a consent screen and a *Desktop app* client ID), paste its ID and secret in Nimbo and sign in. Nimbo only gets `drive.file` (just the files it creates, not the rest of your Drive) and your Calendar events. The secret and the session stay encrypted by Windows.
+2. **The folder.** Tap *Create the Instinct folder*: Nimbo makes “Nimbo e Instinct” with two documents, one your AI writes and one Nimbo writes.
+3. **Your WhatsApp AI.** Connect Google Drive and Calendar in it (same Google account), tap *Copy instructions* in Nimbo and paste them in its chat.
+4. **Remote control (optional).** Options → Alerts → *Remote control via WhatsApp*: tell your AI “[orden] chat :: message” and Nimbo sends it to that Claude chat only after you reply with the one-time code it sends you. If a chat asks for permission while you are away, you can ALLOW or DENY it the same way.
+
+Nothing polls: Google Drive notifies Nimbo when the document changes (through a randomly named ntfy.sh topic that only learns *that* something changed), and Nimbo notifies your AI with a short “Pregunta de Nimbo” Calendar event that it deletes two hours later.
+
 ### If something does not work
 
 | Problem | What to check |
@@ -277,7 +312,7 @@ It only checks when you ask: click the **✉** button on the bar (it appears onc
 - **Other AIs.** Next to Claude, the chat can talk to a local model through Ollama (free, nothing leaves your PC), to Gemini or to OpenAI with your own key. A small selector appears in the chat. See step 12.
 - **Email.** Optional: when you ask (a **✉** button on the bar), Nimbo checks your unread Gmail (read-only, with your Claude's Gmail connector) and tells you which emails matter. See step 13.
 - **Phone alerts.** Through your own Telegram bot, Nimbo tells you when a Claude Code chat finishes a long job or needs you, plus reminders and important emails, only when you are away from the PC. Telegram also has a to-do inbox that fills even while your PC is off. See step 11.
-- **A floating music bar.** While Spotify has something loaded, a small bar appears on its own, separate from the island: cover, song, previous / pause / next, and a search box. Drag it anywhere (it remembers where). Close it with the ✕ (it comes back with the next song), it hides in mini mode, or turn it off in the menu ("Floating music bar").
+- **Music island.** Whatever is playing (Spotify first, but also Apple Music or YouTube in your browser): cover, controls, a progress bar you can click to seek, the app's own volume (not Windows' master volume) and **synced lyrics** from LRCLIB (only when you tap *Lyrics*; just the title, artist and length are sent). The ⤢ button turns Nimbo into a small music island you can drag anywhere; click it to get Nimbo back.
 - **Trains you for interviews.** Type `practice interview for junior developer` (or `entrenar entrevista para …`): Nimbo asks one question at a time, you answer by typing or dictating, and your Claude scores the answer, gives one tip and a better version that never invents experience, then asks the next question. Say "end" to see your average. It is practice only: nothing is saved. With Sonnet (the default) a question costs under a cent and an evaluation about 2 cents.
 - **Tells you about new versions.** The first time, Nimbo asks once whether it may look at its releases page on GitHub (a couple of times a day, nothing of yours is sent). When a newer one is out, a card shows what it brings; on an installed Windows copy **Update now** downloads the installer, checks its SHA-256 against the one GitHub publishes and opens it. Elsewhere it opens the release page. Right-click → *Check for updates* or *Tell me about new versions*. After updating, a card shows what is new.
 - **Quiet when you are watching.** If a job finishes while the terminal, your editor or the Claude app is in front, Nimbo only changes state: no sound. Right-click → *Quiet when I'm watching the terminal* (on by default).
@@ -305,8 +340,8 @@ It only checks when you ask: click the **✉** button on the bar (it appears onc
 | Click the green button | Opens the WhatsApp summary. |
 | 🖥 in the chat | Takes a screenshot of the screen where your cursor is and attaches it. Click the thumbnail to remove it. |
 | Right-click | Menu: connections, language, look, mini mode, WhatsApp, voice, mute, quit. |
-| ⋮ at the right end of the island | The same menu, without right-clicking. It shows up when you hover. |
-| Nimbo's icon next to the clock | The same menu again. Windows may keep the icon behind the little arrow (^) on the taskbar. |
+| ⋮ at the right end of the island | The **Options** window: every setting explained, and each connection with its step-by-step guide. |
+| Nimbo's icon next to the clock | Click: Options. Right-click: the quick menu. Windows may keep the icon behind the little arrow (^) on the taskbar. |
 | Drag the bar | Moves it along the top edge. |
 | Drop a file on it | It "eats" the file and attaches it to the chat. |
 | `Ctrl+Alt+N` | Mini mode. |
