@@ -7,7 +7,7 @@
   const END_SILENCE_MS = 1100; // este silencio después de hablar = terminaste la frase
   const MIN_SPEECH_MS = 350;
   const MAX_MS = 30_000;
-  const NO_SPEECH_MS = 4000; // llamada por voz: sin habla en este tiempo (contado desde la llamada), se apaga el micrófono
+  const NO_SPEECH_MS = 6000; // llamada por voz: sin habla en este tiempo (contado desde la llamada, «te escucho» incluido), se apaga el micrófono
   const PREROLL = 0.3 * SR; // guarda 0,3 s antes de que empieces, para no comerse la primera sílaba
 
   // Whisper a veces "oye" estas frases en el silencio.
@@ -234,7 +234,9 @@
     const pcm = wavToPcm(bytes);
     if (!pcm) return true;
     const dur = pcm.length / SR;
-    return (Number(meta.conf) || 0) >= 0.65 && dur >= 0.6 && dur <= 1.8; // muy seguro: contesta ya; si no, espera a Whisper
+    // Contesta YA siempre que Windows oyó la frase (el dueño lo pidió: nada de esperar la revisión, que con el PC ocupado tarda segundos).
+    // La revisión de Whisper sigue por detrás y, si era una voz de fondo, deshace la llamada y tira lo grabado. Solo se descarta lo absurdo por duración.
+    return dur >= 0.4 && dur <= 2.6;
   };
   // "Aquí estoy / Te escucho…": una frase al azar de la base chica (main: frases.json), con la voz de Windows. Si no hay voz, silencio.
   let nextCue = null; // la próxima frase, ya cargada en memoria

@@ -33,7 +33,9 @@ function load() {
   asr ??= useLocalRuntime().then(() => pipeline("automatic-speech-recognition", MODEL, {
     device: "wasm",
     // El codificador (el que "oye") en precisión completa: comprimido (q8) se le escapaban palabras; el decodificador sigue en q8 (rápido).
-    dtype: { encoder_model: "fp32", decoder_model_merged: "q8" },
+    // q8 (comprimido): con el codificador completo la revisión de «Oye Nimbo» pasó a tardar 4–12 s. Lo que más ayudó a entender bien fue
+    // subirle el volumen al micrófono antes de transcribir (voice.js, louder), y eso se queda.
+    dtype: "q8",
     // Solo avisa si de verdad descarga: leyendo de la caché también llegan eventos "progress".
     progress_callback: (p) => {
       if (p.status === "download") downloading.add(p.file);
