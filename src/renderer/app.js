@@ -85,7 +85,7 @@ function layout() {
   root.classList.toggle("split", split);
   let infoW = 0;
   if (open) {
-    w = musicMode && !lyricsOn ? 372 : MAX_W; // isla de música compacta: más o menos lo que ocupa Nimbo
+    w = musicMode && isleApp === "logros" ? (isleMin ? 300 : 360) : musicMode && !lyricsOn ? 372 : MAX_W; // islas compactas: más o menos lo que ocupa Nimbo
     h = Math.min(470, (musicMode ? 0 : BAR_H) + content.offsetHeight + 14); // isla de música: sin la barra de Nimbo
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
@@ -705,6 +705,7 @@ function renderApps() {
     p.onclick = () => {
       if (openApp === "wa") waViewed();
       openApp = openApp === a.id ? null : a.id;
+      pillFocus = !!openApp;
       if (openApp === "wa") { waOpenedAt = Date.now(); api.whatsappSummarize(); } // solo aquí se resume (lo pediste tú)
       if (openApp === "act") activitySeen = Date.now();
       renderApps();
@@ -720,9 +721,17 @@ function dueChip(iso) {
   if (!Number.isFinite(ms)) return null;
   return el("span", `chip2 ${ms < 0 ? "red" : ms < 864e5 ? "amber" : ""}`, ms < 0 ? t("vencida") : fmtDue(iso));
 }
+let pillFocus = false; // la pastilla se abrió tocándola (no por una respuesta del chat, que debe seguir a la vista)
+const appBack = el("button", "appback", "← " + t("Volver"));
+appBack.type = "button";
+appBack.onclick = (e) => { e.stopPropagation(); openApp = null; pillFocus = false; appsBox.classList.remove("hidden"); renderApps(); renderAppView(); relayout(); };
 function renderAppView() {
   // Con una pastilla abierta (Trello, Spotify…), tus programas se encogen a una fila de iconos para que se vea lo que elegiste.
   taskBox.classList.toggle("compact", !!openApp);
+  // La pastilla elegida ocupa todo Nimbo: sin las otras pastillas, sin tus programas y sin el chat (más espacio para bajar). "← Volver" regresa.
+  if (!openApp) pillFocus = false;
+  root.classList.toggle("appfocus", pillFocus && !!openApp && !musicMode);
+  if (pillFocus && appBack.parentNode !== content) content.prepend(appBack);
   const app = appsList().find((a) => a.id === openApp);
   // "Chats" usa sus dos cajas de siempre (lista de chats + vista en vivo) en vez de #appview.
   const chats = app?.id === "chats";
@@ -896,6 +905,12 @@ function renderAppView() {
     const g = logros.find((x) => x.appid === logrosGame) ?? playingGame() ?? logros[0];
     logrosGame = g.appid;
     head.append(el("span", "sub", t("{0}: {1} de {2}", g.name, g.done, g.total)));
+    const isleBtn = (txt, title, fn) => { const b = el("button", "ico", txt); b.type = "button"; b.title = title; b.onclick = (e) => { e.stopPropagation(); fn(); }; return b; };
+    if (musicMode) {
+      head.append(isleBtn(isleMin ? "▢" : "–", isleMin ? t("Agrandar") : t("Minimizar"), () => { isleMin = !isleMin; root.classList.toggle("isle-min", isleMin); renderAppView(); relayout(); }),
+        isleBtn("☁", t("Volver a Nimbo"), exitMusic));
+      if (isleMin) { rows.push(el("div", "lmini", t("🏆 {0} · te faltan {1}", g.name, g.missing.length))); appView.replaceChildren(head, ...rows); return relayout(); }
+    } else head.append(isleBtn("⤢", t("Sobre el juego: Nimbo se minimiza y quedan tus logros encima mientras juegas (se mueve y se minimiza)"), () => enterMusic("logros")));
     const up = el("button", "", logrosBusy ? t("Actualizando…") : t("Actualizar"));
     up.type = "button";
     up.title = t("Trae tu progreso de Steam con la herramienta de Platino");
@@ -923,6 +938,12 @@ function renderAppView() {
         const top = el("div", "ltop");
         // El ícono solo puede ser un data: de imagen (lo arma platino.js); si no hay, nada
         if (typeof a.icon === "string" && /^data:image\/(jpeg|png);base64,/.test(a.icon)) top.append(Object.assign(el("img", "licon"), { src: a.icon, alt: "" }));
+        // Chulear: lo marcas como hecho desde aquí (queda en Nimbo; cuando actualices desde Steam, Steam manda)
+        const chk = el("button", "lcheck", "");
+        chk.type = "button";
+        chk.title = t("Ya lo tengo");
+        chk.onclick = async (e) => { e.stopPropagation(); chk.classList.add("on"); logros = await api.logrosMark(g.appid, a.id, true).catch(() => logros); renderApps(); setTimeout(renderAppView, 350); };
+        top.prepend(chk);
         top.append(el("b", "", a.name), el("span", "chip2", a.percent == null ? "–" : `${a.percent.toFixed(1)} %`));
         top.onclick = () => { logrosOpen.has(a.id) ? logrosOpen.delete(a.id) : logrosOpen.add(a.id); renderAppView(); };
         r.append(top);
@@ -933,6 +954,12 @@ function renderAppView() {
         list.append(r);
       }
       rows.push(list);
+    }
+    if (g.marked?.length) {
+      const undo = el("button", "lundo", t("Deshacer lo que chuleé ({0})", g.marked.length));
+      undo.type = "button";
+      undo.onclick = async () => { for (const id of g.marked) logros = await api.logrosMark(g.appid, id, false).catch(() => logros); renderApps(); renderAppView(); };
+      rows.push(undo);
     }
     rows.push(el("div", "afoot", g.offline ? t("Sin conexión con Platino: se ve tu progreso sin guías.") : t("Progreso del {0}", g.updated ? fmtDue(g.updated) : "?")));
   } else if (app.id === "github") {
@@ -1161,6 +1188,7 @@ api.onPlan(onPlan);
 const PLAYER_COLOR = { Spotify: "#1db954", "Apple Music": "#fa586a", Chrome: "#4285f4", Edge: "#0c8ee9", Brave: "#fb542b", Firefox: "#ff7139" };
 let mediaTime = null, lyrics = null, lyricsOn = false, lyricsKey = "";
 let musicMode = false, vol = -1, volTimer = 0, volKey = "";
+let isleApp = "spotify", isleMin = false; // qué isla está activa (música o logros) y si los logros están minimizados a una línea
 const refreshVol = () => api.volumeGet?.().then((v) => { if (v !== vol) { vol = v; if (openApp === "spotify") renderAppView(); } }).catch(() => {});
 // Cápsula de volumen (como el Centro de control): toda la pastilla es el control. Arrastrar o hacer clic = ese nivel; rueda = ±5;
 // flechas del teclado = ±5. El parlante va adentro y cambia con el nivel; el número, al final. Solo la app que suena, no Windows.
@@ -1207,15 +1235,17 @@ function volumeCapsule() {
   show();
   return cap;
 }
-function enterMusic() {
-  if (!media || mini) return;
+function enterMusic(which = "spotify") {
+  if (mini || (which === "spotify" && !media) || (which === "logros" && !logros.length)) return;
+  isleApp = which;
   hidePanel();
   toggleChat(false);
   allOpen = false;
   musicMode = true;
   root.classList.add("music");
-  root.classList.toggle("music-sm", !lyricsOn); // sin letra: del tamaño de Nimbo
-  openApp = "spotify";
+  root.classList.toggle("music-sm", which === "spotify" && !lyricsOn); // sin letra: del tamaño de Nimbo
+  root.classList.toggle("isle-logros", which === "logros");
+  openApp = which;
   appView.classList.remove("hidden");
   refreshVol();
   renderAppView();
@@ -1224,7 +1254,8 @@ function enterMusic() {
 function exitMusic() {
   if (!musicMode) return;
   musicMode = false;
-  root.classList.remove("music", "music-sm");
+  root.classList.remove("music", "music-sm", "isle-logros", "isle-min");
+  isleMin = false;
   hidePanel();
   relayout();
 }
@@ -1272,8 +1303,8 @@ api.onMediaTime?.((tm) => {
   if (openApp === "spotify" && had !== !!tm) renderAppView(); else tickMusic();
 });
 function onMedia(m) {
-  if (!m) exitMusic();
-  root.classList.toggle("music-sm", musicMode && !lyricsOn);
+  if (!m && isleApp === "spotify") exitMusic();
+  root.classList.toggle("music-sm", musicMode && isleApp === "spotify" && !lyricsOn);
   const key = m ? `${m.title}|${m.artist}` : "";
   if (key !== lyricsKey) { lyricsKey = key; lyrics = null; lastLine = -1; if (lyricsOn && m) loadLyrics(); }
   media = m;
@@ -1752,7 +1783,7 @@ function openAll() {
   toggleChat(true);
 }
 appView.addEventListener("click", (e) => {
-  if (musicMode && !suppressClick && !e.target.closest("button, input, .ll, .pbar, .lyr, .vcap")) exitMusic();
+  if (musicMode && isleApp === "spotify" && !suppressClick && !e.target.closest("button, input, .ll, .pbar, .lyr, .vcap")) exitMusic();
 });
 function closeAll() {
   allOpen = false;
@@ -2566,7 +2597,7 @@ function leanLoop() {
   leanRaf = dragging ? requestAnimationFrame(leanLoop) : 0;
 }
 wrap.addEventListener("pointerdown", (e) => {
-  const musicGrab = musicMode && !e.target.closest("button, input, .ll, .pbar, .lyr, .vcap");
+  const musicGrab = musicMode && !e.target.closest("button, input, .ll, .pbar, .lyr, .vcap, .ltop, .lguide, .llist");
   if (e.button !== 0 || mini || (e.target.closest("#content") && !musicGrab) || e.target.closest("#tasks")) return;
   dragDown = { x: e.screenX, y: e.screenY, id: e.pointerId };
 });

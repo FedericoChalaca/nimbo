@@ -129,7 +129,17 @@
     if (r.speech < MIN_SPEECH_MS) return r.resolve(null);
     r.resolve({ audio: joinAudio(r.chunks), r });
   }
-  const finalText = ({ audio }) => transcribe(audio);
+  // Tu micrófono le llega a Windows muy bajito (pico de 0,016 en una llamada real): Whisper entiende mucho peor el audio tan débil.
+  // Antes de transcribir se sube el volumen hasta un pico de 0,9 (máximo ×20, para no inflar el ruido de fondo).
+  function louder(audio) {
+    let peak = 0;
+    for (const v of audio) peak = Math.max(peak, Math.abs(v));
+    const gain = peak > 0.002 ? Math.min(0.9 / peak, 20) : 1;
+    if (gain <= 1.05) return audio;
+    for (let i = 0; i < audio.length; i++) audio[i] *= gain;
+    return audio;
+  }
+  const finalText = ({ audio }) => transcribe(louder(audio));
   // Con «Oye Nimbo» lo que dijiste se envía solo, pero antes se queda 2 s a la vista: tocar el cuadro o escribir lo detiene para corregir.
   function sendSoon() {
     return new Promise((resolve) => {

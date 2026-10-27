@@ -722,7 +722,9 @@ ipcMain.handle("media-time", () => mediaTime);
 // Volumen de la app que suena (volume.js): main decide cuál (la del reproductor actual); la página solo manda el número.
 const volume = createVolume(path.join(app.getPath("userData"), "bin"));
 // Logros (Platino, solo lectura): la carpeta del proyecto Platino va en prefs.platinoDir (nada personal en el código).
-const platino = createPlatino({ dir: () => String(prefs.platinoDir || "") });
+// Lo que chuleas en Nimbo queda en logros-chulos.json (Nimbo no escribe en Platino: su contrato es solo lectura).
+const platino = createPlatino({ dir: () => String(prefs.platinoDir || ""), marksFile: path.join(app.getPath("userData"), "logros-chulos.json") });
+ipcMain.handle("logros-mark", (_e, appid, id, on) => { platino.mark(String(appid), String(id), on === true); return prefs.platinoDir ? platino.games() : []; });
 ipcMain.handle("logros", () => (prefs.platinoDir ? platino.games() : []));
 ipcMain.handle("logros-refresh", async (_e, appid) => { if (prefs.platinoDir) await platino.refresh(String(appid)); return prefs.platinoDir ? platino.games() : []; });
 ipcMain.handle("volume-get", () => (media ? volume.get(media.app) : -1));

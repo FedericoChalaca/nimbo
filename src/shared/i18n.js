@@ -438,6 +438,13 @@ const NIMBO_EN = {
   "Sin conexión con Platino: se ve tu progreso sin guías.": "No connection to Platino: showing your progress without guides.",
   "Progreso del {0}": "Progress from {0}",
   "Logros · {0}": "Achievements · {0}",
+  "Volver": "Back",
+  "Agrandar": "Expand",
+  "Minimizar": "Minimize",
+  "🏆 {0} · te faltan {1}": "🏆 {0} · {1} to go",
+  "Sobre el juego: Nimbo se minimiza y quedan tus logros encima mientras juegas (se mueve y se minimiza)": "Over the game: Nimbo minimizes and your achievements stay on top while you play (move it, minimize it)",
+  "Ya lo tengo": "I have it",
+  "Deshacer lo que chuleé ({0})": "Undo my check marks ({0})",
   // Ventana de opciones (options-page.js)
   "Opciones": "Options",
   "Opciones…": "Options…",

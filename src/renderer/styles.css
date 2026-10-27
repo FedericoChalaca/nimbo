@@ -516,6 +516,29 @@
   .lrow { border-radius: 10px; background: rgba(255, 255, 255, .035); }
   .lrow.open { background: rgba(245, 185, 66, .08); }
   .ltop { display: flex; align-items: center; gap: 8px; padding: 7px 9px; cursor: pointer; }
+  /* Una pastilla abierta ocupa todo Nimbo */
+  .appback { align-self: flex-start; padding: 4px 12px; font-size: 12px; background: rgba(255, 255, 255, .06); }
+  .appback:hover { background: rgba(255, 255, 255, .12); }
+  #nimbo:not(.appfocus) .appback { display: none; }
+  .appfocus :is(#apps, #taskBox, #chat, #answerBox) { display: none !important; }
+  .appfocus .llist { max-height: 300px; }
+  .appfocus #appview { max-height: 380px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3d44 transparent; }
+  /* Chulear un logro */
+  .lcheck { flex: none; width: 20px; height: 20px; padding: 0; border-radius: 6px; background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .28); }
+  .lcheck:hover { box-shadow: inset 0 0 0 1.5px var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); }
+  .lcheck.on { background: var(--c); box-shadow: none; }
+  .lcheck.on::after { content: "✓"; color: #1a1200; font-weight: 800; font-size: 12px; }
+  .lundo { width: 100%; margin-top: 8px; font-size: 11.5px; background: transparent; color: #a4a9b2; }
+  /* Logros encima del juego (isla propia, estilo "profesor" de LoL): angosta, con la lista y la guía; minimizada, una línea */
+  .isle-logros #appview { padding: 10px 10px 8px; }
+  .isle-logros .ahead .sub { font-size: 11px; }
+  .isle-logros .lall { display: none; }
+  .isle-logros .llist { max-height: 300px; }
+  .isle-logros .lguide { font-size: 12px; }
+  .isle-min #appview { padding: 6px 8px 6px 10px; }
+  .isle-min .ahead { margin: 0; }
+  .isle-min .ahead :is(b, .sub, svg.mini) { display: none; }
+  .lmini { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font: 600 12px "Segoe UI", sans-serif; color: #f2f3f5; pointer-events: none; }
   .licon { flex: none; width: 26px; height: 26px; border-radius: 6px; }
   .ltop b { flex: 1; min-width: 0; font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ldesc { padding: 0 10px 4px; color: #a4a9b2; font-size: 11.5px; }

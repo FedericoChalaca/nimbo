@@ -31,7 +31,17 @@ function merge(progress, catalog) {
     total: all.length, done: all.filter((a) => a.done).length, missing: all.filter((a) => !a.done), all };
 }
 
-function createPlatino({ dir, fetch: doFetch = fetch }) {
+function createPlatino({ dir, marksFile = "", fetch: doFetch = fetch }) {
+  // Chulos: { "<appid>": ["id", …] } en el PC. Un chulo se borra solo cuando Steam ya dice que lo tienes.
+  const readMarks = () => { try { return JSON.parse(fs.readFileSync(marksFile, "utf8")); } catch { return {}; } };
+  function mark(appid, id, on) {
+    if (!marksFile || !APPID.test(appid) || !/^[\w.-]{1,120}$/.test(id)) return;
+    const m = readMarks();
+    const set = new Set(Array.isArray(m[appid]) ? m[appid] : []);
+    on ? set.add(id) : set.delete(id);
+    m[appid] = [...set].slice(0, 2000);
+    fs.writeFileSync(marksFile, JSON.stringify(m));
+  }
   const catalogCache = new Map(); // appid → catálogo (se vuelve a pedir cada 6 h)
   const icons = new Map(); // url → data: (o "" si no se pudo)
   async function icon(url) {
@@ -69,6 +79,10 @@ function createPlatino({ dir, fetch: doFetch = fetch }) {
         if (!APPID.test(String(progress.appid))) continue;
         const cat = await catalog(String(progress.appid)).catch(() => null); // sin internet: se ve el progreso sin guías
         const g = merge(progress, cat);
+        // Lo que chuleaste en Nimbo cuenta como hecho (y si Steam ya lo confirma, el chulo sobra)
+        const mine = new Set(readMarks()[String(progress.appid)] ?? []);
+        g.marked = g.missing.filter((a) => mine.has(a.id)).map((a) => a.id);
+        if (g.marked.length) { g.missing = g.missing.filter((a) => !mine.has(a.id)); g.done += g.marked.length; }
         await Promise.all(g.missing.map(async (a) => { a.icon = await icon(a.iconUrl); }));
         for (const a of g.all) delete a.iconUrl;
         delete g.all; // la página solo usa lo que falta (y así no viaja todo dos veces)
@@ -86,7 +100,7 @@ function createPlatino({ dir, fetch: doFetch = fetch }) {
       execFile(process.platform === "win32" ? "node.exe" : "node", [tool, String(appid)], { cwd: dir(), windowsHide: true, timeout: 60_000 }, (e) => resolve(!e));
     });
   }
-  return { games, refresh };
+  return { games, refresh, mark };
 }
 
 module.exports = { createPlatino, merge };

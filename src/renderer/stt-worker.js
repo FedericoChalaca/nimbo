@@ -32,7 +32,8 @@ const downloading = new Set(); // archivos que se están bajando de internet (no
 function load() {
   asr ??= useLocalRuntime().then(() => pipeline("automatic-speech-recognition", MODEL, {
     device: "wasm",
-    dtype: "q8",
+    // El codificador (el que "oye") en precisión completa: comprimido (q8) se le escapaban palabras; el decodificador sigue en q8 (rápido).
+    dtype: { encoder_model: "fp32", decoder_model_merged: "q8" },
     // Solo avisa si de verdad descarga: leyendo de la caché también llegan eventos "progress".
     progress_callback: (p) => {
       if (p.status === "download") downloading.add(p.file);
