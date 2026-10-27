@@ -87,6 +87,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   mediaTime: () => ipcRenderer.invoke("media-time"),
   onMediaTime: (fn) => ipcRenderer.on("media-time", (_e, tm) => fn(tm)),
   lyrics: () => ipcRenderer.invoke("lyrics"), // { synced } | { plain } | null | { error }
+  logros: () => ipcRenderer.invoke("logros"), // juegos de Platino con lo que te falta y sus guías
+  logrosRefresh: (appid) => ipcRenderer.invoke("logros-refresh", String(appid)),
   volumeGet: () => ipcRenderer.invoke("volume-get"), // 0–100, o -1 si no se puede
   volumeSet: (v) => ipcRenderer.invoke("volume-set", Math.round(Number(v))),
   reminders: () => ipcRenderer.invoke("reminders"),

@@ -1,6 +1,6 @@
 {
   "name": "nimbo",
-  "version": "0.9.11",
+  "version": "0.9.12",
   "description": "Un compañero flotante para Claude Code en Windows: ve qué hacen tus chats, aprueba permisos y habla con tu Claude",
   "main": "src/main/main.js",
   "private": true,
@@ -8,7 +8,7 @@
     "start": "electron .",
     "install-hooks": "node src/main/install-hooks.js",
     "uninstall-hooks": "node src/main/install-hooks.js --uninstall",
-    "test": "node src/main/platform.js && node src/main/remote-api.js && node src/main/delegate.js && node src/main/updates.js && node src/main/foreground.js && node src/main/orchestrator.js && node src/main/reminders.js && node src/integrations/whatsapp.js && node src/shared/i18n.js && node src/main/tts.js && node src/main/plan.js && node src/main/interview.js && node src/main/options.js && node src/main/alerts.js && node src/integrations/mail.js && node src/integrations/ai.js && node src/integrations/claude-api.js && node src/integrations/trello.js && node src/integrations/telegram.js && node src/integrations/spotify.js && node src/integrations/spotify-api.js && node src/integrations/media.js && node src/integrations/lyrics.js && node src/integrations/volume.js && node examples/tts-service/api/tts.js",
+    "test": "node src/main/platform.js && node src/main/remote-api.js && node src/main/delegate.js && node src/main/updates.js && node src/main/foreground.js && node src/main/orchestrator.js && node src/main/reminders.js && node src/integrations/whatsapp.js && node src/shared/i18n.js && node src/main/tts.js && node src/main/plan.js && node src/main/interview.js && node src/main/options.js && node src/main/alerts.js && node src/integrations/mail.js && node src/integrations/ai.js && node src/integrations/claude-api.js && node src/integrations/trello.js && node src/integrations/telegram.js && node src/integrations/spotify.js && node src/integrations/spotify-api.js && node src/integrations/media.js && node src/integrations/lyrics.js && node src/integrations/volume.js && node src/integrations/platino.js && node examples/tts-service/api/tts.js",
     "promo": "electron scripts/promo/promo-main.js",
     "dist": "electron-builder --win",
     "promo:gif": "electron scripts/promo/gif-main.js",

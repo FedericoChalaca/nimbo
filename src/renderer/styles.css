@@ -505,6 +505,20 @@
   .lyr .ll.cur { color: #fff; transform: scale(1.04); }
   .lyr .plain { white-space: pre-wrap; color: #c9ccd3; font-size: 12.5px; user-select: text; }
   .ahead button.on { background: var(--c); color: #04130a; }
+  /* Logros (Platino) */
+  .lprog { height: 5px; border-radius: 5px; background: rgba(255, 255, 255, .1); margin: 2px 2px 10px; overflow: hidden; }
+  .lprog i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #c98a1a, var(--c)); }
+  .lgames { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+  .lgames button { padding: 3px 10px; font-size: 11.5px; }
+  .lgames button.on { background: var(--c); color: #1a1200; }
+  .lall { width: 100%; margin-bottom: 8px; }
+  .llist { max-height: 250px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3d44 transparent; display: flex; flex-direction: column; gap: 4px; padding-right: 2px; }
+  .lrow { border-radius: 10px; background: rgba(255, 255, 255, .035); }
+  .lrow.open { background: rgba(245, 185, 66, .08); }
+  .ltop { display: flex; align-items: center; gap: 8px; padding: 7px 9px; cursor: pointer; }
+  .ltop b { flex: 1; min-width: 0; font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ldesc { padding: 0 10px 4px; color: #a4a9b2; font-size: 11.5px; }
+  .lguide { padding: 0 10px 9px; color: #e6e8ec; font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; user-select: text; }
   .ahead button.ico { padding: 4px 9px; font-size: 13px; }
   /* Volumen: cápsula estilo Centro de control. Se llena con el color de la app, crece un poquito al pasar el mouse, y el parlante
      cambia de color cuando el relleno lo alcanza (mix-blend no: se calcula con el ancho, así se ve igual en los dos temas). */

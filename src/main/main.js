@@ -19,6 +19,7 @@ const { searchSpotify, TRACK_URI } = require("../integrations/spotify");
 const { watchMedia } = require("../integrations/media");
 const { fetchLyrics } = require("../integrations/lyrics");
 const { createVolume } = require("../integrations/volume");
+const { createPlatino } = require("../integrations/platino");
 const { askInterview } = require("./interview");
 const { createOptions } = require("./options");
 const { extraBinDirs, findInPath, ollamaLocations, userDataDir } = require("./platform");
@@ -720,6 +721,10 @@ ipcMain.handle("media", () => media);
 ipcMain.handle("media-time", () => mediaTime);
 // Volumen de la app que suena (volume.js): main decide cuál (la del reproductor actual); la página solo manda el número.
 const volume = createVolume(path.join(app.getPath("userData"), "bin"));
+// Logros (Platino, solo lectura): la carpeta del proyecto Platino va en prefs.platinoDir (nada personal en el código).
+const platino = createPlatino({ dir: () => String(prefs.platinoDir || "") });
+ipcMain.handle("logros", () => (prefs.platinoDir ? platino.games() : []));
+ipcMain.handle("logros-refresh", async (_e, appid) => { if (prefs.platinoDir) await platino.refresh(String(appid)); return prefs.platinoDir ? platino.games() : []; });
 ipcMain.handle("volume-get", () => (media ? volume.get(media.app) : -1));
 ipcMain.handle("volume-set", (_e, v) => (media ? volume.set(media.app, v) : -1));
 // La letra de lo que suena AHORA (main decide qué canción: la página no puede pedir otra cosa). Caché por canción mientras Nimbo está abierto.

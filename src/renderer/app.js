@@ -684,6 +684,7 @@ function appsList() {
   if (media) out.push({ id: "spotify", name: media.app || "Spotify", color: PLAYER_COLOR[media.app] ?? "#8b93a3", count: 1, badge: media.playing ? "♪" : "❚❚" });
   if (mailData?.on) out.push({ id: "mail", name: t("Correo"), color: "#ea4335", count: mailData.emails.length || 1, badge: String(mailData.emails.length) });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
+  if (logros.length) out.push({ id: "logros", name: t("Logros"), color: "#f5b942", count: logros.reduce((n, g) => n + g.missing.length, 0) || 1, badge: "🏆" });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
   return out.filter((a) => a.count > 0);
 }
@@ -890,6 +891,48 @@ function renderAppView() {
       rows.push(box);
     }
     requestAnimationFrame(tickMusic);
+  } else if (app.id === "logros") {
+    // Platino: elige el juego, mira lo que te falta y la guía de cada logro (o de todos). Las guías se muestran tal cual las escribió Platino.
+    const g = logros.find((x) => x.appid === logrosGame) ?? logros[0];
+    logrosGame = g.appid;
+    head.append(el("span", "sub", t("{0}: {1} de {2}", g.name, g.done, g.total)));
+    const up = el("button", "", logrosBusy ? t("Actualizando…") : t("Actualizar"));
+    up.type = "button";
+    up.title = t("Trae tu progreso de Steam con la herramienta de Platino");
+    up.disabled = logrosBusy;
+    up.onclick = async () => { logrosBusy = true; renderAppView(); logros = await api.logrosRefresh(g.appid).catch(() => logros); logrosBusy = false; renderApps(); renderAppView(); };
+    head.append(up);
+    if (logros.length > 1) {
+      const pick = el("div", "lgames");
+      for (const x of logros) { const b = el("button", x.appid === g.appid ? "on" : "", x.name); b.type = "button"; b.onclick = () => { logrosGame = x.appid; logrosOpen.clear(); renderAppView(); }; pick.append(b); }
+      rows.push(pick);
+    }
+    const bar = el("div", "lprog");
+    bar.append(Object.assign(el("i"), { style: `width:${g.total ? (g.done / g.total) * 100 : 0}%` }));
+    rows.push(bar);
+    if (!g.missing.length) rows.push(el("div", "afoot", t("¡Los tienes todos! 🏆")));
+    else {
+      const all = el("button", "", logrosOpen.size === g.missing.length ? t("Ocultar las guías") : t("Guía de todos los que me faltan ({0})", g.missing.length));
+      all.type = "button";
+      all.className = "lall";
+      all.onclick = () => { if (logrosOpen.size === g.missing.length) logrosOpen.clear(); else g.missing.forEach((a) => logrosOpen.add(a.id)); renderAppView(); };
+      rows.push(all);
+      const list = el("div", "llist");
+      for (const a of [...g.missing].sort((x, y) => (y.percent ?? -1) - (x.percent ?? -1))) { // primero los más comunes (más fáciles)
+        const r = el("div", "lrow" + (logrosOpen.has(a.id) ? " open" : ""));
+        const top = el("div", "ltop");
+        top.append(el("b", "", a.name), el("span", "chip2", a.percent == null ? "–" : `${a.percent.toFixed(1)} %`));
+        top.onclick = () => { logrosOpen.has(a.id) ? logrosOpen.delete(a.id) : logrosOpen.add(a.id); renderAppView(); };
+        r.append(top);
+        if (logrosOpen.has(a.id)) {
+          if (a.description && a.description !== "(oculto)") r.append(el("div", "ldesc", a.description));
+          r.append(el("div", "lguide", a.guide || t("Platino todavía no tiene guía para este logro.")));
+        }
+        list.append(r);
+      }
+      rows.push(list);
+    }
+    rows.push(el("div", "afoot", g.offline ? t("Sin conexión con Platino: se ve tu progreso sin guías.") : t("Progreso del {0}", g.updated ? fmtDue(g.updated) : "?")));
   } else if (app.id === "github") {
     head.append(el("span", "sub", t("{0} sin leer", github.length)));
     for (const n of github.slice(0, 6)) {
@@ -1062,6 +1105,12 @@ api.onTrello((d) => {
 let github = null; // null = todavía no se sabe
 // Plan del día (plan.js en main): llega al arrancar, cada 30 min y cuando lo pides.
 let dayPlan = null; // { fecha, resumen, proyectos, solos, teNecesitan, say }
+// Logros (Platino): llegan al arrancar y cada 30 min; las guías no cambian seguido.
+let logros = [], logrosGame = null, logrosBusy = false;
+const logrosOpen = new Set();
+const loadLogros = () => api.logros?.().then((g) => { logros = Array.isArray(g) ? g : []; renderApps(); if (openApp === "logros") renderAppView(); }).catch(() => {});
+setTimeout(loadLogros, 5000);
+setInterval(loadLogros, 30 * 60_000);
 const fmtPlanDate = (iso) => (iso === new Date().toLocaleDateString("sv") ? t("hoy") : new Date(iso + "T12:00").toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short" }));
 function onPlan(p) {
   dayPlan = p;

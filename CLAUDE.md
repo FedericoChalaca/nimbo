@@ -85,6 +85,7 @@ assets/ build/ examples/ .github/
 | `media.js` + `media-watch.ps1` | Lo que suena en CUALQUIER reproductor (Spotify primero; Apple Music, navegador…), sus botones, en qué segundo va (`time:`) y saltar (`seek:<s>`), con los controles multimedia de Windows. |
 | `lyrics.js` | Letra sincronizada de LRCLIB, solo al tocar «Letra» (`node lyrics.js live` pregunta de verdad). |
 | `volume.js` + `volumen.cs` | Volumen de la app que suena (el del mezclador de Windows, no el general); el ayudante lo compila `windows.js` con el csc de Windows. |
+| `platino.js` | Pastilla «Logros»: lee la app Platino (contrato en `<prefs.platinoDir>\CONTRATO-NIMBO.md`): catálogo y guías de `platino-smoky.vercel.app/games/<appid>.json` + progreso local `progress.<appid>.json`, unidos por `id`. Solo lectura; las guías se muestran tal cual. «Actualizar» corre `tools/fetch-steam.mjs` en la carpeta de Platino. |
 | Isla de música (`app.js`, `musicMode`) | Botón ⤢ o «Letra» en la tarjeta de música: Nimbo se minimiza y queda solo la música (avance, letra, volumen); se arrastra y un clic en ella devuelve a Nimbo. Reemplazó a la barra flotante de música (musicbar.js, borrada en 0.9.7). |
 | `whatsapp.js` + `wa-watch.ps1` | WhatsApp de escritorio en solo lectura (`node whatsapp.js` = autoprueba). |
 
