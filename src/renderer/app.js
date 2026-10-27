@@ -2470,7 +2470,9 @@ api.onWake((clip, meta) => {
   const gate = clip && window.voiceCheckWake ? window.voiceCheckWake(clip, meta).catch(() => true) : Promise.resolve(true);
   // Respuesta INSTANTÁNEA: si el chequeo rápido (confianza de Windows y duración) pasa, Nimbo contesta ya ("te escucho") sin esperar a Whisper;
   // Whisper sigue revisando por detrás y, si resulta ser una voz de fondo, lo descarta (dictate(gate) tira lo grabado).
-  const quick = !clip || !window.voiceCheapWake || window.voiceCheapWake(clip, meta);
+  // Con música sonando NO: Windows "oye nimbo" en la canción cada ~6 s (historial del 2026-10-27, 20 falsas seguidas) y la confianza
+  // no separa la música de una llamada real (0,41–0,60 contra 0,53–0,60). Ahí se espera a Whisper; igual se graba desde la llamada.
+  const quick = !media?.playing && (!clip || !window.voiceCheapWake || window.voiceCheapWake(clip, meta));
   const answered = (quick ? Promise.resolve(true) : gate).then((ok) => {
     if (!ok) return false;
     hidePanel();
