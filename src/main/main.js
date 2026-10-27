@@ -33,6 +33,7 @@ const { cleanDelegates, imageFileName, insideDir } = require("./delegate");
 const { createTelegram, parseInbox } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
 const { createGoogle, CLIENT_ID: GOOGLE_ID, SECRET: GOOGLE_SECRET } = require("../integrations/google");
+const { createInstinct } = require("../integrations/instinct");
 const { createWhatsapp } = require("../integrations/whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
 const { readPlan, planSpeech } = require("./plan");
@@ -698,6 +699,27 @@ const google = createGoogle({
   },
   open: (url) => { shell.openExternal(url); clipboard.writeText(url); },
 });
+// Instinct (instinct.js): Drive AVISA cuando Instinct escribe en «Para Nimbo» (por un tema de ntfy.sh con nombre aleatorio); nada revisa cada tanto.
+const instinct = createInstinct({
+  google, bridge: () => prefs.googleBridge, file: path.join(app.getPath("userData"), "instinct.json"),
+  topic: () => { if (!/^nimbo-[a-f0-9]{32}$/.test(prefs.instinctTopic ?? "")) { prefs.instinctTopic = `nimbo-${require("crypto").randomBytes(16).toString("hex")}`; savePrefs(); } return prefs.instinctTopic; },
+  onNew: (pending, fresh) => {
+    if (win && !win.isDestroyed()) { win.webContents.send("instinct", pending); win.webContents.send("instinct-new", fresh); }
+    if (Notification.isSupported() && !mini) new Notification({ title: t("Instinct anotó para Nimbo"), body: fresh.map((f) => `[${f.tag}] ${f.text}`).join("\n").slice(0, 200) }).show();
+  },
+});
+ipcMain.handle("instinct", () => instinct.pending());
+ipcMain.handle("instinct-check", () => instinct.check(true));
+// Lo que haces con cada cosa: guardarla como pendiente, darla por vista, o escribirle a Instinct en «De Nimbo». Siempre con tu clic.
+ipcMain.handle("instinct-do", async (_e, id, action, text) => {
+  const item = instinct.pending().find((p) => p.id === String(id));
+  if (action === "reply") { await instinct.reply(String(text ?? "")).catch(() => false); return instinct.pending(); }
+  if (!item) return instinct.pending();
+  if (action === "pending") { reminders.add({ text: item.text, due: "" }); remindersChanged(); }
+  return instinct.done(item.id);
+});
+app.whenReady().then(() => { if (prefs.googleBridge?.para) instinct.start(); });
+app.on("before-quit", () => instinct.stop());
 // La agenda (pastilla): tus próximos eventos de Google Calendar.
 ipcMain.handle("agenda", async () => (google.connected() ? google.events(7).catch(() => null) : null));
 ipcMain.on("agenda-open", (_e, link) => { if (/^https:\/\/www\.google\.com\/calendar\//.test(String(link))) shell.openExternal(String(link)); });
@@ -1191,7 +1213,7 @@ async function setupStatus() {
     ai: await aiState(),
     mail: { on: prefs.mailRead === true, count: mail.cached().emails.length, important: mail.cached().emails.filter((e) => e.important).length },
     spotify: !spotifyApi.configured() ? null : spotifyApi.connected(), // null = sin Client ID · false = falta entrar
-    google: { configured: google.configured(), connected: google.connected(), bridge: !!prefs.googleBridge?.folder },
+    google: { configured: google.configured(), connected: google.connected(), bridge: !!prefs.googleBridge?.folder, ...instinct.status() },
     theme: prefs.theme,
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
     wake: process.platform === "win32" ? prefs.wakeWord === true : null, // null = no se puede (solo Windows)
@@ -1296,7 +1318,7 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         break;
       }
       case "google-login": google.login(); break; // no se espera: el permiso se da en el navegador
-      case "google-logout": google.logout(); break;
+      case "google-logout": instinct.stop(); google.logout(); break;
       case "google-bridge": {
         // La carpeta compartida con Instinct: Nimbo la crea (con drive.file solo puede tocar lo que él crea) con sus dos documentos.
         const folder = await google.folder("Nimbo e Instinct");
@@ -1304,6 +1326,7 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         const de = await google.doc(folder.id, "De Nimbo", "Aquí Nimbo le deja a Instinct lo que tiene que contarte.\n");
         prefs.googleBridge = { folder: folder.id, para: para.id, de: de.id, link: /^https:\/\/drive\.google\.com\//.test(folder.link ?? "") ? folder.link : "" };
         savePrefs();
+        instinct.restart(); // ya hay carpeta: empieza a escuchar sus avisos
         break;
       }
       case "telegram-token": {

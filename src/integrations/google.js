@@ -110,6 +110,18 @@ function createGoogle({ clientId, load, save, redirect, open, fetch: doFetch = f
       if (firstText) await this.append(made.id, firstText);
       return { id: made.id, link: made.webViewLink };
     },
+    /** Pide a Drive que AVISE (un POST a `address`) cuando el archivo cambie. Dura hasta `ttlMs` (Drive deja máximo 1 día). → { id, resourceId, until } */
+    async watch(fileId, address, ttlMs = 23 * 3600_000) {
+      const id = crypto.randomUUID();
+      const j = await json("POST", `${API}/drive/v3/files/${encodeURIComponent(fileId)}/watch`, { id, type: "web_hook", address, expiration: String(Date.now() + ttlMs) });
+      return { id, resourceId: str(j.resourceId, 200), until: Number(j.expiration) || Date.now() + ttlMs };
+    },
+    async stopWatch(ch) { if (ch?.id && ch?.resourceId) await call("POST", `${API}/drive/v3/channels/stop`, { id: ch.id, resourceId: ch.resourceId }).catch(() => {}); },
+    /** La versión de un archivo (sube cada vez que cambia): para saber si hay algo nuevo sin leerlo entero. */
+    async version(fileId) {
+      const j = await json("GET", `${API}/drive/v3/files/${encodeURIComponent(fileId)}?fields=version,modifiedTime`);
+      return `${j.version ?? ""}|${j.modifiedTime ?? ""}`;
+    },
     /** El texto de un documento (como texto plano). */
     async read(docId) {
       const r = await call("GET", `${API}/drive/v3/files/${encodeURIComponent(docId)}/export?mimeType=text/plain`);

@@ -684,6 +684,7 @@ function appsList() {
   if (media) out.push({ id: "spotify", name: media.app || "Spotify", color: PLAYER_COLOR[media.app] ?? "#8b93a3", count: 1, badge: media.playing ? "♪" : "❚❚" });
   if (mailData?.on) out.push({ id: "mail", name: t("Correo"), color: "#ea4335", count: mailData.emails.length || 1, badge: String(mailData.emails.length) });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
+  if (instinctItems.length) out.push({ id: "instinct", name: "Instinct", color: "#a78bfa", count: instinctItems.length });
   if (agenda?.length) out.push({ id: "agenda", name: t("Agenda"), color: "#4285f4", count: agenda.length, badge: String(agenda.filter((e) => isToday(e.start)).length || "·") });
   if (logros.length) out.push({ id: "logros", name: playingGame() ? t("Logros · {0}", playingGame().name) : t("Logros"), color: "#f5b942", count: logros.reduce((n, g) => n + g.missing.length, 0) || 1, badge: playingGame() ? "🎮" : "🏆" });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
@@ -901,6 +902,40 @@ function renderAppView() {
       rows.push(box);
     }
     requestAnimationFrame(tickMusic);
+  } else if (app.id === "instinct") {
+    // Lo que Instinct dejó en «Para Nimbo». Es texto de otra app: se muestra tal cual y nada se hace sin tu clic.
+    head.append(el("span", "sub", t("{0} por atender", instinctItems.length)));
+    const chk = el("button", "", t("Revisar ahora"));
+    chk.type = "button";
+    chk.onclick = async () => { instinctItems = await api.instinctCheck().catch(() => instinctItems); renderApps(); renderAppView(); };
+    head.append(chk);
+    const act = async (id, action) => { instinctItems = await api.instinctDo(id, action).catch(() => instinctItems); renderApps(); renderAppView(); };
+    const list = el("div", "llist");
+    for (const it of instinctItems) {
+      const r = el("div", "irow");
+      const top = el("div", "itop");
+      top.append(el("span", `chip2 itag-${it.tag}`, it.tag), el("span", "idate", it.date));
+      r.append(top, el("div", "itext", it.text));
+      const b = el("div", "iacts");
+      const mk = (label, fn, cls = "") => { const x = el("button", cls, label); x.type = "button"; x.onclick = (e) => { e.stopPropagation(); fn(); }; return x; };
+      if (it.tag === "pedido") b.append(mk(t("Pasárselo a Claude"), () => {
+        // Va al chat para que TÚ lo revises y lo envíes (Claude propondrá el encargo con su tarjeta). Nada se ejecuta solo.
+        act(it.id, "done"); pillFocus = false; openApp = null; renderAppView(); toggleChat(true); msg.value = t("Pedido de Instinct: {0}", it.text); msg.focus();
+      }, "main"));
+      else b.append(mk(t("A mis pendientes"), () => act(it.id, "pending"), "main"));
+      b.append(mk(t("Listo"), () => act(it.id, "done")));
+      r.append(b);
+      list.append(r);
+    }
+    rows.push(list);
+    const reply = el("div", "ireply");
+    const input = Object.assign(el("input"), { type: "text", maxLength: 1000, placeholder: t("Escríbele a Instinct (va a «De Nimbo»)…") });
+    const send = el("button", "", t("Mandar"));
+    send.type = "button";
+    send.onclick = async () => { if (!input.value.trim()) return; await api.instinctDo("", "reply", input.value); input.value = ""; setState(state, t("Le dejé el mensaje a Instinct ✓"), { labelFor: 3500 }); };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") send.click(); });
+    reply.append(input, send);
+    rows.push(reply);
   } else if (app.id === "agenda") {
     // Tus próximos 7 días de Google Calendar, por día. Clic = abrirlo en Calendar.
     head.append(el("span", "sub", t("{0} eventos esta semana", agenda.length)));
@@ -1154,6 +1189,16 @@ let dayPlan = null; // { fecha, resumen, proyectos, solos, teNecesitan, say }
 let logros = [], logrosGame = null, logrosBusy = false;
 // Agenda (Google Calendar, google.js): cada 10 min y cuando conectas tu Google.
 let agenda = null;
+// Instinct: lo que anotó en «Para Nimbo» (llega en ~20 s)
+let instinctItems = [];
+api.instinct?.().then((p) => { instinctItems = Array.isArray(p) ? p : []; renderApps(); }).catch(() => {});
+api.onInstinct?.((p) => { instinctItems = Array.isArray(p) ? p : []; renderApps(); if (openApp === "instinct") renderAppView(); });
+api.onInstinctNew?.((fresh) => {
+  if (mini || !fresh?.length) return;
+  emote("hello", 1200);
+  SOUNDS.hello();
+  setState(state, t("Instinct anotó: {0}", fresh[0].text).slice(0, 90), { labelFor: 8000 });
+});
 const isToday = (iso) => String(iso).slice(0, 10) === new Date().toLocaleDateString("sv");
 const loadAgenda = () => api.agenda?.().then((a) => { agenda = Array.isArray(a) ? a : null; renderApps(); if (openApp === "agenda") renderAppView(); }).catch(() => {});
 setTimeout(loadAgenda, 6000);

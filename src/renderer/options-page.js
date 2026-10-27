@@ -217,7 +217,7 @@ function connections() {
     gg.connected && !gg.bridge && btn(busy === "google-bridge" ? t("Creando…") : t("Crear la carpeta con Instinct"), () => doSetup("google-bridge"), "main"),
     gg.bridge && btn(t("Abrir la carpeta"), () => doSetup("open", "google-folder")),
     gg.connected && btn(t("Desconectar"), () => doSetup("google-logout"))],
-  t("Permisos mínimos: Drive solo lo que crea Nimbo (no el resto de tu Drive) y tus eventos de Calendar.")));
+  (gg.watching && gg.listening ? t("Escuchando avisos de Instinct: Drive avisa cuando escribe (nada revisa cada tanto). ") : "") + t("Permisos mínimos: Drive solo lo que crea Nimbo (no el resto de tu Drive) y tus eventos de Calendar.")));
   const ai = s.ai ?? {};
   const keyWhich = $("select", "in"); keyWhich.style.width = "130px";
   for (const [v, l] of [["gemini", "Gemini"], ["openai", "OpenAI"], ["anthropic", "Claude (API)"]]) { const o = $("option", "", l); o.value = v; keyWhich.append(o); }

@@ -87,6 +87,11 @@ contextBridge.exposeInMainWorld("nimbo", {
   mediaTime: () => ipcRenderer.invoke("media-time"),
   onMediaTime: (fn) => ipcRenderer.on("media-time", (_e, tm) => fn(tm)),
   lyrics: () => ipcRenderer.invoke("lyrics"), // { synced } | { plain } | null | { error }
+  instinct: () => ipcRenderer.invoke("instinct"), // lo que Instinct anotó y espera que lo atiendas
+  instinctCheck: () => ipcRenderer.invoke("instinct-check"),
+  instinctDo: (id, action, text) => ipcRenderer.invoke("instinct-do", String(id), String(action), text == null ? "" : String(text)),
+  onInstinct: (fn) => ipcRenderer.on("instinct", (_e, p) => fn(p)),
+  onInstinctNew: (fn) => ipcRenderer.on("instinct-new", (_e, f) => fn(f)),
   agenda: () => ipcRenderer.invoke("agenda"), // tus próximos eventos de Google Calendar, o null
   agendaOpen: (link) => ipcRenderer.send("agenda-open", String(link)),
   onAgendaChanged: (fn) => ipcRenderer.on("agenda-changed", () => fn()),

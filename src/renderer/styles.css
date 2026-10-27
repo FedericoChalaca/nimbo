@@ -542,6 +542,17 @@
   .isle-min .ahead { margin: 0; }
   .isle-min .ahead :is(b, .sub, svg.mini) { display: none; }
   .lmini { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font: 600 12px "Segoe UI", sans-serif; color: #f2f3f5; pointer-events: none; }
+  /* Instinct */
+  .irow { padding: 9px 10px; border-radius: 10px; background: rgba(167, 139, 250, .07); }
+  .itop { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .idate { color: #8f959e; font-size: 11px; }
+  .itext { color: #eceef2; font-size: 12.5px; line-height: 1.4; white-space: pre-wrap; user-select: text; }
+  .iacts { display: flex; gap: 6px; margin-top: 8px; }
+  .iacts button { padding: 4px 10px; font-size: 11.5px; }
+  .iacts button.main { background: var(--c); color: #160d2b; }
+  .ireply { display: flex; gap: 6px; margin-top: 10px; }
+  .ireply input { flex: 1; min-width: 0; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .08); background: #0b0c0e; color: #eceef2; outline: none; font-size: 12px; }
+  .ireply input:focus { border-color: var(--c); }
   .aday { margin: 6px 4px 2px; color: #8fb4ff; font: 700 11px "Segoe UI", sans-serif; text-transform: capitalize; }
   .licon { flex: none; width: 26px; height: 26px; border-radius: 6px; }
   .ltop b { flex: 1; min-width: 0; font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
