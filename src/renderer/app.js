@@ -2384,7 +2384,7 @@ api.onWake((clip, meta) => {
   // Respuesta INSTANTÁNEA: si el chequeo rápido (confianza de Windows y duración) pasa, Nimbo contesta ya ("te escucho") sin esperar a Whisper;
   // Whisper sigue revisando por detrás y, si resulta ser una voz de fondo, lo descarta (dictate(gate) tira lo grabado).
   const quick = !clip || !window.voiceCheapWake || window.voiceCheapWake(clip, meta);
-  const answered = (quick ? Promise.resolve(true) : gate).then(async (ok) => {
+  const answered = (quick ? Promise.resolve(true) : gate).then((ok) => {
     if (!ok) return false;
     hidePanel();
     if (!setupBox.classList.contains("hidden")) closeSetup();
@@ -2393,12 +2393,15 @@ api.onWake((clip, meta) => {
     SOUNDS.hello();
     toggleChat(true);
     logActivity("needs", "Nimbo", t("Me llamaste por voz"));
-    await window.nimboSay?.("escuchando"); // "Aquí estoy" / "Te escucho"… con voz; el micrófono se abre DESPUÉS (si no, Windows baja su volumen)
+    window.nimboSay?.("escuchando"); // "Aquí estoy" / "Te escucho"… mientras ya está grabando (la cancelación de eco del micrófono quita su propia voz)
     return true;
   });
   // Si ya contestó pero Whisper después dice que era una voz de fondo, se deshace: la isla vuelve a su sitio.
   if (quick) gate.then((ok) => { if (!ok) { allOpen = false; toggleChat(false); setState("idle"); logActivity("idle", "Nimbo", t("Falsa alarma: era una voz de fondo")); } });
-  answered.then((ok) => (ok ? window.voiceDictate?.({ autoSend: true, gate, instant: quick }) : null)).catch(() => {}).finally(() => api.wakeDone());
+  void answered;
+  // El micrófono se abre YA, en el momento de la llamada: antes esperaba la revisión de Whisper (~2 s) y la frase (~1,7 s), y lo que decías
+  // justo después de «Hola Nimbo» se perdía (había que repetir la palabra). Mientras la revisión no termine, lo grabado no se ve ni se manda.
+  Promise.resolve(window.voiceDictate?.({ autoSend: true, gate, instant: quick })).catch(() => {}).finally(() => api.wakeDone());
 });
 
 // Atajo global (Ctrl+Alt+Espacio, como el acceso rápido de la app de Claude): abre el chat de Nimbo listo para escribir.

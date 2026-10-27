@@ -7,7 +7,7 @@
   const END_SILENCE_MS = 1100; // este silencio después de hablar = terminaste la frase
   const MIN_SPEECH_MS = 350;
   const MAX_MS = 30_000;
-  const NO_SPEECH_MS = 3000; // llamada por voz: sin habla en este tiempo, se apaga el micrófono
+  const NO_SPEECH_MS = 4000; // llamada por voz: sin habla en este tiempo (contado desde la llamada), se apaga el micrófono
   const PREROLL = 0.3 * SR; // guarda 0,3 s antes de que empieces, para no comerse la primera sílaba
 
   // Whisper a veces "oye" estas frases en el silencio.
