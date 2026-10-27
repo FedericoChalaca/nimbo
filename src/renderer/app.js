@@ -59,7 +59,14 @@ function layout() {
     fitWindow(480);
     return;
   }
-  const open = [...content.children].some((e) => !e.classList.contains("hidden"));
+  // El cuadro para escribirle a Claude vive en la barra de arriba (a la derecha de Nimbo) mientras está abierto: así abajo queda todo el
+  // espacio para tus programas y las pastillas (antes se cortaban y no se podía bajar). Al cerrarse vuelve a su sitio en #content.
+  const chatEl = document.getElementById("chat"), islandBox = document.getElementById("island");
+  const chatUp = !chatEl.classList.contains("hidden") && !musicMode && !mini;
+  if (chatUp && chatEl.parentNode !== islandBox) islandBox.append(chatEl);
+  if (!chatUp && chatEl.parentNode !== content) content.insertBefore(chatEl, document.getElementById("answerBox"));
+  root.classList.toggle("chatup", chatUp);
+  const open = chatUp || [...content.children].some((e) => !e.classList.contains("hidden"));
   root.classList.toggle("open", open);
   if (open) root.classList.remove("solo");
   let w, h;
@@ -1882,7 +1889,7 @@ wrap.addEventListener("click", (e) => {
   if (e.target.closest("#mailBtn")) return openMail();
   // composedPath y no closest(): una píldora se redibuja en su propio clic, y para cuando el
   // evento llega aquí el botón ya no está en la página (closest daba null y se abría el chat).
-  if (e.composedPath().includes(content) || suppressClick) return;
+  if (e.composedPath().includes(content) || e.composedPath().includes(chat) || suppressClick) return;
   lastActivity = Date.now();
   clicks++;
   clearTimeout(clickTimer);
@@ -2681,7 +2688,7 @@ function leanLoop() {
 }
 wrap.addEventListener("pointerdown", (e) => {
   const musicGrab = musicMode && !e.target.closest("button, input, .ll, .pbar, .lyr, .vcap, .ltop, .lguide, .llist");
-  if (e.button !== 0 || mini || (e.target.closest("#content") && !musicGrab) || e.target.closest("#tasks")) return;
+  if (e.button !== 0 || mini || (e.target.closest("#content") && !musicGrab) || e.target.closest("#tasks, #chat")) return;
   dragDown = { x: e.screenX, y: e.screenY, id: e.pointerId };
 });
 wrap.addEventListener("pointermove", (e) => {

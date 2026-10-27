@@ -677,6 +677,25 @@
   #chat button.ico:hover { background: rgba(255, 255, 255, .08); color: #fff; }
   #chat button.ico svg { display: block; width: 17px; height: 17px; margin: auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   #chat button.send { background: #f5f6f8; color: #0b0c0e; }
+  /* Chat arriba, en la barra: el cuadro a la derecha de Nimbo y, debajo, la línea de lo que hace Claude (con sus puntitos) */
+  #island > #chat { position: absolute; top: 7px; left: 112px; right: 18px; z-index: 4; padding: 0; gap: 3px; flex-wrap: nowrap;
+    background: none !important; border: 0 !important; box-shadow: none !important; animation: none; }
+  #island > #chat::before, #island > #chat::after { display: none; }
+  #island > #chat input { height: 30px; font-size: 12px; padding: 0 11px; }
+  #island > #chat button { flex-basis: 28px; height: 28px; }
+  #island > #chat button.ico svg { width: 15px; height: 15px; }
+  #island > #chat select { height: 28px; max-width: 64px; font-size: 10.5px; padding: 0 4px; }
+  /* Para que el cuadro sea ancho: la IA, el pantallazo y adjuntar aparecen al hacer clic en él (o si ya hay algo adjunto) */
+  #island > #chat:not(:focus-within) :is(#ai, #shot, #attach) { display: none; }
+  /* Tus programas: dos filas a la vista y el resto se baja dentro de su caja (antes empujaban y cortaban las pastillas) */
+  #taskBox:not(.compact) .tgrid { max-height: 178px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3d44 transparent; }
+  #island > #chat :is(#slash, #thumbs) { position: absolute; top: 36px; left: 0; right: 0; z-index: 6; }
+  #island > #chat #thumbs:empty { display: none; }
+  .chatup #bar { align-items: flex-end; padding-bottom: 5px; box-sizing: border-box; }
+  .chatup #ticker { height: 18px; }
+  .chatup #ticker span { font-size: 11.5px; line-height: 18px; }
+  .chatup #ticker::after { display: none; } /* "¿En qué te ayudo?" ya está en el cuadro */
+  .chatup #menuBtn { top: auto; bottom: 6px; translate: 0 0; height: 18px; }
   #chat button.send:hover { background: #fff; color: #0b0c0e; }
   #chat button.send svg { stroke-width: 2.4; }
   #chat button.ico.live { background: #e5484d; color: #fff; }
