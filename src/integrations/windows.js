@@ -11,15 +11,16 @@ const SOURCE = path.join(__dirname, "ventanas.cs");
 const CSC = path.join(process.env.SystemRoot ?? "C:\\Windows", "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe");
 
 /** Compila ventanas.cs si hace falta (el nombre lleva el hash del código: una versión nueva se recompila sola). → ruta del .exe */
-function ensureExe(binDir) {
-  const src = fs.readFileSync(SOURCE);
-  const exe = path.join(binDir, `ventanas-${crypto.createHash("sha1").update(src).digest("hex").slice(0, 10)}.exe`);
+// También compila otros ayudantes (volumen.cs): source y prefix cambian; el nombre lleva el hash del código, así un cambio recompila.
+function ensureExe(binDir, source = SOURCE, prefix = "ventanas") {
+  const src = fs.readFileSync(source);
+  const exe = path.join(binDir, `${prefix}-${crypto.createHash("sha1").update(src).digest("hex").slice(0, 10)}.exe`);
   if (fs.existsSync(exe)) return exe;
   if (!fs.existsSync(CSC)) throw new Error("csc");
   fs.mkdirSync(binDir, { recursive: true });
-  execFileSync(CSC, ["-nologo", "-optimize", `-out:${exe}`, SOURCE], { windowsHide: true, timeout: 60_000 });
+  execFileSync(CSC, ["-nologo", "-optimize", `-out:${exe}`, source], { windowsHide: true, timeout: 60_000 });
   // Las versiones viejas se borran; si una sigue abierta (otro Nimbo), Windows no deja: queda para la próxima vez.
-  for (const old of fs.readdirSync(binDir)) if (/^ventanas-.*\.exe$/.test(old) && path.join(binDir, old) !== exe) try { fs.rmSync(path.join(binDir, old), { force: true }); } catch {}
+  for (const old of fs.readdirSync(binDir)) if (old.startsWith(prefix + "-") && old.endsWith(".exe") && path.join(binDir, old) !== exe) try { fs.rmSync(path.join(binDir, old), { force: true }); } catch {}
   return exe;
 }
 

@@ -86,7 +86,7 @@ function layout() {
   let infoW = 0;
   if (open) {
     w = MAX_W;
-    h = Math.min(470, BAR_H + content.offsetHeight + 14);
+    h = Math.min(470, (musicMode ? 0 : BAR_H) + content.offsetHeight + 14); // isla de música: sin la barra de Nimbo
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
     measure.textContent = text;
@@ -794,12 +794,19 @@ function renderAppView() {
     const find = el("button", "", t("Buscar"));
     find.type = "button";
     find.onclick = () => { if (chat.classList.contains("hidden")) toggleChat(true); msg.value = "spotify "; msg.focus(); };
-    head.append(find);
+    if (!musicMode) head.append(find);
+    if (volKey !== lyricsKey) { volKey = lyricsKey; refreshVol(); } // el volumen se pregunta una vez por canción (y al cambiar de app)
     const lyrBtn = el("button", lyricsOn ? "on" : "", t("Letra"));
     lyrBtn.type = "button";
     lyrBtn.title = t("Letra sincronizada (de LRCLIB: solo se manda el título, el artista y la duración)");
-    lyrBtn.onclick = () => { lyricsOn = !lyricsOn; if (lyricsOn && !lyrics) loadLyrics(); renderAppView(); };
+    // Abrir la letra pasa a la isla de música (Nimbo se minimiza y la letra ocupa su lugar)
+    lyrBtn.onclick = () => { lyricsOn = !lyricsOn; if (lyricsOn && !lyrics) loadLyrics(); if (lyricsOn && !musicMode) return enterMusic(); renderAppView(); relayout(); };
     head.append(lyrBtn);
+    const isle = el("button", "ico", musicMode ? "☁" : "⤢");
+    isle.type = "button";
+    isle.title = musicMode ? t("Volver a Nimbo") : t("Isla de música: Nimbo se minimiza y queda solo la música (se puede mover)");
+    isle.onclick = () => (musicMode ? exitMusic() : enterMusic());
+    head.append(isle);
     const now = el("div", "now");
     // La carátula solo puede ser un data: de imagen (lo valida media.js); el CSP no deja cargar nada de fuera.
     const art = media.art ? Object.assign(el("img"), { src: media.art, alt: "" }) : el("div", "noart");
@@ -838,6 +845,23 @@ function renderAppView() {
       bar.onclick = (e) => { const r = bar.getBoundingClientRect(); seekTo(((e.clientX - r.left) / r.width) * mediaTime.dur); };
       prog.append(el("span", "pt", ""), bar, el("span", "pt", ""));
       rows.push(prog);
+    }
+    if (vol >= 0) {
+      const vrow = el("div", "vol");
+      const icon = el("span", "vi", vol === 0 ? "🔇" : vol < 50 ? "🔉" : "🔊");
+      const range = Object.assign(el("input"), { type: "range", min: 0, max: 100, value: vol });
+      range.title = t("Volumen de {0} (no el de Windows)", media.app || "Spotify");
+      range.style.setProperty("--v", `${vol}%`);
+      range.oninput = () => {
+        vol = Number(range.value);
+        range.style.setProperty("--v", `${vol}%`);
+        icon.textContent = vol === 0 ? "🔇" : vol < 50 ? "🔉" : "🔊";
+        clearTimeout(volTimer);
+        volTimer = setTimeout(() => api.volumeSet(vol), 60);
+      };
+      vrow.append(icon, range, el("span", "pt", `${vol}`));
+      range.addEventListener("input", () => { vrow.lastChild.textContent = String(vol); });
+      rows.push(vrow);
     }
     if (lyricsOn) {
       const box = el("div", "lyr");
@@ -1070,6 +1094,28 @@ api.onPlan(onPlan);
 // Música: en qué va, la letra y saltar. La posición se calcula aquí entre una lectura y otra (Windows la da cada tanto).
 const PLAYER_COLOR = { Spotify: "#1db954", "Apple Music": "#fa586a", Chrome: "#4285f4", Edge: "#0c8ee9", Brave: "#fb542b", Firefox: "#ff7139" };
 let mediaTime = null, lyrics = null, lyricsOn = false, lyricsKey = "";
+let musicMode = false, vol = -1, volTimer = 0, volKey = "";
+const refreshVol = () => api.volumeGet?.().then((v) => { if (v !== vol) { vol = v; if (openApp === "spotify") renderAppView(); } }).catch(() => {});
+function enterMusic() {
+  if (!media || mini) return;
+  hidePanel();
+  toggleChat(false);
+  allOpen = false;
+  musicMode = true;
+  root.classList.add("music");
+  openApp = "spotify";
+  appView.classList.remove("hidden");
+  refreshVol();
+  renderAppView();
+  relayout();
+}
+function exitMusic() {
+  if (!musicMode) return;
+  musicMode = false;
+  root.classList.remove("music");
+  hidePanel();
+  relayout();
+}
 const songPos = () => !mediaTime ? 0 : Math.min(mediaTime.dur, mediaTime.pos + (media?.playing ? Math.max(0, Date.now() - mediaTime.at) / 1000 : 0));
 const fmtSec = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
 function seekTo(sec) {
@@ -1114,6 +1160,7 @@ api.onMediaTime?.((tm) => {
   if (openApp === "spotify" && had !== !!tm) renderAppView(); else tickMusic();
 });
 function onMedia(m) {
+  if (!m) exitMusic();
   const key = m ? `${m.title}|${m.artist}` : "";
   if (key !== lyricsKey) { lyricsKey = key; lyrics = null; lastLine = -1; if (lyricsOn && m) loadLyrics(); }
   media = m;
@@ -1425,11 +1472,11 @@ api.onHover((on) => {
       if (Date.now() - lastLove > 6000 && !emoting()) { lastLove = Date.now(); emote("love", 1500); SOUNDS.love(); }
     }, 1900);
     if (state === "sleeping") setState("idle");
-    if (!mini && chat.classList.contains("hidden") && card.classList.contains("hidden") && remindCard.classList.contains("hidden") && setupBox.classList.contains("hidden")) {
+    if (!mini && !musicMode && chat.classList.contains("hidden") && card.classList.contains("hidden") && remindCard.classList.contains("hidden") && setupBox.classList.contains("hidden")) {
       // Como barra de tareas, pasar el mouse no despliega nada (lo pidió Federico): todo sale con un clic (openAll).
       if (!tasks.length && appsList().length) { appsBox.classList.remove("hidden"); renderApps(); }
     }
-  } else if (!allOpen) {
+  } else if (!allOpen && !musicMode) { // la isla de música no se cierra al sacar el mouse
     hoverTimer = setTimeout(() => hidePanel(), 700);
   }
 });
@@ -1591,6 +1638,9 @@ function openAll() {
   if (appsList().length) { appsBox.classList.remove("hidden"); renderApps(); }
   toggleChat(true);
 }
+appView.addEventListener("click", (e) => {
+  if (musicMode && !suppressClick && !e.target.closest("button, input, .ll, .pbar, .lyr")) exitMusic();
+});
 function closeAll() {
   allOpen = false;
   hidePanel();
@@ -2402,7 +2452,8 @@ function leanLoop() {
   leanRaf = dragging ? requestAnimationFrame(leanLoop) : 0;
 }
 wrap.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0 || mini || e.target.closest("#content, #tasks")) return;
+  const musicGrab = musicMode && !e.target.closest("button, input, .ll, .pbar, .lyr");
+  if (e.button !== 0 || mini || (e.target.closest("#content") && !musicGrab) || e.target.closest("#tasks")) return;
   dragDown = { x: e.screenX, y: e.screenY, id: e.pointerId };
 });
 wrap.addEventListener("pointermove", (e) => {
@@ -2428,8 +2479,7 @@ wrap.addEventListener("pointermove", (e) => {
     lumpStyle("scale", "");
     if (!wrap.hasPointerCapture(dragDown.id)) wrap.setPointerCapture(dragDown.id);
     root.classList.add("dragging");
-    hidePanel();
-    toggleChat(false);
+    if (!musicMode) { hidePanel(); toggleChat(false); } // la isla de música se arrastra tal cual
     allOpen = false;
     api.dragStart({ x: dragDown.x, y: dragDown.y }); // el punto donde hiciste clic: al soltarse la resistencia, Nimbo vuelve a quedar ahí bajo el mouse
     SOUNDS.open();

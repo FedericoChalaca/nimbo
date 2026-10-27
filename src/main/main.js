@@ -18,8 +18,8 @@ const { createTrello } = require("../integrations/trello");
 const { searchSpotify, TRACK_URI } = require("../integrations/spotify");
 const { watchMedia } = require("../integrations/media");
 const { fetchLyrics } = require("../integrations/lyrics");
+const { createVolume } = require("../integrations/volume");
 const { askInterview } = require("./interview");
-const { createMusicBar } = require("./musicbar");
 const { createOptions } = require("./options");
 const { extraBinDirs, findInPath, ollamaLocations, userDataDir } = require("./platform");
 const { createAlerts } = require("./alerts");
@@ -246,8 +246,6 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
   telegramAlerts: { claude: true, reminders: true, mail: true, whatsapp: false, onlyAway: true },
   // Otras IAs en el chat (ai.js): cuál se usa ("claude", "ollama", "gemini", "openai") y, si quieres, el modelo de cada una.
   chatProvider: "claude", aiModels: {},
-  // Barra flotante de música (musicbar.js): aparece cuando Spotify tiene algo cargado; se mueve y su sitio se guarda.
-  musicBar: true, musicBarPos: null,
   // Modelo del chat de Nimbo, en la isla y en Telegram ("sonnet" por defecto; "" = el que use tu claude, normalmente el más caro; "haiku" gasta aún menos).
   chatModel: "sonnet",
   // Telegram (opcional): la cuenta vinculada (0 = ninguna). El token del bot NO va aquí: va cifrado en telegram.bin.
@@ -343,7 +341,6 @@ function setMini(on) {
     checkPlan();
   }
   win.webContents.send("mini", mini);
-  musicBar.sync(); // en modo mini (jugando) la barra se esconde
   placeWindow();
 }
 ipcMain.on("toggle-mini", () => setMini(!mini));
@@ -715,20 +712,16 @@ ipcMain.handle("spotify-play", async (_e, uri) => {
 });
 // Lo que suena y sus botones: controles multimedia de Windows (media.js), sin cuenta ni claves.
 let media = null;
-const musicBar = createMusicBar({
-  page: () => `nimbo://app/src/renderer/player.html?lang=${lang()}`,
-  preload: path.join(__dirname, "player-preload.js"),
-  getPos: () => prefs.musicBarPos,
-  setPos: (pos) => { prefs.musicBarPos = pos; savePrefs(); },
-  enabled: () => prefs.musicBar !== false,
-  mini: () => mini,
-});
 let mediaTime = null; // { pos, dur, at }: en qué segundo va (para la barra de avance)
-const player = watchMedia((m) => { media = m; if (win && !win.isDestroyed()) win.webContents.send("media", m); musicBar.update(m); },
+const player = watchMedia((m) => { media = m; if (win && !win.isDestroyed()) win.webContents.send("media", m); },
   (tm) => { mediaTime = tm; if (win && !win.isDestroyed()) win.webContents.send("media-time", tm); });
-app.on("before-quit", () => { player.stop(); musicBar.destroy(); });
+app.on("before-quit", () => player.stop());
 ipcMain.handle("media", () => media);
 ipcMain.handle("media-time", () => mediaTime);
+// Volumen de la app que suena (volume.js): main decide cuál (la del reproductor actual); la página solo manda el número.
+const volume = createVolume(path.join(app.getPath("userData"), "bin"));
+ipcMain.handle("volume-get", () => (media ? volume.get(media.app) : -1));
+ipcMain.handle("volume-set", (_e, v) => (media ? volume.set(media.app, v) : -1));
 // La letra de lo que suena AHORA (main decide qué canción: la página no puede pedir otra cosa). Caché por canción mientras Nimbo está abierto.
 const lyricsCache = new Map();
 ipcMain.handle("lyrics", async () => {
@@ -1390,7 +1383,6 @@ function menuTemplate() {
           prefs.lang = id;
           savePrefs();
           win.loadURL(pageUrl()); // la página se recarga en el idioma nuevo
-          musicBar.reload();
           watchWhatsapp();
           setTimeout(pollGithub, 3000);
         },
@@ -1435,12 +1427,6 @@ function menuTemplate() {
         label: t(label), type: "checkbox", checked: alertCfg()[key] === true,
         click: (item) => { prefs.telegramAlerts = { ...alertCfg(), [key]: item.checked }; savePrefs(); },
       })),
-    },
-    {
-      id: "music-bar", label: t("Barra de música flotante"),
-      type: "checkbox",
-      checked: prefs.musicBar !== false,
-      click: (item) => { prefs.musicBar = item.checked; savePrefs(); if (item.checked) musicBar.reset(); else musicBar.sync(); },
     },
     {
       id: "taskbar", label: t("Nimbo como barra de tareas"),
@@ -1676,7 +1662,6 @@ app.whenReady().then(() => {
   watchWhatsapp();
   if (telegram.status().token) telegram.start();
   remote.listen();
-  musicBar.sync(); // si Spotify ya estaba sonando al arrancar
   setTimeout(refreshTrelloIfStale, 90_000); // después de arrancar, para no competir con el inicio
   setInterval(refreshTrelloIfStale, 15 * 60_000); // reintentos, y por si el PC queda prendido varios días
   setInterval(checkReminders, 15_000);

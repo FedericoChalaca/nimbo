@@ -24,7 +24,6 @@ const SECTIONS = [
     ["taskbar", t("Tus programas abiertos y anclados viven junto a Nimbo y la barra de Windows se esconde.")],
     ["mini", t("Para jugar: Nimbo se encoge a una nubecita en una esquina, sin sonidos ni tarjetas.")],
     ["mini-corner", t("En qué esquina queda el modo mini.")],
-    ["music-bar", t("Una barrita aparte con la canción que suena, que puedes mover a donde quieras.")],
     ["village", t("Tus chats de Claude como personajes en una aldea: los que trabajan brillan.")],
   ] },
   { id: "voice", icon: "🎙", name: t("Voz"), lead: t("Hablarle a Nimbo y que te conteste. El oído (Whisper) funciona en tu PC: el audio no sale de aquí."), items: [

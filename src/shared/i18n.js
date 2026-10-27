@@ -422,6 +422,9 @@ const NIMBO_EN = {
   "Buscando en Spotify…": "Searching Spotify…",
   "Buscar": "Search",
   "Anterior": "Previous",
+  "Volver a Nimbo": "Back to Nimbo",
+  "Isla de música: Nimbo se minimiza y queda solo la música (se puede mover)": "Music island: Nimbo minimizes and only the music stays (you can move it)",
+  "Volumen de {0} (no el de Windows)": "{0} volume (not the Windows one)",
   // Ventana de opciones (options-page.js)
   "Opciones": "Options",
   "Opciones…": "Options…",
@@ -678,7 +681,7 @@ if (typeof module !== "undefined" && require.main === module) {
   const fs = require("fs");
   const path = require("path");
   const missing = [];
-  for (const file of ["src/renderer/app.js", "src/renderer/voice.js", "src/renderer/village.js", "src/renderer/player.js", "src/renderer/options-page.js", "src/main/alerts.js", "src/renderer/index.html", "src/main/main.js", "src/renderer/voice.js", "src/main/orchestrator.js", "src/main/plan.js"]) {
+  for (const file of ["src/renderer/app.js", "src/renderer/voice.js", "src/renderer/village.js", "src/renderer/options-page.js", "src/main/alerts.js", "src/renderer/index.html", "src/main/main.js", "src/renderer/voice.js", "src/main/orchestrator.js", "src/main/plan.js"]) {
     const code = fs.readFileSync(path.join(__dirname, "..", "..", file), "utf8");
     // t("clave"…  y también  t(cond ? "clave uno" : "clave dos"…
     for (const m of code.matchAll(/\bt\((?:[^"()]*\? )?"((?:\\.|[^"\\])*)"(?: : "((?:\\.|[^"\\])*)")?/g)) {

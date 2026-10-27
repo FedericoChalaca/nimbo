@@ -505,6 +505,20 @@
   .lyr .ll.cur { color: #fff; transform: scale(1.04); }
   .lyr .plain { white-space: pre-wrap; color: #c9ccd3; font-size: 12.5px; user-select: text; }
   .ahead button.on { background: var(--c); color: #04130a; }
+  .ahead button.ico { padding: 4px 9px; font-size: 13px; }
+  /* Volumen de la app que suena */
+  .vol { display: flex; align-items: center; gap: 8px; margin: 8px 2px 0; color: #a4a9b2; font: 600 10.5px "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; }
+  .vol .vi { flex: none; width: 18px; font-size: 13px; text-align: center; }
+  .vol .pt { flex: none; width: 24px; text-align: right; }
+  .vol input { flex: 1; height: 4px; appearance: none; border-radius: 4px; cursor: pointer;
+    background: linear-gradient(90deg, var(--c) var(--v, 50%), rgba(255, 255, 255, .14) var(--v, 50%)); }
+  .vol input::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
+  /* Isla de música: Nimbo se minimiza (sin su barra ni el chat) y la tarjeta de música es toda la isla; se mueve arrastrándola */
+  .music #bar { display: none; }
+  .music #content { top: 7px !important; }
+  .music #appview { cursor: grab; }
+  .music #appview :is(button, input, .ll, .pbar) { cursor: pointer; }
+  .music .lyr { max-height: 260px; }
   /* Conexiones y ajustes */
   #setup { padding: 12px 14px 12px; }
   .crow { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-top: 1px solid rgba(255, 255, 255, .06); }
