@@ -85,7 +85,7 @@ function layout() {
   root.classList.toggle("split", split);
   let infoW = 0;
   if (open) {
-    w = MAX_W;
+    w = musicMode && !lyricsOn ? 372 : MAX_W; // isla de música compacta: más o menos lo que ocupa Nimbo
     h = Math.min(470, (musicMode ? 0 : BAR_H) + content.offsetHeight + 14); // isla de música: sin la barra de Nimbo
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
@@ -800,7 +800,7 @@ function renderAppView() {
     lyrBtn.type = "button";
     lyrBtn.title = t("Letra sincronizada (de LRCLIB: solo se manda el título, el artista y la duración)");
     // Abrir la letra pasa a la isla de música (Nimbo se minimiza y la letra ocupa su lugar)
-    lyrBtn.onclick = () => { lyricsOn = !lyricsOn; if (lyricsOn && !lyrics) loadLyrics(); if (lyricsOn && !musicMode) return enterMusic(); renderAppView(); relayout(); };
+    lyrBtn.onclick = () => { lyricsOn = !lyricsOn; if (lyricsOn && !lyrics) loadLyrics(); if (lyricsOn && !musicMode) return enterMusic(); root.classList.toggle("music-sm", musicMode && !lyricsOn); renderAppView(); relayout(); };
     head.append(lyrBtn);
     const isle = el("button", "ico", musicMode ? "☁" : "⤢");
     isle.type = "button";
@@ -1110,9 +1110,9 @@ function volumeCapsule() {
     clearTimeout(volTimer);
     volTimer = setTimeout(() => api.volumeSet(vol), 60);
   };
-  const fromX = (x) => { const r = cap.getBoundingClientRect(); return ((x - r.left) / r.width) * 100; };
-  cap.addEventListener("pointerdown", (e) => { e.stopPropagation(); cap.setPointerCapture(e.pointerId); cap.classList.add("drag"); setVol(fromX(e.clientX)); });
-  cap.addEventListener("pointermove", (e) => { if (cap.hasPointerCapture(e.pointerId)) setVol(fromX(e.clientX)); });
+  const at = (e) => { const r = cap.getBoundingClientRect(); return r.height > r.width ? ((r.bottom - e.clientY) / r.height) * 100 : ((e.clientX - r.left) / r.width) * 100; };
+  cap.addEventListener("pointerdown", (e) => { e.stopPropagation(); cap.setPointerCapture(e.pointerId); cap.classList.add("drag"); setVol(at(e)); });
+  cap.addEventListener("pointermove", (e) => { if (cap.hasPointerCapture(e.pointerId)) setVol(at(e)); });
   const up = (e) => { if (cap.hasPointerCapture?.(e.pointerId)) cap.releasePointerCapture(e.pointerId); cap.classList.remove("drag"); };
   cap.addEventListener("pointerup", up);
   cap.addEventListener("pointercancel", up);
@@ -1132,6 +1132,7 @@ function enterMusic() {
   allOpen = false;
   musicMode = true;
   root.classList.add("music");
+  root.classList.toggle("music-sm", !lyricsOn); // sin letra: del tamaño de Nimbo
   openApp = "spotify";
   appView.classList.remove("hidden");
   refreshVol();
@@ -1141,7 +1142,7 @@ function enterMusic() {
 function exitMusic() {
   if (!musicMode) return;
   musicMode = false;
-  root.classList.remove("music");
+  root.classList.remove("music", "music-sm");
   hidePanel();
   relayout();
 }
@@ -1190,6 +1191,7 @@ api.onMediaTime?.((tm) => {
 });
 function onMedia(m) {
   if (!m) exitMusic();
+  root.classList.toggle("music-sm", musicMode && !lyricsOn);
   const key = m ? `${m.title}|${m.artist}` : "";
   if (key !== lyricsKey) { lyricsKey = key; lyrics = null; lastLine = -1; if (lyricsOn && m) loadLyrics(); }
   media = m;

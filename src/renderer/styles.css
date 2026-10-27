@@ -523,7 +523,30 @@
   .vnum { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: #fff; font: 700 11px "Segoe UI Variable Text", "Segoe UI", sans-serif;
     font-variant-numeric: tabular-nums; opacity: .75; pointer-events: none; text-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
   /* Isla de música: Nimbo se minimiza (sin su barra ni el chat) y la tarjeta de música es toda la isla; se mueve arrastrándola */
-  .music #bar { display: none; }
+  .music :is(#bar, #char, #glow, #badge, #wakeDot) { display: none !important; } /* ni un pedacito de Nimbo detrás */
+  /* Compacta (sin letra): una fila del alto de Nimbo. Carátula, canción, controles; el avance es una línea abajo; a la derecha, dos
+     botoncitos (letra, volver) y el volumen en vertical: una columna angosta que se llena de abajo hacia arriba. */
+  .music-sm #content { left: 7px; right: 7px; }
+  .music-sm #appview { padding: 9px 70px 13px 10px; }
+  .music-sm .ahead { position: absolute; right: 26px; top: 8px; bottom: 8px; margin: 0; flex-direction: column; justify-content: center; gap: 4px; }
+  .music-sm .ahead > :not(button) { display: none; }
+  .music-sm .ahead button { width: 30px; height: 24px; padding: 0; font-size: 10.5px; border-radius: 8px; }
+  .music-sm .ahead button:not(.ico) { font-size: 0; }
+  .music-sm .ahead button:not(.ico)::before { content: "♪"; font-size: 13px; }
+  .music-sm .now { gap: 10px; padding: 0; }
+  .music-sm .now :is(img, .noart) { width: 46px; height: 46px; border-radius: 9px; }
+  .music-sm .now .meta b { font-size: 12.5px; }
+  .music-sm .now .meta i { font-size: 11px; }
+  .music-sm .now .ctl button { width: 28px; height: 28px; }
+  .music-sm .now .ctl .play { width: 32px; height: 32px; }
+  .music-sm .prog { position: absolute; left: 66px; right: 76px; bottom: 6px; margin: 0; }
+  .music-sm .prog .pt { display: none; }
+  .music-sm .pbar { height: 3px; }
+  .music-sm .vcap { position: absolute; right: 9px; top: 9px; bottom: 9px; width: 13px; height: auto !important; margin: 0 !important; border-radius: 7px; cursor: ns-resize; }
+  .music-sm .vcap:hover, .music-sm .vcap.drag { width: 17px; right: 7px; }
+  .music-sm .vfill { top: auto; bottom: 0; width: 100%; height: var(--v, 50%); transition: height .12s ease-out; background: linear-gradient(0deg, color-mix(in srgb, var(--c) 70%, #000), var(--c)); }
+  .music-sm .vcap.drag .vfill { transition: none; }
+  .music-sm .vcap :is(svg, .vnum) { display: none; }
   .music #content > :not(#appview) { display: none !important; } /* ni chat ni otras tarjetas: solo la música (siguen ahí al volver a Nimbo) */
   .music #content { top: 7px !important; }
   .music #appview { cursor: grab; }
