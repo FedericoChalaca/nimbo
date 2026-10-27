@@ -528,7 +528,7 @@ function renderSessions() {
 // minimizados se ven apagados). Al pasar el mouse, en grande; un clic lo trae al frente, o lo minimiza si ya estaba al frente.
 const tasksEl = document.getElementById("tasks");
 const taskBox = document.getElementById("taskBox");
-const MAX_TASKS = 7;
+const MAX_TASKS = 5; // en la barra; todos (abiertos y anclados) salen al abrir Nimbo, con buscador
 let tasks = []; // [{ key, name, icon, fg, min, windows: [{ h, title, fg, min }] }]
 let openTask = null; // el programa con varias ventanas que tiene su lista abierta
 let lastTasksKey = "";
@@ -545,7 +545,9 @@ function taskClick(a) {
   api.taskDo("focus", (a.windows.find((w) => !w.min) ?? a.windows[0]).h);
 }
 // Flotando solo van los 4 últimos que usaste (abiertos); pegado a un borde, todos (hasta MAX_TASKS) con los anclados primero.
-const shownTasks = () => curEdge() === "float" ? tasks.filter((a) => a.windows.length).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 4) : tasks.slice(0, MAX_TASKS);
+// Pegado a un borde: primero los abiertos (en su orden) y después los anclados cerrados, hasta MAX_TASKS.
+const shownTasks = () => curEdge() === "float" ? tasks.filter((a) => a.windows.length).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 4)
+  : [...tasks.filter((a) => a.windows.length), ...tasks.filter((a) => !a.windows.length)].slice(0, MAX_TASKS);
 function renderTasks() {
   const list = shownTasks();
   const key = mini ? "" : curEdge() + list.map((a) => a.key + a.fg + a.min + !!a.icon + a.windows.length).join("|") + tasks.length;
@@ -561,13 +563,38 @@ function renderTasks() {
     return b;
   });
   if (curEdge() !== "float" && tasks.length > MAX_TASKS) shown.push(el("span", "tkmore", `+${tasks.length - MAX_TASKS}`));
+  // La lupa: abre Nimbo con todos tus programas y el buscador listo para escribir
+  const find = el("button", "tk tkfind");
+  find.type = "button";
+  find.title = t("Buscar un programa");
+  const fsvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  fsvg.setAttribute("viewBox", "0 0 24 24");
+  const fp = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  fp.setAttribute("d", "M10.5 4a6.5 6.5 0 015.2 10.4l4.2 4.2-1.4 1.4-4.2-4.2A6.5 6.5 0 1110.5 4zm0 2a4.5 4.5 0 100 9 4.5 4.5 0 000-9z");
+  fsvg.append(fp);
+  find.append(fsvg);
+  if (tasks.length) shown.push(find);
   tasksEl.replaceChildren(...shown);
   relayout();
+}
+let taskQuery = "";
+const taskSearch = Object.assign(el("input", "tsearch"), { type: "search", spellcheck: false, autocomplete: "off" });
+taskSearch.placeholder = t("Buscar entre tus programas…");
+taskSearch.addEventListener("input", () => { taskQuery = taskSearch.value.trim().toLowerCase(); renderTaskBox(); });
+taskSearch.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { taskSearch.value = ""; taskQuery = ""; renderTaskBox(); }
+  if (e.key === "Enter") { const hit = taskMatches(); if (hit.length === 1) { taskClick(hit[0]); closeAll(); } }
+});
+const taskMatches = () => (taskQuery ? tasks.filter((a) => a.name.toLowerCase().includes(taskQuery) || a.windows.some((w) => w.title.toLowerCase().includes(taskQuery))) : tasks);
+const taskList = el("div");
+function openTaskSearch() {
+  openAll();
+  setTimeout(() => taskSearch.focus(), 80);
 }
 function renderTaskBox() {
   if (taskBox.classList.contains("hidden")) return;
   const tiles = el("div", "tgrid");
-  for (const a of tasks) {
+  for (const a of taskMatches()) {
     const tile = el("button", `tile${a.fg ? " fg" : ""}${a.min ? " min" : ""}${a.windows.length ? "" : " off"}${openTask === a.key ? " on" : ""}`);
     tile.type = "button";
     tile.title = a.windows.length ? a.windows.map((w) => w.title).join("\n") : t("{0} (anclado: clic para abrirlo)", a.name);
@@ -594,7 +621,9 @@ function renderTaskBox() {
     rows.push(r);
   }
   const openCount = tasks.filter((a) => a.windows.length).length;
-  taskBox.replaceChildren(el("div", "head", t("{0} programas abiertos · clic derecho para anclar", openCount)), tiles, ...rows);
+  if (taskQuery && !tiles.children.length) tiles.append(el("div", "afoot", t("Ningún programa abierto o anclado se llama así.")));
+  taskList.replaceChildren(el("div", "head", t("{0} programas abiertos · clic derecho para anclar", openCount)), tiles, ...rows);
+  if (taskSearch.parentNode !== taskBox) taskBox.replaceChildren(taskSearch, taskList);
 }
 // Clic derecho en un programa (chiquito o en grande): anclarlo, quitarlo o cerrarlo (menú de main).
 document.addEventListener("contextmenu", (e) => {
@@ -1682,6 +1711,7 @@ let clicks = 0;
 let clickTimer;
 wrap.addEventListener("click", (e) => {
   if (e.target.closest("#menuBtn")) return api.openOptions(); // ⋮ = la ventana de opciones (clic derecho sigue siendo el menú rápido)
+  if (e.target.closest("#tasks .tkfind")) return openTaskSearch();
   const tk = e.target.closest("#tasks .tk");
   if (tk) return taskClick(tasks.find((a) => a.key === tk.dataset.key));
   if (e.target.closest("#waBtn")) return openWaSummary();

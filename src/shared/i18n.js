@@ -425,6 +425,9 @@ const NIMBO_EN = {
   "Volver a Nimbo": "Back to Nimbo",
   "Isla de música: Nimbo se minimiza y queda solo la música (se puede mover)": "Music island: Nimbo minimizes and only the music stays (you can move it)",
   "Volumen de {0} (no el de Windows)": "{0} volume (not the Windows one)",
+  "Buscar un programa": "Find an app",
+  "Buscar entre tus programas…": "Search your apps…",
+  "Ningún programa abierto o anclado se llama así.": "No open or pinned app is called that.",
   // Ventana de opciones (options-page.js)
   "Opciones": "Options",
   "Opciones…": "Options…",

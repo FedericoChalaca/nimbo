@@ -720,6 +720,14 @@
   #taskBox { padding: 10px 10px 8px; }
   #taskBox .head { color: #8f959e; font-size: 11px; margin: 0 4px 6px; }
   .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 4px; }
+  .tsearch { width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 7px 12px 7px 32px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .08); outline: none;
+    background: #0b0c0e url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%238f959e' d='M10.5 4a6.5 6.5 0 015.2 10.4l4.2 4.2-1.4 1.4-4.2-4.2A6.5 6.5 0 1110.5 4zm0 2a4.5 4.5 0 100 9 4.5 4.5 0 000-9z'/%3E%3C/svg%3E") no-repeat 11px 50% / 15px;
+    color: #eceef2; font: 12.5px "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+  .tsearch:focus { border-color: color-mix(in srgb, var(--accent-a) 60%, transparent); }
+  #taskBox.compact .tsearch { display: none; }
+  #tasks .tkfind svg { width: 16px; height: 16px; fill: #9aa0a8; }
+  #tasks .tkfind:hover svg { fill: #fff; }
+  #tasks .tk.tkfind:not(.off)::before { display: none; }
   #taskBox.compact { padding: 6px 8px; }
   #taskBox.compact .head { display: none; }
   #taskBox.compact .tgrid { display: flex; flex-wrap: wrap; gap: 2px; }
