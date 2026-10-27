@@ -684,7 +684,7 @@ function appsList() {
   if (media) out.push({ id: "spotify", name: media.app || "Spotify", color: PLAYER_COLOR[media.app] ?? "#8b93a3", count: 1, badge: media.playing ? "♪" : "❚❚" });
   if (mailData?.on) out.push({ id: "mail", name: t("Correo"), color: "#ea4335", count: mailData.emails.length || 1, badge: String(mailData.emails.length) });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
-  if (instinctItems.length) out.push({ id: "instinct", name: "Instinct", color: "#a78bfa", count: instinctItems.length });
+  if (instinctItems.length) out.push({ id: "instinct", name: neo, color: "#a78bfa", count: instinctItems.length });
   if (agenda?.length) out.push({ id: "agenda", name: t("Agenda"), color: "#4285f4", count: agenda.length, badge: String(agenda.filter((e) => isToday(e.start)).length || "·") });
   if (logros.length) out.push({ id: "logros", name: playingGame() ? t("Logros · {0}", playingGame().name) : t("Logros"), color: "#f5b942", count: logros.reduce((n, g) => n + g.missing.length, 0) || 1, badge: playingGame() ? "🎮" : "🏆" });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
@@ -922,7 +922,7 @@ function renderAppView() {
       if (it.tag === "pedido" || it.tag === "respuesta") b.append(mk(t("Pasárselo a Claude"), () => {
         // Va al chat para que TÚ lo revises y lo envíes (Claude propondrá el encargo con su tarjeta). Nada se ejecuta solo.
         act(it.id, "done"); pillFocus = false; openApp = null; renderAppView(); toggleChat(true);
-        msg.value = it.tag === "respuesta" ? t("Mi respuesta (por WhatsApp) a «{0}»: {1}", it.q || "?", it.text) : t("Pedido de Instinct: {0}", it.text);
+        msg.value = it.tag === "respuesta" ? t("Mi respuesta (por WhatsApp) a «{0}»: {1}", it.q || "?", it.text) : t("Pedido de {0}: {1}", neo, it.text);
         msg.focus();
       }, "main"));
       else b.append(mk(t("A mis pendientes"), () => act(it.id, "pending"), "main"));
@@ -932,16 +932,16 @@ function renderAppView() {
     }
     rows.push(list);
     const reply = el("div", "ireply");
-    const input = Object.assign(el("input"), { type: "text", maxLength: 1000, placeholder: t("Escríbele a Instinct (va a «De Nimbo»)…") });
+    const input = Object.assign(el("input"), { type: "text", maxLength: 1000, placeholder: t("Escríbele a {0} (va a «De Nimbo»)…", neo) });
     const send = el("button", "", t("Mandar"));
     send.type = "button";
-    send.onclick = async () => { if (!input.value.trim()) return; await api.instinctDo("", "reply", input.value); input.value = ""; setState(state, t("Le dejé el mensaje a Instinct ✓"), { labelFor: 3500 }); };
+    send.onclick = async () => { if (!input.value.trim()) return; await api.instinctDo("", "reply", input.value); input.value = ""; setState(state, t("Le dejé el mensaje a {0} ✓", neo), { labelFor: 3500 }); };
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") send.click(); });
     // Preguntar: Instinct te lo pregunta por WhatsApp y tu respuesta vuelve aquí como [respuesta]
     const ask = el("button", "", t("Preguntarme por WhatsApp"));
     ask.type = "button";
-    ask.title = t("Instinct te hace esta pregunta por WhatsApp y tu respuesta vuelve a Nimbo");
-    ask.onclick = async () => { if (!input.value.trim()) return; await api.instinctDo("", "ask", input.value); input.value = ""; setState(state, t("Instinct te lo va a preguntar por WhatsApp ✓"), { labelFor: 4000 }); };
+    ask.title = t("{0} te hace esta pregunta por WhatsApp y tu respuesta vuelve a Nimbo", neo);
+    ask.onclick = async () => { if (!input.value.trim()) return; await api.instinctDo("", "ask", input.value); input.value = ""; setState(state, t("{0} te lo va a preguntar por WhatsApp ✓", neo), { labelFor: 4000 }); };
     reply.append(input, send, ask);
     rows.push(reply);
   } else if (app.id === "agenda") {
@@ -1199,13 +1199,17 @@ let logros = [], logrosGame = null, logrosBusy = false;
 let agenda = null;
 // Instinct: lo que anotó en «Para Nimbo» (llega en ~20 s)
 let instinctItems = [];
+// Cómo le dices a tu IA de WhatsApp (Opciones → Conexiones → Tu Google). "Instinct" si no lo cambiaste.
+let neo = "Instinct";
+api.instinctName?.().then((n) => { neo = n || "Instinct"; renderApps(); }).catch(() => {});
+api.onInstinctName?.((n) => { neo = n || "Instinct"; renderApps(); if (openApp === "instinct") renderAppView(); });
 api.instinct?.().then((p) => { instinctItems = Array.isArray(p) ? p : []; renderApps(); }).catch(() => {});
 api.onInstinct?.((p) => { instinctItems = Array.isArray(p) ? p : []; renderApps(); if (openApp === "instinct") renderAppView(); });
 api.onInstinctNew?.((fresh) => {
   if (mini || !fresh?.length) return;
   emote("hello", 1200);
   SOUNDS.hello();
-  setState(state, t("Instinct anotó: {0}", fresh[0].text).slice(0, 90), { labelFor: 8000 });
+  setState(state, t("{0} anotó: {1}", neo, fresh[0].text).slice(0, 90), { labelFor: 8000 });
 });
 const isToday = (iso) => String(iso).slice(0, 10) === new Date().toLocaleDateString("sv");
 const loadAgenda = () => api.agenda?.().then((a) => { agenda = Array.isArray(a) ? a : null; renderApps(); if (openApp === "agenda") renderAppView(); }).catch(() => {});

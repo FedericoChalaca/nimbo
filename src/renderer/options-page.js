@@ -216,6 +216,8 @@ function connections() {
     gg.configured && !gg.connected && btn(t("Iniciar sesión"), () => doSetup("google-login"), "main"),
     gg.connected && !gg.bridge && btn(busy === "google-bridge" ? t("Creando…") : t("Crear la carpeta con Instinct"), () => doSetup("google-bridge"), "main"),
     gg.bridge && btn(t("Abrir la carpeta"), () => doSetup("open", "google-folder")),
+    gg.bridge && (() => { const n = keep("instinct-name", $("input", "in")); if (!n.value) n.value = gg.neo || ""; n.placeholder = t("Nombre de tu IA de WhatsApp"); n.title = t("Cómo le dices a tu IA de WhatsApp (Instinct): así sale en Nimbo"); n.maxLength = 24; n.style.width = "150px"; return n; })(),
+    gg.bridge && btn(t("Guardar nombre"), () => doSetup("instinct-name", drafts["instinct-name"] ?? gg.neo)),
     gg.connected && btn(t("Desconectar"), () => doSetup("google-logout"))],
   (gg.watching && gg.listening ? t("Escuchando avisos de Instinct: Drive avisa cuando escribe (nada revisa cada tanto). ") : "") + t("Permisos mínimos: Drive solo lo que crea Nimbo (no el resto de tu Drive) y tus eventos de Calendar.")));
   const ai = s.ai ?? {};

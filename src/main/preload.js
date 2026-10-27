@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   lyrics: () => ipcRenderer.invoke("lyrics"), // { synced } | { plain } | null | { error }
   instinct: () => ipcRenderer.invoke("instinct"), // lo que Instinct anotó y espera que lo atiendas
   instinctCheck: () => ipcRenderer.invoke("instinct-check"),
+  instinctName: () => ipcRenderer.invoke("instinct-name"),
+  onInstinctName: (fn) => ipcRenderer.on("instinct-name", (_e, n) => fn(n)),
   instinctDo: (id, action, text) => ipcRenderer.invoke("instinct-do", String(id), String(action), text == null ? "" : String(text)),
   onInstinct: (fn) => ipcRenderer.on("instinct", (_e, p) => fn(p)),
   onInstinctNew: (fn) => ipcRenderer.on("instinct-new", (_e, f) => fn(f)),

@@ -699,18 +699,20 @@ const google = createGoogle({
   },
   open: (url) => { shell.openExternal(url); clipboard.writeText(url); },
 });
+const neoName = () => String(prefs.instinctName || "").trim() || "Instinct"; // cómo le dices a tu IA de WhatsApp (ajuste)
 // Instinct (instinct.js): Drive AVISA cuando Instinct escribe en «Para Nimbo» (por un tema de ntfy.sh con nombre aleatorio); nada revisa cada tanto.
 const instinct = createInstinct({
   google, bridge: () => prefs.googleBridge, file: path.join(app.getPath("userData"), "instinct.json"),
   topic: () => { if (!/^nimbo-[a-f0-9]{32}$/.test(prefs.instinctTopic ?? "")) { prefs.instinctTopic = `nimbo-${require("crypto").randomBytes(16).toString("hex")}`; savePrefs(); } return prefs.instinctTopic; },
   onNew: (pending, fresh) => {
     if (win && !win.isDestroyed()) { win.webContents.send("instinct", withQ(pending)); win.webContents.send("instinct-new", fresh); }
-    if (Notification.isSupported() && !mini) new Notification({ title: t("Instinct anotó para Nimbo"), body: fresh.map((f) => `[${f.tag}] ${f.text}`).join("\n").slice(0, 200) }).show();
+    if (Notification.isSupported() && !mini) new Notification({ title: t("{0} anotó para Nimbo", neoName()), body: fresh.map((f) => `[${f.tag}] ${f.text}`).join("\n").slice(0, 200) }).show();
   },
 });
 // Cada [respuesta #pN] va con la pregunta que contesta (para verlas juntas)
 const withQ = (list) => list.map((p) => (p.tag === "respuesta" ? { ...p, q: instinct.question(p.ref) } : p));
 ipcMain.handle("instinct", () => withQ(instinct.pending()));
+ipcMain.handle("instinct-name", () => neoName());
 ipcMain.handle("instinct-check", async () => withQ(await instinct.check(true)));
 // Lo que haces con cada cosa: guardarla como pendiente, darla por vista, o escribirle a Instinct en «De Nimbo». Siempre con tu clic.
 ipcMain.handle("instinct-do", async (_e, id, action, text) => {
@@ -1216,7 +1218,7 @@ async function setupStatus() {
     ai: await aiState(),
     mail: { on: prefs.mailRead === true, count: mail.cached().emails.length, important: mail.cached().emails.filter((e) => e.important).length },
     spotify: !spotifyApi.configured() ? null : spotifyApi.connected(), // null = sin Client ID · false = falta entrar
-    google: { configured: google.configured(), connected: google.connected(), bridge: !!prefs.googleBridge?.folder, ...instinct.status() },
+    google: { configured: google.configured(), connected: google.connected(), bridge: !!prefs.googleBridge?.folder, ...instinct.status(), neo: neoName() },
     theme: prefs.theme,
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
     wake: process.platform === "win32" ? prefs.wakeWord === true : null, // null = no se puede (solo Windows)
@@ -1322,6 +1324,11 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
       }
       case "google-login": google.login(); break; // no se espera: el permiso se da en el navegador
       case "google-logout": instinct.stop(); google.logout(); break;
+      case "instinct-name":
+        prefs.instinctName = String(value ?? "").replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 24);
+        savePrefs();
+        win?.webContents.send("instinct-name", neoName());
+        break;
       case "google-bridge": {
         // La carpeta compartida con Instinct: Nimbo la crea (con drive.file solo puede tocar lo que él crea) con sus dos documentos.
         const folder = await google.folder("Nimbo e Instinct");
