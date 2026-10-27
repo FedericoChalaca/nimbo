@@ -16,7 +16,11 @@ Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el con
 
 ## Convenciones del dueño
 - Nada de claves ni datos personales en el repo (es público); lo suyo va en `%APPDATA%\nimbo\prefs.json`.
-- Subir (push) o publicar una versión solo cuando lo pide. Commits con el correo noreply de GitHub.
+- **Cada cambio se guarda Y se sube** (decisión del dueño, 2026-10-27): commit + `git push` a la rama `multiplataforma` tras cada cambio que funcione,
+  para no perder nada. Versión 0.9.x (0.9.1, 0.9.2…, se sube el número en `package.json`); **NUNCA pasar a 1.0 ni publicar un release** hasta que él lo diga.
+  Commits con el correo noreply de GitHub.
+- Nunca reescribir `prefs.json` ni `package.json` con PowerShell 5.1 (`Get-Content`/`Set-Content` cambian la codificación: un BOM dejó a Nimbo de fábrica y
+  borró sus ajustes; las tildes de `package.json` se dañaron). Editar con Node o con la herramienta de edición.
 - Trabajo fácil con Sonnet, difícil con Opus: avisarle ANTES de empezar lo difícil. Cuidar el costo de las pruebas que llaman
   a `claude -p` con datos reales (una consulta con Opus costó ~1 USD).
 - No mover el mouse ni hacer clics reales en su PC sin preguntar.
