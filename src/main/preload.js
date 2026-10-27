@@ -83,7 +83,10 @@ contextBridge.exposeInMainWorld("nimbo", {
   onSpotify: (fn) => ipcRenderer.on("spotify", (_e, ok) => fn(ok)),
   media: () => ipcRenderer.invoke("media"),
   onMedia: (fn) => ipcRenderer.on("media", (_e, m) => fn(m)),
-  mediaDo: (order) => ipcRenderer.send("media-do", order),
+  mediaDo: (order) => ipcRenderer.send("media-do", order), // "toggle" | "next" | "prev" | "seek:<segundos>" (media.js valida)
+  mediaTime: () => ipcRenderer.invoke("media-time"),
+  onMediaTime: (fn) => ipcRenderer.on("media-time", (_e, tm) => fn(tm)),
+  lyrics: () => ipcRenderer.invoke("lyrics"), // { synced } | { plain } | null | { error }
   reminders: () => ipcRenderer.invoke("reminders"),
   onReminders: (fn) => ipcRenderer.on("reminders", (_e, list) => fn(list)),
   onReminder: (fn) => ipcRenderer.on("reminder", (_e, r) => fn(r)),

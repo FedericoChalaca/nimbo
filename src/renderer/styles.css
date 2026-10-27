@@ -485,6 +485,24 @@
   .now .ctl .play { width: 38px; height: 38px; background: var(--c); color: #04130a; }
   .now .ctl .play:hover { background: color-mix(in srgb, var(--c) 85%, #fff); }
   .now .ctl svg { width: 18px; height: 18px; fill: currentColor; }
+  /* Barra de avance: lo que va · la barra (clic = saltar) · lo que falta */
+  .prog { display: flex; align-items: center; gap: 8px; margin: 10px 2px 2px; font: 600 10.5px "Segoe UI Variable Text", "Segoe UI", sans-serif; color: #a4a9b2; font-variant-numeric: tabular-nums; }
+  .prog .pt { flex: none; width: 34px; }
+  .prog .pt:last-child { text-align: right; }
+  .pbar { position: relative; flex: 1; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .14); cursor: pointer; }
+  .pbar::before { content: ""; position: absolute; inset: -7px 0; } /* más fácil de atinar */
+  .pbar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 4px; background: var(--c); }
+  .pbar i::after { content: ""; position: absolute; right: -5px; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: #fff; opacity: 0; transition: opacity .15s; }
+  .pbar:hover i::after { opacity: 1; }
+  /* Letra sincronizada: la línea que suena se enciende; clic en una línea = saltar ahí */
+  .lyr { position: relative; max-height: 168px; overflow-y: auto; margin-top: 10px; padding: 4px 2px; scrollbar-width: none;
+    mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); }
+  .lyr .ll { padding: 3px 4px; border-radius: 6px; color: #6f7580; font: 700 14px/1.35 "Segoe UI Variable Display", "Segoe UI", sans-serif; cursor: pointer; transition: color .25s, transform .25s; transform-origin: left center; }
+  .lyr .ll:hover { background: rgba(255, 255, 255, .05); }
+  .lyr .ll.past { color: #9aa0a8; }
+  .lyr .ll.cur { color: #fff; transform: scale(1.04); }
+  .lyr .plain { white-space: pre-wrap; color: #c9ccd3; font-size: 12.5px; user-select: text; }
+  .ahead button.on { background: var(--c); color: #04130a; }
   /* Conexiones y ajustes */
   #setup { padding: 12px 14px 12px; }
   .crow { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-top: 1px solid rgba(255, 255, 255, .06); }

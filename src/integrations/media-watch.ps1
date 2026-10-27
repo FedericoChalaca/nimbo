@@ -25,7 +25,24 @@ function Wait-WinRT($operation, [Type]$resultType) {
 }
 
 $manager = Wait-WinRT ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
-function Get-Spotify { $manager.GetSessions() | Where-Object { "$($_.SourceAppUserModelId)" -match 'spotify' } | Select-Object -First 1 }
+# Cualquier reproductor (Spotify, Apple Music, YouTube en el navegador…): primero el que está sonando (Spotify si hay varios),
+# si nada suena el último Spotify y si no, el que Windows tiene como actual.
+function Get-Spotify {
+  $all = @($manager.GetSessions())
+  $on = @($all | Where-Object { "$($_.GetPlaybackInfo().PlaybackStatus)" -eq 'Playing' })
+  $pick = ($on | Where-Object { "$($_.SourceAppUserModelId)" -match 'spotify' } | Select-Object -First 1)
+  if (-not $pick) { $pick = $on | Select-Object -First 1 }
+  if (-not $pick) { $pick = $all | Where-Object { "$($_.SourceAppUserModelId)" -match 'spotify' } | Select-Object -First 1 }
+  if (-not $pick) { $pick = $manager.GetCurrentSession() }
+  $pick
+}
+# Nombre corto del reproductor a partir de su id de Windows ("Spotify.exe", "Chrome", "AppleInc.AppleMusicWin_…!App").
+function Get-AppName($s) {
+  $id = "$($s.SourceAppUserModelId)"
+  if ($id -match 'spotify') { 'Spotify' } elseif ($id -match 'applemusic') { 'Apple Music' } elseif ($id -match 'chrome') { 'Chrome' }
+  elseif ($id -match 'msedge') { 'Edge' } elseif ($id -match 'firefox') { 'Firefox' } elseif ($id -match 'brave') { 'Brave' } elseif ($id -match 'zune|media') { 'Reproductor' }
+  else { ($id -split '[!_.\\]')[0] }
+}
 
 # La carátula (PNG o JPEG de 300 px), como data: URI. Vacío si no hay o pesa demasiado.
 # PowerShell 5.1 no sabe convertir el flujo de WinRT: se hace por reflexión, como con AsTask.
@@ -47,6 +64,7 @@ function Get-Art($props) {
 $stdin = New-Object System.IO.StreamReader([Console]::OpenStandardInput())
 $orders = $stdin.ReadLineAsync()
 $last = ''
+$lastTime = ''
 $tick = 0
 $eager = 0
 $track = ''
@@ -63,6 +81,7 @@ while ($true) {
         if ($order -eq 'toggle') { $null = Wait-WinRT ($s.TryTogglePlayPauseAsync()) ([bool]) }
         elseif ($order -eq 'next') { $null = Wait-WinRT ($s.TrySkipNextAsync()) ([bool]) }
         elseif ($order -eq 'prev') { $null = Wait-WinRT ($s.TrySkipPreviousAsync()) ([bool]) }
+        elseif ($order -match '^seek:(\d{1,5}(\.\d)?)$') { $null = Wait-WinRT ($s.TryChangePlaybackPositionAsync([long]([double]$Matches[1] * 10000000))) ([bool]) }
       }
     } catch {}
     $eager = 8 # Spotify tarda un momento en reflejar el cambio: se mira seguido 2 s
@@ -81,7 +100,12 @@ while ($true) {
           if ($key -ne $track) { $track = $key; $artLeft = 3 }
           if ($artLeft-- -gt 0 -or -not $art) { $art = Get-Art $p }
           $json = @{ title = "$($p.Title)"; artist = "$($p.Artist)"; album = "$($p.AlbumTitle)"
-            playing = "$($s.GetPlaybackInfo().PlaybackStatus)" -eq 'Playing'; art = $art } | ConvertTo-Json -Compress
+            playing = "$($s.GetPlaybackInfo().PlaybackStatus)" -eq 'Playing'; art = $art; app = (Get-AppName $s) } | ConvertTo-Json -Compress
+          # En qué segundo va (línea aparte: cambia seguido y no hace falta reenviar la carátula). "at" = cuándo lo midió el reproductor.
+          $tl = $s.GetTimelineProperties()
+          $dur = ($tl.EndTime - $tl.StartTime).TotalSeconds
+          if ($dur -gt 0) { $time = @{ pos = [math]::Round($tl.Position.TotalSeconds, 1); dur = [math]::Round($dur, 1); at = $tl.LastUpdatedTime.ToUnixTimeMilliseconds() } | ConvertTo-Json -Compress } else { $time = 'null' }
+          if ($time -ne $lastTime) { $lastTime = $time; [Console]::Out.WriteLine("time:$time") }
         }
       }
     } catch {}

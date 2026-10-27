@@ -17,6 +17,7 @@ const { createReminders } = require("./reminders");
 const { createTrello } = require("../integrations/trello");
 const { searchSpotify, TRACK_URI } = require("../integrations/spotify");
 const { watchMedia } = require("../integrations/media");
+const { fetchLyrics } = require("../integrations/lyrics");
 const { askInterview } = require("./interview");
 const { createMusicBar } = require("./musicbar");
 const { extraBinDirs, findInPath, ollamaLocations, userDataDir } = require("./platform");
@@ -152,6 +153,8 @@ function createWindow() {
     if (drag) {
       // Arrastrando, la ventana entera (la isla con sus franjas) viaja pegada al cursor, en cualquier pantalla, sin cambiar de forma;
       // cerca de un borde, la página muestra que se va a pegar ahí. Solo al soltar se decide dónde queda.
+      drag.gx += (drag.tx - drag.gx) * 0.3; // cada 33 ms se acerca un 30 %: en ~0,3 s queda en el punto del clic
+      drag.gy += (drag.ty - drag.gy) * 0.3;
       const wx = Math.round(p.x - drag.gx), wy = Math.round(p.y - drag.gy);
       if (wx !== b.x || wy !== b.y) win.setBounds({ x: wx, y: wy, width: drag.w, height: drag.h });
       const snap = snapEdge(p);
@@ -176,11 +179,15 @@ function createWindow() {
 // Arrastrar a Nimbo por el borde superior: la página avisa cuándo empieza (con el ancho de
 // la isla y el punto de agarre) y cuándo termina; el bucle del cursor mueve la ventana.
 let drag = null;
-ipcMain.on("drag-start", () => {
+ipcMain.on("drag-start", (_e, d) => {
   if (mini) return;
   const wb = win.getBounds(), cur = screen.getCursorScreenPoint();
   windows.watchLeft(); // red de seguridad: el botón izquierdo de verdad (si la página pierde el "soltar", igual se suelta)
-  drag = { since: Date.now(), snap: dockState().edge === "float" ? "" : dockState().edge, gx: cur.x - wb.x, gy: cur.y - wb.y, w: wb.width, h: wb.height };
+  // gx/gy = dónde va el mouse dentro de la ventana. Arranca donde está ahora (pasada la resistencia) y se va acercando (tx/ty) al punto donde
+  // hiciste clic: así Nimbo vuelve a quedar agarrado justo de ahí, con un tirón suave y no de golpe.
+  const ok = (v) => Number.isFinite(v) && Math.abs(v) < 100_000;
+  const tx = ok(d?.x) ? d.x - wb.x : cur.x - wb.x, ty = ok(d?.y) ? d.y - wb.y : cur.y - wb.y;
+  drag = { since: Date.now(), snap: dockState().edge === "float" ? "" : dockState().edge, gx: cur.x - wb.x, gy: cur.y - wb.y, tx, ty, w: wb.width, h: wb.height };
   win.setIgnoreMouseEvents(false); // mientras se arrastra, la ventana no suelta el mouse
 });
 // Al soltar: cerca de un borde (de la pantalla donde está el cursor) se pega a ese borde en ese punto; lejos, queda flotando ahí.
@@ -715,9 +722,25 @@ const musicBar = createMusicBar({
   enabled: () => prefs.musicBar !== false,
   mini: () => mini,
 });
-const player = watchMedia((m) => { media = m; if (win && !win.isDestroyed()) win.webContents.send("media", m); musicBar.update(m); });
+let mediaTime = null; // { pos, dur, at }: en qué segundo va (para la barra de avance)
+const player = watchMedia((m) => { media = m; if (win && !win.isDestroyed()) win.webContents.send("media", m); musicBar.update(m); },
+  (tm) => { mediaTime = tm; if (win && !win.isDestroyed()) win.webContents.send("media-time", tm); });
 app.on("before-quit", () => { player.stop(); musicBar.destroy(); });
 ipcMain.handle("media", () => media);
+ipcMain.handle("media-time", () => mediaTime);
+// La letra de lo que suena AHORA (main decide qué canción: la página no puede pedir otra cosa). Caché por canción mientras Nimbo está abierto.
+const lyricsCache = new Map();
+ipcMain.handle("lyrics", async () => {
+  if (!media) return null;
+  const key = `${media.title}|${media.artist}`;
+  if (!lyricsCache.has(key)) {
+    const got = await fetchLyrics({ ...media, dur: mediaTime?.dur }).catch(() => ({ error: true }));
+    if (got?.error) return got; // un error no se guarda: se puede reintentar
+    if (lyricsCache.size > 50) lyricsCache.clear();
+    lyricsCache.set(key, got);
+  }
+  return lyricsCache.get(key);
+});
 ipcMain.on("media-do", (_e, order) => player.send(String(order)));
 
 // La ventana normalmente no roba el foco; solo lo toma mientras el chat está abierto.

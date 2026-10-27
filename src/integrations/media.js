@@ -8,6 +8,8 @@ const fs = require("fs");
 const path = require("path");
 
 const ORDERS = new Set(["toggle", "next", "prev"]);
+const SEEK = /^seek:\d{1,5}(\.\d)?$/; // "seek:83.5" = ir al segundo 83,5 (solo Windows)
+const okOrder = (o) => ORDERS.has(o) || SEEK.test(o);
 const ART = /^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/;
 const str = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 
@@ -15,7 +17,14 @@ const str = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max
 function cleanMedia(raw) {
   if (!raw || typeof raw !== "object" || !str(raw.title, 200)) return null;
   const art = typeof raw.art === "string" && raw.art.length < 600_000 && ART.test(raw.art) ? raw.art : "";
-  return { title: str(raw.title, 200), artist: str(raw.artist, 200), album: str(raw.album, 200), playing: raw.playing === true, art };
+  return { title: str(raw.title, 200), artist: str(raw.artist, 200), album: str(raw.album, 200), playing: raw.playing === true, art, app: str(raw.app, 40) || "Spotify" };
+}
+/** En qué segundo va la canción: { pos, dur, at } (at = ms de cuándo lo midió el reproductor). null si no se sabe. */
+function cleanTime(raw) {
+  const n = (v) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
+  const pos = n(raw?.pos), dur = n(raw?.dur), at = n(raw?.at);
+  if (!(dur > 0 && dur < 6 * 3600 && pos >= 0 && at > 0)) return null;
+  return { pos: Math.min(pos, dur), dur, at };
 }
 
 // --- Linux y macOS: se pregunta cada 2 s (y cada 250 ms durante 2 s tras una orden) ---
@@ -91,7 +100,7 @@ const MAC_ORDERS = { toggle: "playpause", next: "next track", prev: "previous tr
 const LINUX_ORDERS = { toggle: "play-pause", next: "next", prev: "previous" };
 
 /** Arranca el vigilante. Devuelve { send(orden), stop() }. */
-function watchMedia(onChange) {
+function watchMedia(onChange, onTime = () => {}) {
   if (process.platform === "linux") {
     return pollingWatcher({ onChange, read: () => run("playerctl", ["-p", "spotify", "metadata", "--format", LINUX_FORMAT]), command: (o) => run("playerctl", ["-p", "spotify", LINUX_ORDERS[o]]) });
   }
@@ -111,27 +120,33 @@ function watchMedia(onChange) {
     while ((i = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, i).trim();
       buf = buf.slice(i + 1);
-      if (!line.startsWith("media:")) continue;
-      try { onChange(cleanMedia(JSON.parse(line.slice(6)))); } catch {}
+      try {
+        if (line.startsWith("media:")) onChange(cleanMedia(JSON.parse(line.slice(6))));
+        else if (line.startsWith("time:")) onTime(cleanTime(JSON.parse(line.slice(5))));
+      } catch {}
     }
   });
   child.on("error", () => {});
   child.stdin.on("error", () => {});
   child.on("close", () => onChange(null));
   return {
-    send(order) { if (ORDERS.has(order) && child.exitCode === null) child.stdin.write(`${order}\n`); },
+    send(order) { if (okOrder(order) && child.exitCode === null) child.stdin.write(`${order}\n`); },
     stop() { child.kill(); },
   };
 }
 
-module.exports = { watchMedia, cleanMedia, parseMediaLine, fetchArt, pollingWatcher };
+module.exports = { watchMedia, cleanMedia, cleanTime, okOrder, parseMediaLine, fetchArt, pollingWatcher };
 
 // Prueba rápida: `node media.js` · en vivo (9 s, sin tocar nada): `node media.js ver`
 if (require.main === module) {
   const assert = require("assert");
   const png = "data:image/png;base64,iVBORw0KGgo=";
   assert.deepStrictEqual(cleanMedia({ title: "  Nada ", artist: "Penyair", album: "X", playing: true, art: png }),
-    { title: "Nada", artist: "Penyair", album: "X", playing: true, art: png });
+    { title: "Nada", artist: "Penyair", album: "X", playing: true, art: png, app: "Spotify" });
+  assert.strictEqual(cleanMedia({ title: "a", app: "Chrome" }).app, "Chrome");
+  assert.deepStrictEqual(cleanTime({ pos: 30, dur: 200, at: 5 }), { pos: 30, dur: 200, at: 5 });
+  for (const bad of [null, {}, { pos: 1, dur: 0, at: 1 }, { pos: "1", dur: 9, at: 1 }, { pos: -1, dur: 9, at: 1 }]) assert.strictEqual(cleanTime(bad), null);
+  assert.ok(okOrder("seek:83.5") && okOrder("next") && !okOrder("seek:-1") && !okOrder("seek:1;rm") && !okOrder("seek:123456"));
   assert.strictEqual(cleanMedia({ title: "a", playing: "true" }).playing, false);
   // La carátula solo puede ser una imagen PNG o JPEG en base64: nada de enlaces ni SVG.
   for (const bad of ["https://x.example/a.png", "data:image/svg+xml;base64,PHN2Zz4=", `${png}" onerror="x`, "data:text/html;base64,AAAA", 7, `data:image/png;base64,${"A".repeat(600_000)}`]) {

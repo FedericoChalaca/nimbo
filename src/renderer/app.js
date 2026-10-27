@@ -652,7 +652,7 @@ function appsList() {
   if (trelloData?.boards?.length) out.push({ id: "trello", name: "Trello", color: "#579dff", count: trelloData.boards.length });
   if (dayPlan) out.push({ id: "plan", name: t("Plan"), color: "#2dd4bf", count: dayPlan.solos + dayPlan.teNecesitan });
   if (github !== null) out.push({ id: "github", name: "GitHub", color: "#a371f7", count: github.length });
-  if (media) out.push({ id: "spotify", name: "Spotify", color: "#1db954", count: 1, badge: media.playing ? "♪" : "❚❚" });
+  if (media) out.push({ id: "spotify", name: media.app || "Spotify", color: PLAYER_COLOR[media.app] ?? "#8b93a3", count: 1, badge: media.playing ? "♪" : "❚❚" });
   if (mailData?.on) out.push({ id: "mail", name: t("Correo"), color: "#ea4335", count: mailData.emails.length || 1, badge: String(mailData.emails.length) });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
@@ -793,6 +793,11 @@ function renderAppView() {
     find.type = "button";
     find.onclick = () => { if (chat.classList.contains("hidden")) toggleChat(true); msg.value = "spotify "; msg.focus(); };
     head.append(find);
+    const lyrBtn = el("button", lyricsOn ? "on" : "", t("Letra"));
+    lyrBtn.type = "button";
+    lyrBtn.title = t("Letra sincronizada (de LRCLIB: solo se manda el título, el artista y la duración)");
+    lyrBtn.onclick = () => { lyricsOn = !lyricsOn; if (lyricsOn && !lyrics) loadLyrics(); renderAppView(); };
+    head.append(lyrBtn);
     const now = el("div", "now");
     // La carátula solo puede ser un data: de imagen (lo valida media.js); el CSP no deja cargar nada de fuera.
     const art = media.art ? Object.assign(el("img"), { src: media.art, alt: "" }) : el("div", "noart");
@@ -822,6 +827,30 @@ function renderAppView() {
       key("", t("Siguiente"), "M16 6h2v12h-2zM6 18l8.5-6L6 6z", "next"));
     now.append(art, meta, ctl);
     rows.push(now);
+    // Barra de avance (Nusa / notch-island): lo que va, lo que falta, y un clic para saltar a ese punto.
+    if (mediaTime) {
+      const prog = el("div", "prog");
+      const bar = el("div", "pbar");
+      bar.append(el("i"));
+      bar.title = t("Clic para saltar a ese punto");
+      bar.onclick = (e) => { const r = bar.getBoundingClientRect(); seekTo(((e.clientX - r.left) / r.width) * mediaTime.dur); };
+      prog.append(el("span", "pt", ""), bar, el("span", "pt", ""));
+      rows.push(prog);
+    }
+    if (lyricsOn) {
+      const box = el("div", "lyr");
+      if (lyrics === "loading") box.append(el("div", "afoot", t("Buscando la letra…")));
+      else if (!lyrics || lyrics.error) box.append(el("div", "afoot", lyrics?.error ? t("No pude traer la letra (¿sin internet?).") : t("Esta canción no tiene letra en LRCLIB.")));
+      else if (lyrics.plain) box.append(el("div", "plain", lyrics.plain));
+      else for (const [sec, line] of lyrics.synced) {
+        const l = el("div", "ll", line || "♪");
+        l.dataset.t = sec;
+        l.onclick = () => seekTo(sec);
+        box.append(l);
+      }
+      rows.push(box);
+    }
+    requestAnimationFrame(tickMusic);
   } else if (app.id === "github") {
     head.append(el("span", "sub", t("{0} sin leer", github.length)));
     for (const n of github.slice(0, 6)) {
@@ -1036,7 +1065,55 @@ async function answerPlan() {
 api.onPlan(onPlan);
 // Música: "spotify <canción>", "reproduce <canción>" o "pon <canción> en spotify" en el chat. Busca
 // tu claude con el conector de Spotify (sin claves); la que elijas se abre en tu app de Spotify.
+// Música: en qué va, la letra y saltar. La posición se calcula aquí entre una lectura y otra (Windows la da cada tanto).
+const PLAYER_COLOR = { Spotify: "#1db954", "Apple Music": "#fa586a", Chrome: "#4285f4", Edge: "#0c8ee9", Brave: "#fb542b", Firefox: "#ff7139" };
+let mediaTime = null, lyrics = null, lyricsOn = false, lyricsKey = "";
+const songPos = () => !mediaTime ? 0 : Math.min(mediaTime.dur, mediaTime.pos + (media?.playing ? Math.max(0, Date.now() - mediaTime.at) / 1000 : 0));
+const fmtSec = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+function seekTo(sec) {
+  if (!mediaTime) return;
+  sec = Math.max(0, Math.min(mediaTime.dur - 1, sec));
+  api.mediaDo(`seek:${sec.toFixed(1)}`);
+  mediaTime = { ...mediaTime, pos: sec, at: Date.now() }; // se mueve ya; Windows confirma enseguida
+  tickMusic();
+}
+async function loadLyrics() {
+  lyrics = "loading";
+  const key = lyricsKey;
+  const got = await api.lyrics().catch(() => ({ error: true }));
+  if (key !== lyricsKey) return; // cambió la canción mientras tanto
+  lyrics = got;
+  if (openApp === "spotify") renderAppView();
+}
+let lastLine = -1;
+function tickMusic() {
+  const view = document.querySelector("#appview .prog");
+  if (!view || openApp !== "spotify") return;
+  const pos = songPos();
+  const [a, , b] = view.children;
+  a.textContent = fmtSec(pos);
+  b.textContent = "-" + fmtSec(Math.max(0, mediaTime.dur - pos));
+  view.querySelector(".pbar i").style.width = `${(pos / mediaTime.dur) * 100}%`;
+  const lines = document.querySelectorAll("#appview .lyr .ll");
+  let cur = -1;
+  lines.forEach((l, i) => { if (Number(l.dataset.t) <= pos + 0.25) cur = i; });
+  if (cur !== lastLine || !lines[cur]?.classList.contains("cur")) {
+    lines.forEach((l, i) => { l.classList.toggle("cur", i === cur); l.classList.toggle("past", i < cur); });
+    const box = lines[cur]?.parentNode; // solo se desplaza la caja de la letra (scrollIntoView movería también la isla)
+    if (box) box.scrollTo({ top: lines[cur].offsetTop - box.clientHeight / 2 + lines[cur].offsetHeight / 2, behavior: lastLine === -1 ? "auto" : "smooth" });
+    lastLine = cur;
+  }
+}
+setInterval(() => { if (media?.playing) tickMusic(); }, 250);
+api.mediaTime?.().then((tm) => { mediaTime = tm; });
+api.onMediaTime?.((tm) => {
+  const had = !!mediaTime;
+  mediaTime = tm;
+  if (openApp === "spotify" && had !== !!tm) renderAppView(); else tickMusic();
+});
 function onMedia(m) {
+  const key = m ? `${m.title}|${m.artist}` : "";
+  if (key !== lyricsKey) { lyricsKey = key; lyrics = null; lastLine = -1; if (lyricsOn && m) loadLyrics(); }
   media = m;
   renderApps();
   if (openApp === "spotify") renderAppView();
@@ -2351,7 +2428,7 @@ wrap.addEventListener("pointermove", (e) => {
     hidePanel();
     toggleChat(false);
     allOpen = false;
-    api.dragStart();
+    api.dragStart({ x: dragDown.x, y: dragDown.y }); // el punto donde hiciste clic: al soltarse la resistencia, Nimbo vuelve a quedar ahí bajo el mouse
     SOUNDS.open();
     // Se despega del borde: se estira como si estuviera pegado, se suelta y queda colgando del cursor (flotando).
     const peel = edge === "float" ? [{ transform: "scale(1)" }, { transform: "scale(1.05, .94)" }, { transform: "scale(1)" }]
