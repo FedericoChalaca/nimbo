@@ -1600,7 +1600,7 @@ function closeAll() {
 let clicks = 0;
 let clickTimer;
 wrap.addEventListener("click", (e) => {
-  if (e.target.closest("#menuBtn")) return api.menu();
+  if (e.target.closest("#menuBtn")) return api.openOptions(); // ⋮ = la ventana de opciones (clic derecho sigue siendo el menú rápido)
   const tk = e.target.closest("#tasks .tk");
   if (tk) return taskClick(tasks.find((a) => a.key === tk.dataset.key));
   if (e.target.closest("#waBtn")) return openWaSummary();

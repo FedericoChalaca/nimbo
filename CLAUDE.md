@@ -82,6 +82,7 @@ assets/ build/ examples/ .github/
 | `alerts.js` | Avisos al celular por Telegram (filtrados: trabajos largos, lejos del PC). |
 | `remote-api.js` | API para Nimbo en el iPhone (la app del asistente, por su puente): estado de los chats, permiso pendiente, pendientes, hablar con Nimbo y mandar sus encargos (`node remote-api.js` = autoprueba). |
 | `musicbar.js` | Barra flotante de música (ventana propia) que aparece mientras suena Spotify. |
+| `options.js` + `options-preload.js` + `options.html/css` + `options-page.js` | Ventana de opciones (⋮ y clic en el icono del reloj; clic derecho sigue siendo el menú rápido): secciones con cada ajuste explicado y conexiones con guía paso a paso. Los ajustes salen de `menuTemplate()` (cada entrada con `id`), así menú y ventana nunca se desincronizan; las conexiones usan `setup`/`setup-do`. |
 | `media.js` + `media-watch.ps1` | Lo que suena en CUALQUIER reproductor (Spotify primero; Apple Music, navegador…), sus botones, en qué segundo va (`time:`) y saltar (`seek:<s>`), con los controles multimedia de Windows. |
 | `lyrics.js` | Letra sincronizada de LRCLIB, solo al tocar «Letra» (`node lyrics.js live` pregunta de verdad). |
 | `whatsapp.js` + `wa-watch.ps1` | WhatsApp de escritorio en solo lectura (`node whatsapp.js` = autoprueba). |

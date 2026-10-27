@@ -20,6 +20,7 @@ const { watchMedia } = require("../integrations/media");
 const { fetchLyrics } = require("../integrations/lyrics");
 const { askInterview } = require("./interview");
 const { createMusicBar } = require("./musicbar");
+const { createOptions } = require("./options");
 const { extraBinDirs, findInPath, ollamaLocations, userDataDir } = require("./platform");
 const { createAlerts } = require("./alerts");
 const { createMail, threadUrl } = require("../integrations/mail");
@@ -1332,19 +1333,22 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
 
 // El menú de opciones. Sale con clic derecho sobre Nimbo, con el botón ⋮ de la isla y con el
 // icono de Nimbo junto al reloj (por si a alguien no le funciona el clic derecho).
-function buildMenu() {
-  return Menu.buildFromTemplate([
-    { label: t("Revisar correo"), click: () => win.webContents.send("mail-open-ui") },
-    { label: t("Conexiones y ajustes…"), click: () => win.webContents.send("setup-open") },
+// La plantilla del menú: la usan el menú rápido (clic derecho) y la ventana de opciones (options.js), así nunca se desincronizan.
+// Cada entrada lleva un id; la ventana de opciones las ordena por secciones y les agrega una explicación.
+function menuTemplate() {
+  return [
+    { id: "options", label: t("Opciones…"), click: () => options.open() },
+    { id: "mail-open", label: t("Revisar correo"), click: () => win.webContents.send("mail-open-ui") },
+    { id: "setup", label: t("Conexiones y ajustes…"), click: () => win.webContents.send("setup-open") },
     { type: "separator" },
     {
-      label: t("Modo mini  ({0})", MINI_SHORTCUT.replace("Control", "Ctrl")),
+      id: "mini", label: t("Modo mini  ({0})", MINI_SHORTCUT.replace("Control", "Ctrl")),
       type: "checkbox",
       checked: mini,
       click: () => setMini(!mini),
     },
     {
-      label: t("Esquina del modo mini"),
+      id: "mini-corner", label: t("Esquina del modo mini"),
       submenu: [
         ["top-left", t("Arriba a la izquierda")],
         ["top-right", t("Arriba a la derecha")],
@@ -1362,7 +1366,7 @@ function buildMenu() {
       })),
     },
     {
-      label: t("Apariencia"),
+      id: "theme", label: t("Apariencia"),
       submenu: [
         ["jarvis", "JARVIS"],
         ["cloud", t("Nube")],
@@ -1374,7 +1378,7 @@ function buildMenu() {
       })),
     },
     {
-      label: "Idioma / Language",
+      id: "lang", label: "Idioma / Language",
       submenu: [
         ["es", "Español"],
         ["en", "English"],
@@ -1392,13 +1396,13 @@ function buildMenu() {
         },
       })),
     },
-    { label: t("Actualizar Trello"), click: () => refreshTrello() },
-    ...(updateInfo ? [{ label: t("⬆ Actualizar Nimbo a {0}", updateInfo.version), click: () => win.webContents.send("update", updateInfo) }] : []),
-    { label: t("Buscar actualizaciones"), click: () => checkUpdates({ manual: true }) },
-    { label: t("Avisarme de versiones nuevas"), type: "checkbox", checked: prefs.updateCheck === true, click: (item) => { prefs.updateCheck = item.checked; savePrefs(); if (item.checked) checkUpdates(); } },
-    { label: t("Silencio si estoy mirando la terminal"), type: "checkbox", checked: prefs.quietWhenWatching !== false, click: (item) => { prefs.quietWhenWatching = item.checked; savePrefs(); } },
+    { id: "trello-refresh", label: t("Actualizar Trello"), click: () => refreshTrello() },
+    ...(updateInfo ? [{ id: "update-now", label: t("⬆ Actualizar Nimbo a {0}", updateInfo.version), click: () => win.webContents.send("update", updateInfo) }] : []),
+    { id: "update-check", label: t("Buscar actualizaciones"), click: () => checkUpdates({ manual: true }) },
+    { id: "update-auto", label: t("Avisarme de versiones nuevas"), type: "checkbox", checked: prefs.updateCheck === true, click: (item) => { prefs.updateCheck = item.checked; savePrefs(); if (item.checked) checkUpdates(); } },
+    { id: "quiet", label: t("Silencio si estoy mirando la terminal"), type: "checkbox", checked: prefs.quietWhenWatching !== false, click: (item) => { prefs.quietWhenWatching = item.checked; savePrefs(); } },
     {
-      label: t("Leer mensajes de WhatsApp (los resume tu Claude)"),
+      id: "wa-read", label: t("Leer mensajes de WhatsApp (los resume tu Claude)"),
       type: "checkbox",
       checked: prefs.whatsappRead === true,
       click: (item) => {
@@ -1407,9 +1411,9 @@ function buildMenu() {
         watchWhatsapp();
       },
     },
-    { label: t("Reglas de WhatsApp…"), enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
+    { id: "wa-rules", label: t("Reglas de WhatsApp…"), enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
     {
-      label: t("Motor de Nimbo"),
+      id: "engine", label: t("Motor de Nimbo"),
       submenu: [
         ["", t("Suscripción de Claude (usa tu plan; un poco más lento)")],
         ["api", aiLoad().anthropic ? t("API de Claude (más rápido; gasta tus créditos de API)") : t("API de Claude (primero pega tu clave en Conexiones → Otras IAs)")],
@@ -1418,11 +1422,11 @@ function buildMenu() {
         click: () => { prefs.engine = value; savePrefs(); },
       })),
     },
-    { label: t("Nueva conversación"), click: () => { orchestrator.reset(); aiHistory.clear(); } },
-    { label: t("Aldea de agentes"), click: () => village.open() },
+    { id: "new-chat", label: t("Nueva conversación"), click: () => { orchestrator.reset(); aiHistory.clear(); } },
+    { id: "village", label: t("Aldea de agentes"), click: () => village.open() },
     { type: "separator" },
     {
-      label: t("Avisos al celular (Telegram)"),
+      id: "phone-alerts", label: t("Avisos al celular (Telegram)"),
       enabled: telegram.status().paired,
       submenu: [
         ["claude", "Claude Code: terminó un trabajo o te necesita"], ["reminders", "Recordatorios"], ["mail", "Correo importante"],
@@ -1433,13 +1437,13 @@ function buildMenu() {
       })),
     },
     {
-      label: t("Barra de música flotante"),
+      id: "music-bar", label: t("Barra de música flotante"),
       type: "checkbox",
       checked: prefs.musicBar !== false,
       click: (item) => { prefs.musicBar = item.checked; savePrefs(); if (item.checked) musicBar.reset(); else musicBar.sync(); },
     },
     {
-      label: t("Nimbo como barra de tareas"),
+      id: "taskbar", label: t("Nimbo como barra de tareas"),
       type: "checkbox",
       checked: prefs.taskbarMode === true,
       visible: process.platform === "win32",
@@ -1447,7 +1451,7 @@ function buildMenu() {
     },
     {
       // También se puede arrastrar: cerca de un borde se pega ahí; lejos, queda flotando.
-      label: t("Posición de Nimbo"),
+      id: "dock", label: t("Posición de Nimbo"),
       submenu: [["top", t("Arriba")], ["bottom", t("Abajo")], ["left", t("A la izquierda")], ["right", t("A la derecha")], ["float", t("Flotando")]].map(([edge, label]) => ({
         label, type: "radio", checked: dockState().edge === edge, click: () => setDock({ ...dockState(), edge }),
       })).concat(screen.getAllDisplays().length > 1 ? [{ type: "separator" }, { label: t("Pasar a la otra pantalla"), click: () => {
@@ -1457,40 +1461,40 @@ function buildMenu() {
       } }] : []),
     },
     {
-      label: t("«Oye Nimbo»: escuchar siempre"),
+      id: "wake", label: t("«Oye Nimbo»: escuchar siempre"),
       type: "checkbox",
       checked: prefs.wakeWord === true,
       visible: process.platform === "win32",
       click: (item) => { prefs.wakeWord = item.checked; savePrefs(); syncWake(); },
     },
     {
-      label: t("Decir «te escucho» al llamarlo"),
+      id: "cue", label: t("Decir «te escucho» al llamarlo"),
       type: "checkbox",
       checked: prefs.cueVoice !== false,
       visible: process.platform === "win32",
       click: (item) => { prefs.cueVoice = item.checked; savePrefs(); },
     },
     {
-      label: t("Voz amable de Piper (en D:\\piper)"),
+      id: "piper", label: t("Voz amable de Piper (en D:\\piper)"),
       type: "checkbox",
       checked: prefs.voiceEngine === "piper",
       visible: havePiper(),
       click: (item) => { prefs.voiceEngine = item.checked ? "piper" : ""; savePrefs(); warmPhrases(); },
     },
     {
-      label: t("Historial de «Oye Nimbo»"),
+      id: "wake-log", label: t("Historial de «Oye Nimbo»"),
       visible: process.platform === "win32" && fs.existsSync(WAKE_LOG),
       click: () => shell.openPath(WAKE_LOG),
     },
     {
-      label: t("Leer las respuestas en voz alta"),
+      id: "speak", label: t("Leer las respuestas en voz alta"),
       type: "checkbox",
       checked: prefs.speak === true,
       enabled: voiceReady(),
       click: (item) => setSpeak(item.checked),
     },
     {
-      label: t("Silenciar sonidos"),
+      id: "mute", label: t("Silenciar sonidos"),
       type: "checkbox",
       checked: muted,
       click: (item) => {
@@ -1499,17 +1503,25 @@ function buildMenu() {
       },
     },
     { type: "separator" },
-    { label: t("Salir"), click: () => app.quit() },
-  ]);
+    { id: "quit", label: t("Salir"), click: () => app.quit() },
+  ];
 }
+const buildMenu = () => Menu.buildFromTemplate(menuTemplate());
 ipcMain.on("menu", () => buildMenu().popup({ window: win }));
+// La ventana de opciones (botón ⋮ y clic en el icono junto al reloj); el clic derecho sigue siendo el menú rápido.
+const options = createOptions({
+  template: menuTemplate, page: () => `nimbo://app/src/renderer/options.html?lang=${lang()}`,
+  preload: path.join(__dirname, "options-preload.js"), icon: path.join(ROOT, "assets", "icon.png"), skip: ["options", "quit", "setup"],
+});
+ipcMain.on("options-open", () => options.open());
+ipcMain.handle("app-version", () => app.getVersion());
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(ROOT, "assets", "icon.png"));
   if (icon.isEmpty()) return; // sin icono no hay bandeja; el resto de Nimbo sigue igual
   tray = new Tray(icon.resize({ width: 32, height: 32 }));
   tray.setToolTip("Nimbo");
   const open = () => tray.popUpContextMenu(buildMenu()); // se arma en el momento: las marcas reflejan el estado actual
-  tray.on("click", open);
+  tray.on("click", () => options.open()); // clic: la ventana de opciones; clic derecho: el menú rápido
   tray.on("right-click", open);
   if (process.env.NIMBO_DEBUG) console.error("bandeja:", JSON.stringify(tray.getBounds()));
 }

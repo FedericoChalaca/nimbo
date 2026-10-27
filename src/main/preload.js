@@ -98,4 +98,5 @@ contextBridge.exposeInMainWorld("nimbo", {
   winHeight: (h) => ipcRenderer.send("win-height", h),
   onHover: (fn) => ipcRenderer.on("hover", (_e, on) => fn(on)),
   menu: () => ipcRenderer.send("menu"),
+  openOptions: () => ipcRenderer.send("options-open"),
 });
