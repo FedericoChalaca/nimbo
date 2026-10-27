@@ -708,7 +708,16 @@ const instinct = createInstinct({
   onNew: async (pending, fresh) => {
     // Control remoto: las órdenes y las respuestas a sus códigos las atiende remote-neo (y salen de la pastilla)
     const mine = [];
-    for (const f of fresh) if (await remoteNeo.onItem(f).catch(() => false)) { instinct.done(f.id); mine.push(f.id); }
+    for (const f of fresh) {
+      // Registro del control remoto (remoto.log, solo en tu PC): qué llegó y qué pasó, sin los textos.
+      const handled = await remoteNeo.onItem(f).catch(async (e) => {
+        remoteLog(`${f.tag}${f.ref ? " #" + f.ref : ""} → error: ${String(e?.message ?? e).slice(0, 160)}`);
+        if (f.tag === "orden") await instinct.reply(t("No pude atender la orden por un error de Nimbo: {0}", String(e?.message ?? e).slice(0, 120))).catch(() => {});
+        return f.tag === "orden"; // una orden con error no se queda en la pastilla como si nada
+      });
+      if (["orden", "respuesta"].includes(f.tag)) remoteLog(`${f.tag}${f.ref ? " #" + f.ref : ""} → ${handled ? "la atendió el control remoto" : prefs.remoteNeo === true ? "no era del control remoto" : "control remoto APAGADO"}`);
+      if (handled) { instinct.done(f.id); mine.push(f.id); }
+    }
     pending = instinct.pending();
     fresh = fresh.filter((f) => !mine.includes(f.id));
     if (!fresh.length) { if (win && !win.isDestroyed()) win.webContents.send("instinct", withQ(pending)); return; }
@@ -719,6 +728,13 @@ const instinct = createInstinct({
 // Cada [respuesta #pN] va con la pregunta que contesta (para verlas juntas)
 const withQ = (list) => list.map((p) => (p.tag === "respuesta" ? { ...p, q: instinct.question(p.ref) } : p));
 ipcMain.handle("instinct", () => withQ(instinct.pending()));
+const REMOTE_LOG = path.join(app.getPath("userData"), "remoto.log");
+function remoteLog(line) {
+  try {
+    const old = fs.existsSync(REMOTE_LOG) ? fs.readFileSync(REMOTE_LOG, "utf8").split(/\r?\n/).filter(Boolean).slice(-199) : [];
+    fs.writeFileSync(REMOTE_LOG, [...old, `${new Date().toISOString()} ${line}`].join("\n") + "\n");
+  } catch {}
+}
 // Control remoto por WhatsApp (remote-neo.js): apagado hasta que lo actives en Opciones → Avisos.
 const remoteNeo = createRemoteNeo({
   enabled: () => prefs.remoteNeo === true && !!prefs.googleBridge?.para,
@@ -726,6 +742,7 @@ const remoteNeo = createRemoteNeo({
   say: (text) => instinct.reply(text, false),
   findChat: (name) => orchestrator.findChat(name),
   dispatch: (id, message) => orchestrator.dispatch(id, message),
+  log: (line) => remoteLog(line),
 });
 ipcMain.handle("instinct-name", () => neoName());
 ipcMain.handle("instinct-check", async () => withQ(await instinct.check(true)));

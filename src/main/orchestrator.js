@@ -487,6 +487,8 @@ function createOrchestrator(chatDir, { vault, lang, plan, model, engine, claudeA
       for (const s of sessions) known.set(s.id, s);
       const label = (s) => s.title || s.project;
       const exact = sessions.filter((s) => norm(label(s)) === want);
+      // Varios chats con el MISMO nombre (pasa: tres "nimbo"): el que usaste más recientemente (la lista ya viene así). Igual se confirma con código.
+      if (exact.length > 1) return { id: exact[0].id, title: label(exact[0]), where: exact[0].project, of: exact.length };
       const hits = exact.length ? exact : sessions.filter((s) => norm(label(s)).includes(want) || (want.length >= 4 && want.includes(norm(label(s)))));
       if (hits.length === 1) return { id: hits[0].id, title: label(hits[0]) };
       return hits.length ? { many: hits.slice(0, 5).map(label) } : null;

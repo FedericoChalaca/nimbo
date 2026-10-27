@@ -23,7 +23,7 @@ const says = (text, word, code) => new RegExp(`\\b${word}\\b[^0-9]{0,12}${code}\
  * @param findChat  (nombre) => Promise<{id,title} | {many} | null>
  * @param dispatch  (id, mensaje) => Promise<{text}>
  */
-function createRemoteNeo({ enabled, ask, say, findChat, dispatch, now = () => Date.now() }) {
+function createRemoteNeo({ enabled, ask, say, findChat, dispatch, now = () => Date.now(), log = () => {} }) {
   const waiting = new Map(); // id de la pregunta → { kind: "order"|"perm", code, at, ... }
   const sweep = () => { for (const [q, w] of waiting) if (now() - w.at > CODE_TTL && w.kind === "order") waiting.delete(q); };
 
@@ -34,13 +34,15 @@ function createRemoteNeo({ enabled, ask, say, findChat, dispatch, now = () => Da
       sweep();
       if (item.tag === "orden") {
         const o = parseOrder(item.text);
-        if (!o) { await say("No entendí la orden. Escríbela así: [orden] nombre del chat :: lo que quieres que haga."); return true; }
+        if (!o) { log("orden: no se entendió el formato"); await say("No entendí la orden. Escríbela así: [orden] nombre del chat :: lo que quieres que haga."); return true; }
         const found = await findChat(o.chat);
-        if (!found) { await say(`No encontré un chat de Claude llamado «${o.chat}».`); return true; }
-        if (found.many) { await say(`Hay varios chats parecidos a «${o.chat}»: ${found.many.join(" · ")}. Repite la orden con el nombre exacto.`); return true; }
+        if (!found) { log("orden: chat no encontrado"); await say(`No encontré un chat de Claude llamado «${o.chat}».`); return true; }
+        if (found.many) { log(`orden: ${found.many.length} chats parecidos`); await say(`Hay varios chats parecidos a «${o.chat}»: ${found.many.join(" · ")}. Repite la orden con el nombre exacto.`); return true; }
         const code = newCode();
-        const q = await ask(`Me pediste enviar al chat «${found.title}»: «${o.message.slice(0, 300)}». Para confirmar responde exactamente: CONFIRMO ${code} (vale 30 min).`);
+        const which = found.of > 1 ? ` (hay ${found.of} con ese nombre: uso el que usaste más recientemente, carpeta «${found.where}»)` : "";
+        const q = await ask(`Me pediste enviar al chat «${found.title}»${which}: «${o.message.slice(0, 300)}». Para confirmar responde exactamente: CONFIRMO ${code} (vale 30 min).`);
         if (q) waiting.set(q, { kind: "order", code, at: now(), chat: found, message: o.message });
+        log(q ? `orden: pedí confirmación (#${q})` : "orden: no pude dejar la pregunta en De Nimbo");
         return true;
       }
       if (item.tag === "respuesta" && waiting.has(item.ref)) {
@@ -48,9 +50,11 @@ function createRemoteNeo({ enabled, ask, say, findChat, dispatch, now = () => Da
         if (w.kind === "order") {
           if (says(item.text, "confirmo", w.code)) {
             waiting.delete(item.ref);
+            log(`#${item.ref}: código correcto, enviando al chat`);
             const r = await dispatch(w.chat.id, w.message).catch((e) => ({ text: `Error: ${e?.message ?? e}` }));
             await say(`Chat «${w.chat.title}» respondió: ${String(r?.text ?? "(sin respuesta)").replace(/\s+/g, " ").slice(0, 900)}`);
           } else {
+            log(`#${item.ref}: código incorrecto, orden cancelada`);
             waiting.delete(item.ref); // un código malo cancela la orden: no se puede probar otra vez con el mismo
             await say(`No envié nada al chat «${w.chat.title}» (no llegó "CONFIRMO" con el código correcto).`);
           }
