@@ -354,7 +354,9 @@
   /* Modo mini: solo el personaje en la esquina */
   #nimbo.mini { width: 100px; height: 60px; }
   .mini #wrap { left: 0; transform: none; width: 100px !important; height: 60px !important; transition: none; }
-  .mini #island { background: transparent; box-shadow: none; border-radius: 0; }
+  /* Modo mini: solo la nube, sin fondo (con !important: las reglas del tema y de la barra pintaban el fondo negro encima) */
+  #nimbo.mini #island { background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
+  #nimbo.mini #island::after, #nimbo.mini #glow { display: none; }
   .mini .ear, .mini #island::before, .mini #bar, .mini #content, .mini #dock, .mini #info { display: none; }
   .mini #island { right: 0 !important; left: 0 !important; }
   .mini #char { left: 0; top: 2px; width: 100px; height: 58px; }
@@ -446,15 +448,15 @@
   .pill:hover { background: color-mix(in srgb, var(--c) 22%, #1d1e22); }
   .pill.on { background: color-mix(in srgb, var(--c) 30%, #1d1e22); }
   .pill b { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--c) 30%, transparent); font-size: 11px; }
-  .mini { width: 22px; height: 15px; color: var(--c); flex: none; animation: mini-bob 2.6s steps(26) infinite; }
-  .pill:nth-child(2) .mini { animation-delay: -.9s; }
-  .pill:nth-child(3) .mini { animation-delay: -1.7s; }
+  svg.mini { width: 22px; height: 15px; color: var(--c); flex: none; animation: mini-bob 2.6s steps(26) infinite; } /* svg.: #nimbo también lleva .mini en modo mini (y se movía entero) */
+  .pill:nth-child(2) svg.mini { animation-delay: -.9s; }
+  .pill:nth-child(3) svg.mini { animation-delay: -1.7s; }
   @keyframes mini-bob { 50% { transform: translateY(-1.5px) scale(1.04, .97); } }
 
   /* Vista de cada app: el color de marca reemplaza al del estado (brillo al pie incluido) */
   #appview { --sc: var(--c); padding: 12px 14px 10px; }
   .ahead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .ahead .mini { width: 26px; height: 18px; }
+  .ahead svg.mini { width: 26px; height: 18px; }
   .ahead b { color: #f2f3f5; font-weight: 600; }
   .ahead .sub { color: #8f959e; }
   .ahead button { margin-left: auto; padding: 4px 10px; font-size: 11px; }
@@ -669,6 +671,14 @@
   #taskBox { padding: 10px 10px 8px; }
   #taskBox .head { color: #8f959e; font-size: 11px; margin: 0 4px 6px; }
   .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 4px; }
+  #taskBox.compact { padding: 6px 8px; }
+  #taskBox.compact .head { display: none; }
+  #taskBox.compact .tgrid { display: flex; flex-wrap: wrap; gap: 2px; }
+  #taskBox.compact .tile { padding: 5px; border-radius: 9px; }
+  #taskBox.compact .tile :is(img, .noicon) { width: 22px; height: 22px; font-size: 11px; }
+  #taskBox.compact .tile span { display: none; }
+  #taskBox.compact .tile b { top: 0; right: 0; min-width: 13px; font-size: 9px; }
+  #taskBox.compact .tile.fg::after { bottom: 1px; height: 2px; }
   .tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 4px 7px; border-radius: 12px; background: transparent; }
   .tile:hover, .tile.on { background: rgba(255, 255, 255, .07); transform: none; }
   .tile img, .tile .noicon { width: 34px; height: 34px; }

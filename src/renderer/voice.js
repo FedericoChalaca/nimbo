@@ -184,11 +184,11 @@
   // ¿La llamada era para Nimbo? Windows ya vio que en ese pedacito gana "hola/oye nimbo" sobre cualquier otra frase; Whisper solo tiene
   // que descartar lo que no tiene nada que ver ("de la ciudad.", "y"). Vale si oye algo como nimbo (Nimo, Nino, Limbo, Nimbus: con
   // micrófono bajito y ruido Whisper oye "Hola, Nino") o un saludo corto ("¡Oye!", "Hola"); "ánimo" o "mi primo" no.
-  const said = (text) => {
-    const words = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z]+/).filter(Boolean);
-    if (words.some((w) => /^[nlm][iy](m|mb|nb|n)?(o|os|u|us)$/.test(w))) return true;
-    return words.length > 0 && words.length <= 3 && /^(hola|oye|oiga|ey|hey|ei|hoy)$/.test(words[0]);
-  };
+  // 2026-10-27: era demasiado suelto ("m\u00edo", "lino" o un "hola" solo despertaban a Nimbo con la tele o gente hablando). Ahora hace falta o\u00edr
+  // una palabra con "mb/nb" (nimbo, nimbus, limbo, ninbo) o un saludo seguido de algo, con Windows bastante seguro (ver checkWake).
+  const norm = (text) => text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z]+/).filter(Boolean);
+  const said = (text) => norm(text).some((w) => /^[nlm][iy][mn]b(o|os|u|us|a)$/.test(w));
+  const greeted = (text) => { const w = norm(text); return w.length >= 2 && w.length <= 3 && /^(hola|oye|oiga|ey|hey)$/.test(w[0]); };
   // Con el micrófono el pedacito llega bajito, con ruido y de medio segundo: así Whisper inventaba ("de la ciudad.", "y"). Se sube el
   // volumen hasta un pico de 0,9 (hasta ×80) y se le pone medio segundo de silencio antes y después (sobre audio pelado Whisper alucina más).
   function prepClip(pcm) {
@@ -212,8 +212,10 @@
     const dur = pcm.length / SR;
     // Se despierta si Whisper oye algo como nimbo, o si oye a lo sumo 2 palabras sueltas Y Windows estuvo bastante seguro (≥ 0,55 en la
     // revisión) Y el audio dura lo que dura "hola nimbo" (0,6–1,8 s). Frases de 3 o más palabras = alguien hablando de fondo.
-    const ok = said(text) || (words <= 2 && (Number(meta.conf) || 0) >= 0.55 && dur >= 0.6 && dur <= 1.8);
-    api.wakeLog?.("check", text, ok ? "ok" : "no");
+    const conf = Number(meta.conf) || 0;
+    const why = said(text) ? "nimbo" : greeted(text) && conf >= 0.55 && dur >= 0.6 && dur <= 1.8 ? "saludo" : "";
+    const ok = !!why;
+    api.wakeLog?.("check", text, ok ? `ok:${why}` : `no:${words} palabras`); // el historial no guarda el texto (privacidad): solo por qué
     return ok;
   }
   window.voiceCheckWake = checkWake;
@@ -222,7 +224,7 @@
     const pcm = wavToPcm(bytes);
     if (!pcm) return true;
     const dur = pcm.length / SR;
-    return (Number(meta.conf) || 0) >= 0.55 && dur >= 0.6 && dur <= 1.8;
+    return (Number(meta.conf) || 0) >= 0.65 && dur >= 0.6 && dur <= 1.8; // muy seguro: contesta ya; si no, espera a Whisper
   };
   // "Aquí estoy / Te escucho…": una frase al azar de la base chica (main: frases.json), con la voz de Windows. Si no hay voz, silencio.
   let nextCue = null; // la próxima frase, ya cargada en memoria

@@ -915,7 +915,8 @@ ipcMain.on("wake-done", syncWake);
 // Lo que pasó después de una llamada (lo manda la página): qué oyó Whisper en ella y qué dijiste.
 ipcMain.on("wake-log", (_e, kind, text, note) => {
   const q = String(text ?? "").slice(0, 200);
-  if (kind === "check") wakeLog(`   Whisper oyó en la llamada: «${q}» → ${note === "ok" ? "me desperté" : "falsa alarma, no me desperté"}`);
+  const n = String(note ?? "");
+  if (kind === "check") wakeLog(`   Whisper oyó en la llamada: «${q}» → ${n.startsWith("ok") ? `me desperté (${n === "ok:nimbo" ? "oyó nimbo" : "saludo + Windows seguro"})` : `falsa alarma, no me desperté (${n.slice(3, 30)})`}`);
   if (kind === "said") wakeLog(`   después dijiste: «${q}» → ${String(note ?? "").slice(0, 80)}`);
 });
 app.on("before-quit", () => wake.stop());

@@ -691,6 +691,8 @@ function dueChip(iso) {
   return el("span", `chip2 ${ms < 0 ? "red" : ms < 864e5 ? "amber" : ""}`, ms < 0 ? t("vencida") : fmtDue(iso));
 }
 function renderAppView() {
+  // Con una pastilla abierta (Trello, Spotify…), tus programas se encogen a una fila de iconos para que se vea lo que elegiste.
+  taskBox.classList.toggle("compact", !!openApp);
   const app = appsList().find((a) => a.id === openApp);
   // "Chats" usa sus dos cajas de siempre (lista de chats + vista en vivo) en vez de #appview.
   const chats = app?.id === "chats";
@@ -1395,7 +1397,8 @@ const hit = document.getElementById("hit");
 // posición real del cursor, cuándo la ventana acepta clics.
 let lastRects = "";
 function reportHitRects() {
-  const rects = [...document.querySelectorAll("#hit, .solid")]
+  // En mini solo la nube misma (#hit): la isla entera era un cuadrado que se tocaba aunque ahí no hubiera nada.
+  const rects = [...document.querySelectorAll(mini ? "#hit" : "#hit, .solid")]
     .map((e) => e.getBoundingClientRect())
     .filter((r) => r.width && r.height)
     .map((r) => ({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }));
