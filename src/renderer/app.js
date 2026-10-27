@@ -124,7 +124,7 @@ function layout() {
     root.classList.toggle("solo", e === "float" || (!text && !pipsW));
     if (split && !infoW) root.classList.remove("split"); // nada que contar: sin franja
   }
-  wrap.style.setProperty("--info", `${infoW}px`);
+  wrap.style.setProperty("--info", `${Math.round(infoW)}px`); // en píxeles enteros: con medio píxel, la unión entre la isla y la franja se veía como una rayita
   const shrinking = w < lastSize.w - 1 || h < lastSize.h - 1;
   wrap.classList.toggle("closing", shrinking);
   if (open !== root.classList.contains("was-open")) (open ? SOUNDS.open : SOUNDS.close)();

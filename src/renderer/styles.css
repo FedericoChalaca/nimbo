@@ -759,12 +759,24 @@
   /* Las franjas se ven del MISMO color que Nimbo: el brillo del estado y, en JARVIS, las líneas y el filo naranja */
   #nimbo { --glow: transparent; }
   #nimbo:is(.state-thinking, .state-working, .state-needs, .state-finished, .state-error, .state-listening) { --glow: color-mix(in srgb, var(--sc) 24%, transparent); }
-  :is(#dock, #info) { background: radial-gradient(ellipse 90% 90% at 50% 100%, var(--glow), transparent 75%), #000; }
-  .edge-bottom :is(#dock, #info) { background: radial-gradient(ellipse 90% 90% at 50% 0, var(--glow), transparent 75%), #000; }
-  .theme-jarvis :is(#dock, #info) { background: radial-gradient(ellipse 90% 90% at 50% 100%, var(--glow), transparent 75%),
-      repeating-linear-gradient(0deg, rgba(255, 255, 255, .016) 0 1px, transparent 1px 3px), #000;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, .5), inset 0 -1px 0 rgba(255, 140, 26, .38); }
-  .theme-jarvis.edge-bottom :is(#dock, #info) { box-shadow: 0 -10px 24px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 140, 26, .38); }
+  :is(#dock, #info) { background: #000; }
+  .theme-jarvis :is(#dock, #info) { background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .016) 0 1px, transparent 1px 3px), #000;
+    box-shadow: 0 0 0 1px #000, 0 10px 24px rgba(0, 0, 0, .5); }
+  .theme-jarvis.edge-bottom :is(#dock, #info) { box-shadow: 0 0 0 1px #000, 0 -10px 24px rgba(0, 0, 0, .5); }
+  /* Sin costuras: con franjas, la isla es del mismo negro liso que ellas (sin el degradado de abajo ni el filo naranja, que marcaban una rayita en la unión),
+     y cada franja se mete 1 px bajo la isla (anillo negro) para tapar el borde suavizado. Arrastrando, la estela de color iría solo sobre la isla: se apaga. */
+  .theme-cloud:is(.split, .docked):not(.open) #island { background: #000; }
+  .theme-jarvis:is(.split, .docked):not(.open) #island { box-shadow: 0 16px 36px rgba(0, 0, 0, .5); }
+  :is(.split, .docked):not(.open) :is(#dock, #info) { box-shadow: 0 0 0 1px #000, 0 10px 24px rgba(0, 0, 0, .38); }
+  .edge-bottom:is(.split, .docked):not(.open) :is(#dock, #info) { box-shadow: 0 0 0 1px #000, 0 -10px 24px rgba(0, 0, 0, .38); }
+  .dragging:is(.split, .docked) #island::after { opacity: 0; }
+  /* En columna (lados y flotando) el brillo del estado va en la pieza de MÁS ABAJO: en la isla quedaría justo en la unión con la franja */
+  :is(.edge-left, .edge-right, .edge-float):is(.split, .docked):not(.open) #island::before { opacity: 0 !important; }
+  :is(.edge-left, .edge-right, .edge-float).docked:not(.open) #dock, :is(.edge-left, .edge-right):not(.docked).split:not(.open) #info {
+    background: radial-gradient(ellipse 90% 70% at 50% 100%, var(--glow), transparent 75%), #000; }
+  .theme-jarvis:is(.edge-left, .edge-right, .edge-float).docked:not(.open) #dock, .theme-jarvis:is(.edge-left, .edge-right):not(.docked).split:not(.open) #info {
+    background: radial-gradient(ellipse 90% 70% at 50% 100%, var(--glow), transparent 75%), repeating-linear-gradient(0deg, rgba(255, 255, 255, .016) 0 1px, transparent 1px 3px), #000; }
+  .dragging:is(.split, .docked) :is(#dock, #info) { box-shadow: 0 0 0 1px #000, 0 22px 44px rgba(0, 0, 0, .55); }
 
   /* Puntito verde: Nimbo está escuchando «Oye Nimbo» (solo la frase; no graba nada hasta que la oye) */
   #wakeDot { position: absolute; top: 7px; left: 9px; width: 6px; height: 6px; border-radius: 50%; background: #3ddc84; opacity: 0; transition: opacity .3s; z-index: 3; box-shadow: 0 0 6px rgba(61, 220, 132, .7); pointer-events: none; }

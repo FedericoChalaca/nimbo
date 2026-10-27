@@ -246,12 +246,24 @@ let prefs = { corner: "top-right", theme: "jarvis", pos: 0.5, name: "", vault: "
   telegramChat: 0,
   // Plan del día (ver plan.js): dónde está, y la fecha del último plan que ya te mostró.
   planRepo: "", planBranch: "", planFile: "", planSeen: "" };
+// Tus ajustes nunca se pierden por un archivo dañado (el 2026-10-26 un prefs.json guardado con BOM no se pudo leer, Nimbo arrancó de fábrica y al
+// guardar borró el modo barra, las ancladas y «Oye Nimbo»): se tolera el BOM, cada arranque bueno deja una copia (prefs.json.bak) y, si el archivo
+// no se puede leer, se aparta como prefs.json.roto-<hora> y se usa la copia.
+const readPrefs = (f) => JSON.parse(fs.readFileSync(f, "utf8").replace(/^﻿/, ""));
 try {
-  prefs = { ...prefs, ...JSON.parse(fs.readFileSync(prefsFile, "utf8")) };
-} catch {}
+  prefs = { ...prefs, ...readPrefs(prefsFile) };
+  fs.copyFileSync(prefsFile, prefsFile + ".bak");
+} catch {
+  if (fs.existsSync(prefsFile)) try { fs.copyFileSync(prefsFile, `${prefsFile}.roto-${Date.now()}`); } catch {}
+  try { prefs = { ...prefs, ...readPrefs(prefsFile + ".bak") }; } catch {}
+}
 W = prefs.taskbarMode === true ? 640 : 440;
 let corner = prefs.corner;
-const savePrefs = () => fs.writeFileSync(prefsFile, JSON.stringify({ ...prefs, corner }));
+// Se escribe en un archivo aparte y se cambia de nombre: si el PC se apaga a mitad, prefs.json queda entero (el viejo o el nuevo).
+const savePrefs = () => {
+  const data = JSON.stringify({ ...prefs, corner });
+  try { fs.writeFileSync(prefsFile + ".tmp", data); fs.renameSync(prefsFile + ".tmp", prefsFile); } catch { fs.writeFileSync(prefsFile, data); }
+};
 // Idioma: el elegido en el menú (prefs.lang) o, si no, el de Windows. Los textos están en
 // español en el código; i18n.js trae el inglés.
 const lang = () => (["es", "en"].includes(prefs.lang) ? prefs.lang : app.getLocale().toLowerCase().startsWith("es") ? "es" : "en");
