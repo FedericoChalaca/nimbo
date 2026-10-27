@@ -475,7 +475,7 @@ const NIMBO_EN = {
   "Le dejé el mensaje a Instinct ✓": "Left the message for Instinct ✓",
   "Instinct anotó: {0}": "Instinct noted: {0}",
   "Instinct anotó para Nimbo": "Instinct left something for Nimbo",
-  "Escuchando avisos de Instinct: Drive avisa cuando escribe (nada revisa cada tanto). ": "Listening for Instinct: Drive notifies when it writes (nothing checks on a timer). ",
+  "Escuchando avisos de {0}: Drive avisa cuando escribe (nada revisa cada tanto). ": "Listening for {0}: Drive notifies when it writes (nothing checks on a timer). ",
   "Nimbo preguntó: {0}": "Nimbo asked: {0}",
   "Mi respuesta (por WhatsApp) a «{0}»: {1}": "My answer (via WhatsApp) to “{0}”: {1}",
   "Preguntarme por WhatsApp": "Ask me on WhatsApp",
