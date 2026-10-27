@@ -684,6 +684,7 @@ function appsList() {
   if (media) out.push({ id: "spotify", name: media.app || "Spotify", color: PLAYER_COLOR[media.app] ?? "#8b93a3", count: 1, badge: media.playing ? "♪" : "❚❚" });
   if (mailData?.on) out.push({ id: "mail", name: t("Correo"), color: "#ea4335", count: mailData.emails.length || 1, badge: String(mailData.emails.length) });
   if (whatsapp) out.push({ id: "wa", name: "WhatsApp", color: waChats().some((c) => c.urgent) ? "#ff4d4f" : "#25d366", count: waCount() });
+  if (agenda?.length) out.push({ id: "agenda", name: t("Agenda"), color: "#4285f4", count: agenda.length, badge: String(agenda.filter((e) => isToday(e.start)).length || "·") });
   if (logros.length) out.push({ id: "logros", name: playingGame() ? t("Logros · {0}", playingGame().name) : t("Logros"), color: "#f5b942", count: logros.reduce((n, g) => n + g.missing.length, 0) || 1, badge: playingGame() ? "🎮" : "🏆" });
   out.push({ id: "pend", name: t("Pendientes"), color: "#ffd23f", count: pendingList.length });
   return out.filter((a) => a.count > 0);
@@ -900,6 +901,21 @@ function renderAppView() {
       rows.push(box);
     }
     requestAnimationFrame(tickMusic);
+  } else if (app.id === "agenda") {
+    // Tus próximos 7 días de Google Calendar, por día. Clic = abrirlo en Calendar.
+    head.append(el("span", "sub", t("{0} eventos esta semana", agenda.length)));
+    let day = "";
+    const list = el("div", "llist");
+    for (const e of agenda) {
+      const d = e.start.slice(0, 10);
+      if (d !== day) { day = d; list.append(el("div", "aday", isToday(e.start) ? t("Hoy") : new Date(d + "T12:00").toLocaleDateString(LOCALE, { weekday: "long", day: "numeric", month: "short" }))); }
+      const r = el("div", "arow link");
+      const when = e.allDay ? t("Todo el día") : new Date(e.start).toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit" });
+      r.append(el("span", "chip2", when), el("span", "name", e.title + (e.where ? " · " + e.where : "")));
+      if (e.link) r.onclick = () => api.agendaOpen(e.link);
+      list.append(r);
+    }
+    rows.push(list);
   } else if (app.id === "logros") {
     // Platino: elige el juego, mira lo que te falta y la guía de cada logro (o de todos). Las guías se muestran tal cual las escribió Platino.
     const g = logros.find((x) => x.appid === logrosGame) ?? playingGame() ?? logros[0];
@@ -1136,6 +1152,13 @@ let github = null; // null = todavía no se sabe
 let dayPlan = null; // { fecha, resumen, proyectos, solos, teNecesitan, say }
 // Logros (Platino): llegan al arrancar y cada 30 min; las guías no cambian seguido.
 let logros = [], logrosGame = null, logrosBusy = false;
+// Agenda (Google Calendar, google.js): cada 10 min y cuando conectas tu Google.
+let agenda = null;
+const isToday = (iso) => String(iso).slice(0, 10) === new Date().toLocaleDateString("sv");
+const loadAgenda = () => api.agenda?.().then((a) => { agenda = Array.isArray(a) ? a : null; renderApps(); if (openApp === "agenda") renderAppView(); }).catch(() => {});
+setTimeout(loadAgenda, 6000);
+setInterval(loadAgenda, 10 * 60_000);
+api.onAgendaChanged?.(loadAgenda);
 const logrosOpen = new Set();
 // ¿Estás jugando uno? Se mira en tus programas abiertos (modo barra): el ejecutable del juego.
 const playingGame = () => logros.find((g) => g.processes?.some((p) => tasks.some((a) => a.windows.length && String(a.key).toLowerCase().endsWith("\\" + p))));

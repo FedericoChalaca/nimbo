@@ -32,6 +32,7 @@ const { foreground, isWatching } = require("./foreground");
 const { cleanDelegates, imageFileName, insideDir } = require("./delegate");
 const { createTelegram, parseInbox } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
+const { createGoogle, CLIENT_ID: GOOGLE_ID, SECRET: GOOGLE_SECRET } = require("../integrations/google");
 const { createWhatsapp } = require("../integrations/whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
 const { readPlan, planSpeech } = require("./plan");
@@ -678,6 +679,28 @@ function refreshTrelloIfStale() {
 // Con Premium y tu propia app de Spotify (opcional, spotify-api.js): la búsqueda es instantánea y la
 // canción elegida suena. Lo único guardado es el token de renovación, cifrado por Windows (DPAPI,
 // `safeStorage`): solo tu usuario de Windows en este equipo puede leerlo. Sin cifrado no se guarda.
+// Tu Google (google.js): el ID de tu app va en prefs; su secreto y el token de renovación, cifrados por Windows en google.bin.
+const googleFile = path.join(app.getPath("userData"), "google.bin");
+let googleCreds; // { secret, refresh }
+const google = createGoogle({
+  clientId: () => prefs.googleClientId,
+  redirect: `http://127.0.0.1:${PORT}/google`,
+  load() {
+    if (googleCreds === undefined) { try { googleCreds = JSON.parse(safeStorage.decryptString(fs.readFileSync(googleFile))); } catch { googleCreds = {}; } }
+    return googleCreds;
+  },
+  save(v) {
+    googleCreds = {};
+    try {
+      if ((v.secret || v.refresh) && safeStorage.isEncryptionAvailable()) { fs.writeFileSync(googleFile, safeStorage.encryptString(JSON.stringify(v))); googleCreds = v; }
+      else fs.rmSync(googleFile, { force: true });
+    } catch {}
+  },
+  open: (url) => { shell.openExternal(url); clipboard.writeText(url); },
+});
+// La agenda (pastilla): tus próximos eventos de Google Calendar.
+ipcMain.handle("agenda", async () => (google.connected() ? google.events(7).catch(() => null) : null));
+ipcMain.on("agenda-open", (_e, link) => { if (/^https:\/\/www\.google\.com\/calendar\//.test(String(link))) shell.openExternal(String(link)); });
 const spotifyTokenFile = path.join(app.getPath("userData"), "spotify.bin");
 let spotifyToken; // undefined = todavía no se leyó del disco
 const spotifyApi = createSpotifyApi({
@@ -1139,7 +1162,7 @@ function hookCommand() {
   return `"${cmd.replace(/\\/g, "/")}"`;
 }
 // Páginas que el panel puede abrir: una lista fija, la página nunca manda la URL.
-const LINKS = { ollama: "https://ollama.com/download", claude: "https://claude.com/claude-code", gh: "https://cli.github.com", connectors: "https://claude.ai/settings/connectors", spotifyDev: "https://developer.spotify.com/dashboard" };
+const LINKS = { googleCloud: "https://console.cloud.google.com/auth/clients", ollama: "https://ollama.com/download", claude: "https://claude.com/claude-code", gh: "https://cli.github.com", connectors: "https://claude.ai/settings/connectors", spotifyDev: "https://developer.spotify.com/dashboard" };
 const loginItem = () => (app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] });
 // Iniciar con el sistema: Electron lo hace en Windows y macOS; en Linux se deja un archivo .desktop en la carpeta de autoinicio.
 const linuxAutostart = () => path.join(process.env.XDG_CONFIG_HOME || path.join(require("os").homedir(), ".config"), "autostart", "nimbo.desktop");
@@ -1168,6 +1191,7 @@ async function setupStatus() {
     ai: await aiState(),
     mail: { on: prefs.mailRead === true, count: mail.cached().emails.length, important: mail.cached().emails.filter((e) => e.important).length },
     spotify: !spotifyApi.configured() ? null : spotifyApi.connected(), // null = sin Client ID · false = falta entrar
+    google: { configured: google.configured(), connected: google.connected(), bridge: !!prefs.googleBridge?.folder },
     theme: prefs.theme,
     voice: voiceReady() ? prefs.speak === true : null, // null = no hay servicio de voz configurado
     wake: process.platform === "win32" ? prefs.wakeWord === true : null, // null = no se puede (solo Windows)
@@ -1259,6 +1283,29 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         spotifyApi.login().then((ok) => { if (win && !win.isDestroyed()) win.webContents.send("spotify", ok); });
         break;
       case "spotify-logout": spotifyApi.logout(); break;
+      case "google-client": {
+        const [gid = "", secret = ""] = String(value ?? "").split("\n").map((x) => x.trim());
+        if (!GOOGLE_ID.test(gid)) throw new Error(t("Ese no parece un ID de cliente de Google (termina en .apps.googleusercontent.com)."));
+        if (!GOOGLE_SECRET.test(secret)) throw new Error(t("Ese no parece el secreto del cliente (empieza por GOCSPX-)."));
+        if (!safeStorage.isEncryptionAvailable()) throw new Error(t("Windows no puede cifrar el token en este equipo."));
+        google.logout();
+        prefs.googleClientId = gid;
+        savePrefs();
+        fs.writeFileSync(googleFile, safeStorage.encryptString(JSON.stringify({ secret })));
+        googleCreds = { secret };
+        break;
+      }
+      case "google-login": google.login(); break; // no se espera: el permiso se da en el navegador
+      case "google-logout": google.logout(); break;
+      case "google-bridge": {
+        // La carpeta compartida con Instinct: Nimbo la crea (con drive.file solo puede tocar lo que él crea) con sus dos documentos.
+        const folder = await google.folder("Nimbo e Instinct");
+        const para = await google.doc(folder.id, "Para Nimbo", "Aquí Instinct anota lo que es para Nimbo (una línea por cosa, con fecha y etiqueta: [nota], [idea], [calendario], [tarea]).\n");
+        const de = await google.doc(folder.id, "De Nimbo", "Aquí Nimbo le deja a Instinct lo que tiene que contarte.\n");
+        prefs.googleBridge = { folder: folder.id, para: para.id, de: de.id, link: /^https:\/\/drive\.google\.com\//.test(folder.link ?? "") ? folder.link : "" };
+        savePrefs();
+        break;
+      }
       case "telegram-token": {
         const token = String(value ?? "").trim();
         if (!telegram.TOKEN.test(token)) throw new Error(t("Ese no parece un token de bot de Telegram (se ve así: 123456789:AAH…)."));
@@ -1329,6 +1376,7 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         else if (value === "telegram-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#11-telegram-opcional" : "README.md#11-telegram-optional"}`);
         else if (value === "spotify-guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#10-spotify-opcional" : "README.md#10-spotify-optional"}`);
         else if (value === "guide") shell.openExternal(`https://github.com/FedericoChalaca/nimbo/blob/main/${lang() === "es" ? "README.es.md#conectar-todo" : "README.md#connect-everything"}`);
+        else if (value === "google-folder" && prefs.googleBridge?.link) shell.openExternal(prefs.googleBridge.link);
         else if (Object.hasOwn(LINKS, value)) shell.openExternal(LINKS[value]);
         break;
       case "done": prefs.onboarded = true; savePrefs(); break;
@@ -1567,6 +1615,15 @@ const seenNonces = new Set();
 http
   .createServer((req, res) => {
     // La vuelta del permiso de Spotify (spotify-api.js): solo vale con una entrada en curso y su `state`.
+    // La vuelta del permiso de Google (google.js): igual que Spotify, solo con una entrada en curso y su `state`.
+    if (req.method === "GET" && req.url.startsWith("/google?") && req.headers.host === `127.0.0.1:${PORT}`) {
+      google.callback(new URLSearchParams(req.url.slice(8))).then((ok) => {
+        res.writeHead(ok ? 200 : 400, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        res.end(`<!doctype html><meta charset="utf-8"><title>Nimbo</title><body style="font:16px Segoe UI,sans-serif;background:#0b0c0e;color:#eceef2;display:grid;place-items:center;height:100vh;margin:0"><p>${ok ? t("Tu Google quedó conectado con Nimbo. Ya puedes cerrar esta pestaña.") : t("No se pudo conectar tu Google. Vuelve a Nimbo e inténtalo de nuevo.")}</p>`);
+        if (ok && win && !win.isDestroyed()) win.webContents.send("agenda-changed");
+      });
+      return;
+    }
     if (req.method === "GET" && req.url.startsWith("/spotify?") && req.headers.host === `127.0.0.1:${PORT}`) {
       spotifyApi.callback(new URLSearchParams(req.url.slice(9))).then((ok) => {
         res.writeHead(ok ? 200 : 400, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });

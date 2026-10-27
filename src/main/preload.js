@@ -87,6 +87,9 @@ contextBridge.exposeInMainWorld("nimbo", {
   mediaTime: () => ipcRenderer.invoke("media-time"),
   onMediaTime: (fn) => ipcRenderer.on("media-time", (_e, tm) => fn(tm)),
   lyrics: () => ipcRenderer.invoke("lyrics"), // { synced } | { plain } | null | { error }
+  agenda: () => ipcRenderer.invoke("agenda"), // tus próximos eventos de Google Calendar, o null
+  agendaOpen: (link) => ipcRenderer.send("agenda-open", String(link)),
+  onAgendaChanged: (fn) => ipcRenderer.on("agenda-changed", () => fn()),
   logros: () => ipcRenderer.invoke("logros"), // juegos de Platino con lo que te falta y sus guías
   logrosRefresh: (appid) => ipcRenderer.invoke("logros-refresh", String(appid)),
   logrosMark: (appid, id, on) => ipcRenderer.invoke("logros-mark", String(appid), String(id), on === true), // chulear (queda en Nimbo)

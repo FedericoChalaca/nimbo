@@ -189,6 +189,20 @@ function connections() {
     { text: t("Toca «Iniciar sesión» y acepta en el navegador."), done: !!s.spotify },
   ], [btn(t("Abrir panel de Spotify"), () => doSetup("open", "spotifyDev")), s.spotify === null && spId, s.spotify === null && btn(t("Guardar"), () => doSetup("spotify-id", spId.value), "main"),
     s.spotify === false && btn(t("Iniciar sesión"), () => doSetup("spotify-login"), "main"), s.spotify && btn(t("Desconectar"), () => doSetup("spotify-logout"))]));
+  const gg = s.google ?? {};
+  const gId = $("input", "in"); gId.placeholder = t("ID de cliente (…apps.googleusercontent.com)"); gId.spellcheck = false;
+  const gSecret = keyInput(t("Secreto del cliente (GOCSPX-…)"));
+  out.push(connCard("google", t("Tu Google (Drive y Calendar)"), gg.connected ? "ok" : gg.configured ? "warn" : "", gg.connected ? t("Conectado: Nimbo ve tu agenda y su carpeta de Drive") : gg.configured ? t("Falta iniciar sesión") : t("Sin conectar"), [
+    { text: t("En Google Cloud crea tu app (proyecto, API de Drive, Docs y Calendar, pantalla de permisos y un ID de cliente de tipo «App de escritorio»)."), done: !!gg.configured },
+    { text: t("Pega aquí el ID de cliente y el secreto, y toca «Guardar». El secreto queda cifrado por Windows."), done: !!gg.configured },
+    { text: t("Toca «Iniciar sesión» y acepta en el navegador. Google dirá que la app no está verificada: es tu propia app; toca «Continuar»."), done: !!gg.connected },
+    { text: t("Opcional: «Crear la carpeta con Instinct» hace la carpeta «Nimbo e Instinct» con sus dos documentos."), done: !!gg.bridge },
+  ], [btn(t("Abrir Google Cloud"), () => doSetup("open", "googleCloud")), !gg.configured && gId, !gg.configured && gSecret, !gg.configured && btn(t("Guardar"), () => doSetup("google-client", `${gId.value}\n${gSecret.value}`), "main"),
+    gg.configured && !gg.connected && btn(t("Iniciar sesión"), () => doSetup("google-login"), "main"),
+    gg.connected && !gg.bridge && btn(busy === "google-bridge" ? t("Creando…") : t("Crear la carpeta con Instinct"), () => doSetup("google-bridge"), "main"),
+    gg.bridge && btn(t("Abrir la carpeta"), () => doSetup("open", "google-folder")),
+    gg.connected && btn(t("Desconectar"), () => doSetup("google-logout"))],
+  t("Permisos mínimos: Drive solo lo que crea Nimbo (no el resto de tu Drive) y tus eventos de Calendar.")));
   const ai = s.ai ?? {};
   const keyWhich = $("select", "in"); keyWhich.style.width = "130px";
   for (const [v, l] of [["gemini", "Gemini"], ["openai", "OpenAI"], ["anthropic", "Claude (API)"]]) { const o = $("option", "", l); o.value = v; keyWhich.append(o); }
