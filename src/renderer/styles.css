@@ -516,7 +516,7 @@
   #content, #content * { cursor: auto; }
   #content button, #content .link, #content .pill { cursor: pointer; }
   .dragging #wrap { cursor: grabbing; transition: none; }
-  .dragging #island { box-shadow: 0 22px 44px rgba(0, 0, 0, .55), 0 0 0 1.5px color-mix(in srgb, var(--accent-a) 55%, transparent); }
+  .dragging :is(#island, #dock, #info) { box-shadow: 0 22px 44px rgba(0, 0, 0, .55); } /* todo el conjunto se levanta igual */
   .dragging #char { transition: none; transform: rotate(var(--lean, 0deg)); transform-origin: 50% 0; }
   .dragging #content { opacity: .35; }
   /* Estela que queda detrás al moverse */
@@ -693,19 +693,22 @@
   .edge-right #island { border-radius: 22px 0 0 22px !important; }
   .edge-left.open #island { border-radius: 0 28px 28px 0 !important; }
   .edge-right.open #island { border-radius: 28px 0 0 28px !important; }
-  :is(.edge-left, .edge-right):not(.open) #island { left: 0 !important; right: 0 !important; top: var(--dock, 0px); bottom: auto; height: var(--ih, 76px);
-    transition: border-radius .4s, top .52s cubic-bezier(.32, 1.22, .42, 1); }
+  /* Nimbo va arriba; debajo de él, el texto (del mismo ancho) y al final tus programas (más angostos) */
+  :is(.edge-left, .edge-right):not(.open) #island { left: 0 !important; right: 0 !important; top: 0; bottom: auto; height: var(--ih, 76px);
+    transition: border-radius .4s; }
+  :is(.edge-left, .edge-right).split:not(.open) #island { border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
   :is(.edge-left, .edge-right):not(.open) #char { left: 6px; top: 3px; }
-  :is(.edge-left, .edge-right) #dock { top: 0; width: 40px; height: var(--dock, 0px); transition: height .52s cubic-bezier(.32, 1.22, .42, 1); }
+  :is(.edge-left, .edge-right) #dock { top: calc(var(--ih, 76px) + var(--info, 0px)); width: 40px; height: var(--dock, 0px);
+    transition: height .52s cubic-bezier(.32, 1.22, .42, 1), top .52s cubic-bezier(.32, 1.22, .42, 1); }
   :is(.edge-left, .edge-right) #tasks { flex-direction: column; }
-  .edge-left #dock { left: 0; right: auto; border-radius: 0 14px 0 0; }
-  .edge-right #dock { left: auto; right: 0; border-radius: 14px 0 0 0; }
-  .edge-left #dock::before { left: 100%; top: auto; bottom: 0; background: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px); }
-  .edge-right #dock::before { left: auto; right: 100%; top: auto; bottom: 0; background: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px); }
+  .edge-left #dock { left: 0; right: auto; border-radius: 0 0 14px 0; }
+  .edge-right #dock { left: auto; right: 0; border-radius: 0 0 0 14px; }
+  .edge-left #dock::before { left: 100%; top: 0; bottom: auto; background: radial-gradient(circle at 100% 100%, transparent 11.5px, #000 12px); }
+  .edge-right #dock::before { left: auto; right: 100%; top: 0; bottom: auto; background: radial-gradient(circle at 0 100%, transparent 11.5px, #000 12px); }
   :is(.edge-left, .edge-right) #tasks .tk::before { left: 0 !important; right: auto !important; top: 9px; bottom: 9px; width: 2px; height: auto; }
   .edge-right #tasks .tk::before { left: auto !important; right: 0 !important; }
   /* El texto va en horizontal, justo debajo de Nimbo y del mismo ancho */
-  :is(.edge-left, .edge-right) #info { top: calc(var(--dock, 0px) + var(--ih, 76px)); width: 132px; height: var(--info, 0px); padding: 0 10px 0 12px; gap: 6px; }
+  :is(.edge-left, .edge-right) #info { top: var(--ih, 76px); width: 132px; height: var(--info, 0px); padding: 0 10px 0 12px; gap: 6px; transition: height .52s cubic-bezier(.32, 1.22, .42, 1); }
   .edge-left #info { left: 0; border-radius: 0 0 22px 0; }
   .edge-right #info { left: auto; right: 0; border-radius: 0 0 0 22px; }
   :is(.edge-left, .edge-right) #info::after { display: none; }
@@ -728,10 +731,18 @@
   .snap-hint #island { box-shadow: 0 0 0 2px var(--accent-a), 0 0 22px color-mix(in srgb, var(--accent-a) 55%, transparent), 0 16px 36px rgba(0, 0, 0, .42); }
 
   /* Esquina: Nimbo ocupa la esquina y, a su lado, UNA fila de media altura con tus programas y, junto a ellos, lo que hace Claude. */
-  .corner-l #island { left: 0 !important; right: var(--blk, 0px) !important; border-radius: 0 0 0 22px !important; }
-  .corner-r #island { right: 0 !important; left: var(--blk, 0px) !important; border-radius: 0 0 22px 0 !important; }
+  /* La esquina redondeada es la de ADENTRO (la que da al resto de la pantalla); el lado pegado al borde de la pantalla queda recto. */
+  .corner-l #island { left: 0 !important; right: var(--blk, 0px) !important; border-radius: 0 0 22px 0 !important; }
+  .corner-r #island { right: 0 !important; left: var(--blk, 0px) !important; border-radius: 0 0 0 22px !important; }
   :is(.corner-l, .corner-r) :is(#dock, #info) { top: 0; height: 34px; transform: none; border-radius: 0; }
   :is(.corner-l, .corner-r) :is(#dock, #info)::before, :is(.corner-l, .corner-r) :is(#dock, #info)::after { display: none; }
+  /* Curva hacia adentro donde la franja se une a la pared de Nimbo (la franja pegada a él) */
+  .corner-l.docked #dock::before, .corner-l:not(.docked) #info::before, .corner-r.docked #dock::before, .corner-r:not(.docked) #info::before {
+    display: block; content: ""; position: absolute; top: 100%; bottom: auto; width: 12px; height: 12px; }
+  .corner-l.docked #dock::before, .corner-l:not(.docked) #info::before { left: 0; right: auto; background: radial-gradient(circle at 100% 100%, transparent 11.5px, #000 12px); }
+  .corner-r.docked #dock::before, .corner-r:not(.docked) #info::before { right: 0; left: auto; background: radial-gradient(circle at 0 100%, transparent 11.5px, #000 12px); }
+  .edge-bottom.corner-l.docked #dock::before, .edge-bottom.corner-l:not(.docked) #info::before { top: auto; bottom: 100%; background: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px); }
+  .edge-bottom.corner-r.docked #dock::before, .edge-bottom.corner-r:not(.docked) #info::before { top: auto; bottom: 100%; background: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px); }
   .corner-l #dock { left: 150px; right: auto; width: var(--dock, 0px); border-radius: 0 0 14px 0; }
   .corner-l #info { left: calc(150px + var(--dock, 0px)); right: auto; width: var(--iw, 0px); border-radius: 0 0 14px 0; }
   .corner-l.split #dock { border-radius: 0; }
@@ -742,8 +753,18 @@
   .edge-bottom.corner-l :is(#dock, #info) { border-radius: 0 14px 0 0; }
   .edge-bottom.corner-r :is(#dock, #info) { border-radius: 14px 0 0 0; }
   .edge-bottom.corner-l.split #dock, .edge-bottom.corner-r.split #dock { border-radius: 0; }
-  .edge-bottom.corner-l #island { border-radius: 22px 0 0 0 !important; }
-  .edge-bottom.corner-r #island { border-radius: 0 22px 0 0 !important; }
+  .edge-bottom.corner-l #island { border-radius: 0 22px 0 0 !important; }
+  .edge-bottom.corner-r #island { border-radius: 22px 0 0 0 !important; }
+
+  /* Las franjas se ven del MISMO color que Nimbo: el brillo del estado y, en JARVIS, las líneas y el filo naranja */
+  #nimbo { --glow: transparent; }
+  #nimbo:is(.state-thinking, .state-working, .state-needs, .state-finished, .state-error, .state-listening) { --glow: color-mix(in srgb, var(--sc) 24%, transparent); }
+  :is(#dock, #info) { background: radial-gradient(ellipse 90% 90% at 50% 100%, var(--glow), transparent 75%), #000; }
+  .edge-bottom :is(#dock, #info) { background: radial-gradient(ellipse 90% 90% at 50% 0, var(--glow), transparent 75%), #000; }
+  .theme-jarvis :is(#dock, #info) { background: radial-gradient(ellipse 90% 90% at 50% 100%, var(--glow), transparent 75%),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, .016) 0 1px, transparent 1px 3px), #000;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .5), inset 0 -1px 0 rgba(255, 140, 26, .38); }
+  .theme-jarvis.edge-bottom :is(#dock, #info) { box-shadow: 0 -10px 24px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 140, 26, .38); }
 
   /* Puntito verde: Nimbo está escuchando «Oye Nimbo» (solo la frase; no graba nada hasta que la oye) */
   #wakeDot { position: absolute; top: 7px; left: 9px; width: 6px; height: 6px; border-radius: 50%; background: #3ddc84; opacity: 0; transition: opacity .3s; z-index: 3; box-shadow: 0 0 6px rgba(61, 220, 132, .7); pointer-events: none; }

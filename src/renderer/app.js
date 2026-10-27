@@ -2298,6 +2298,18 @@ const PEEL = 64; // píxeles de resistencia antes de despegarse
 let suppressClick = false;
 let lean = 0, leanTarget = 0, leanRaf = 0, lastDragX = 0;
 const islandEl = document.getElementById("island");
+const dockEl = document.getElementById("dock");
+// Todo Nimbo (la isla y sus franjas de programas y texto) se mueve, se estira y rebota JUNTO, desde el mismo punto (el borde donde está pegado).
+const lump = () => [islandEl, dockEl, info].filter((x) => x.offsetWidth > 0);
+function lumpOrigin(el) {
+  const w = wrap.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const y = edge === "bottom" ? w.bottom : edge === "float" ? w.top + w.height / 2 : w.top, x = edge === "left" ? w.left : edge === "right" ? w.right : w.left + w.width / 2;
+  return `${(x - r.left).toFixed(1)}px ${(y - r.top).toFixed(1)}px`;
+}
+function lumpAnimate(frames, opts) {
+  for (const el of lump()) { const o = lumpOrigin(el); el.animate(frames.map((f) => ({ ...f, transformOrigin: o })), opts); }
+}
+function lumpStyle(prop, value) { for (const el of [islandEl, dockEl, info]) { el.style[prop] = value; if (prop === "scale") el.style.transformOrigin = value ? (el.style.transformOrigin || lumpOrigin(el)) : ""; } }
 function leanLoop() {
   lean += (leanTarget - lean) * .22;
   leanTarget *= .86; // sin movimiento vuelve a enderezarse
@@ -2321,17 +2333,17 @@ wrap.addEventListener("pointermove", (e) => {
   if (!dragging && pd > 6 && pd <= PEEL) {
     if (!peeling) { peeling = true; wrap.setPointerCapture(dragDown.id); }
     const k = Math.min(1, pd / PEEL);
-    islandEl.getAnimations().forEach((a) => a.cancel());
-    islandEl.style.translate = `${(pdx * 0.28).toFixed(1)}px ${(pdy * 0.28).toFixed(1)}px`;
+    for (const el of lump()) el.getAnimations().forEach((a) => a.cancel());
+    lumpStyle("translate", `${(pdx * 0.28).toFixed(1)}px ${(pdy * 0.28).toFixed(1)}px`);
     // Se estira a lo largo del jalón (más cuanto más cerca de soltarse)
-    islandEl.style.scale = Math.abs(pdx) > Math.abs(pdy) ? `${(1 + k * 0.1).toFixed(3)} ${(1 - k * 0.05).toFixed(3)}` : `${(1 - k * 0.05).toFixed(3)} ${(1 + k * 0.1).toFixed(3)}`;
+    lumpStyle("scale", Math.abs(pdx) > Math.abs(pdy) ? `${(1 + k * 0.1).toFixed(3)} ${(1 - k * 0.05).toFixed(3)}` : `${(1 - k * 0.05).toFixed(3)} ${(1 + k * 0.1).toFixed(3)}`);
     return;
   }
   if (!dragging && pd > PEEL) {
     dragging = true;
     peeling = false;
-    islandEl.style.translate = "";
-    islandEl.style.scale = "";
+    lumpStyle("translate", "");
+    lumpStyle("scale", "");
     if (!wrap.hasPointerCapture(dragDown.id)) wrap.setPointerCapture(dragDown.id);
     root.classList.add("dragging");
     hidePanel();
@@ -2342,7 +2354,7 @@ wrap.addEventListener("pointermove", (e) => {
     // Se despega del borde: se estira como si estuviera pegado, se suelta y queda colgando del cursor (flotando).
     const peel = edge === "float" ? [{ transform: "scale(1)" }, { transform: "scale(1.05, .94)" }, { transform: "scale(1)" }]
       : [{ transform: "scale(1)" }, { transform: "scale(.94, 1.18)", offset: .35 }, { transform: "scale(1.06, .9)", offset: .65 }, { transform: "scale(1)" }];
-    islandEl.animate(peel, { duration: edge === "float" ? 260 : 460, easing: "cubic-bezier(.3, 1.3, .5, 1)" });
+    lumpAnimate(peel, { duration: edge === "float" ? 260 : 460, easing: "cubic-bezier(.3, 1.3, .5, 1)" });
     renderTasks();
     relayout();
     lastDragX = e.screenX;
@@ -2361,9 +2373,10 @@ function endDrag() {
     suppressClick = true;
     setTimeout(() => (suppressClick = false), 250);
     const from = { translate: islandEl.style.translate || "0px 0px", scale: islandEl.style.scale || "1 1" };
-    islandEl.style.translate = "";
-    islandEl.style.scale = "";
-    islandEl.animate([from, { translate: "0px 0px", scale: "1.0 1.0" }], { duration: 520, easing: "cubic-bezier(.3, 1.7, .5, 1)" });
+    const org = lump().map((el) => [el, el.style.transformOrigin || lumpOrigin(el)]);
+    lumpStyle("translate", "");
+    lumpStyle("scale", "");
+    for (const [el, o] of org) el.animate([{ ...from, transformOrigin: o }, { translate: "0px 0px", scale: "1.0 1.0", transformOrigin: o }], { duration: 520, easing: "cubic-bezier(.3, 1.7, .5, 1)" });
     SOUNDS.close();
   }
   if (dragging) {
@@ -2376,7 +2389,7 @@ function endDrag() {
     lastSize = { w: 0, h: 0 };
     relayout();
     // Aterrizaje: se aplasta contra el borde y rebota.
-    islandEl.animate([{ transform: "scale(1.07, .88)" }, { transform: "scale(.97, 1.06)" }, { transform: "scale(1.01, .99)" }, { transform: "scale(1)" }],
+    lumpAnimate([{ transform: "scale(1.07, .88)" }, { transform: "scale(.97, 1.06)" }, { transform: "scale(1.01, .99)" }, { transform: "scale(1)" }],
       { duration: 420, easing: "cubic-bezier(.3, 1.4, .5, 1)" });
     SOUNDS.close();
     emote("hello", 900);
