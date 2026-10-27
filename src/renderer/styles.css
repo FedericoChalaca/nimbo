@@ -768,5 +768,8 @@
 
   /* Puntito verde: Nimbo está escuchando «Oye Nimbo» (solo la frase; no graba nada hasta que la oye) */
   #wakeDot { position: absolute; top: 7px; left: 9px; width: 6px; height: 6px; border-radius: 50%; background: #3ddc84; opacity: 0; transition: opacity .3s; z-index: 3; box-shadow: 0 0 6px rgba(61, 220, 132, .7); pointer-events: none; }
-  .wake-on #wakeDot { opacity: .85; }
+  /* Solo se ve al pasar el mouse (si no, un puntito suelto queda siempre a la vista) */
+  .wake-on.hovering #wakeDot { opacity: .85; }
+  /* JARVIS: la esfera dibuja su centro en el medio de su caja de 120 px (la nube lo tiene 5 px a la izquierda) */
+  .theme-jarvis:is(.solo, .split):not(.edge-left, .edge-right) #char { left: calc(50% - 60px); }
   .mini #wakeDot, .state-listening #wakeDot { display: none; }
