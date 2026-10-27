@@ -813,7 +813,9 @@ const pct = (n) => (Number(n) || 0).toFixed(2).replace(".", ",");
 let wakeLogQueue = Promise.resolve();
 function wakeLog(line) {
   const when = new Date().toLocaleString("es-CO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-  const clean = String(line).replace(/\s+/g, " ").slice(0, 400);
+  // Privacidad: por defecto el historial NO guarda lo que se oyó ni lo que dijiste, solo qué pasó y con qué seguridad (prefs.wakeDebug = true lo activa).
+  let clean = String(line).replace(/\s+/g, " ").slice(0, 400);
+  if (prefs.wakeDebug !== true) clean = clean.replace(/«[^»]*»/g, "«…»");
   // En fila: dos anotaciones seguidas leerían el mismo archivo y una se perdería.
   wakeLogQueue = wakeLogQueue.then(async () => {
     const old = await fs.promises.readFile(WAKE_LOG, "utf8").catch(() => "");
@@ -822,7 +824,10 @@ function wakeLog(line) {
 }
 // Los últimos 5 audios de llamadas aceptadas por Windows (oye-nimbo-clips, solo en este PC): para entender qué oyó Whisper si falla.
 const CLIPS_DIR = path.join(app.getPath("userData"), "oye-nimbo-clips");
+// Privacidad: los audios NO se guardan salvo con prefs.wakeDebug = true; al arrancar se borran los que hubiera.
+fs.promises.rm(CLIPS_DIR, { recursive: true, force: true }).catch(() => {});
 async function keepClip(bytes) {
+  if (prefs.wakeDebug !== true) return;
   try {
     await fs.promises.mkdir(CLIPS_DIR, { recursive: true });
     const name = new Date().toISOString().replace(/[:.]/g, "-") + ".wav";

@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "nimbo",
-  "version": "0.8.0",
-  "description": "Un compañero flotante para Claude Code en Windows: ve qué hacen tus chats, aprueba permisos y habla con tu Claude",
+  "version": "0.9.0",
+  "description": "Un compaÃ±ero flotante para Claude Code en Windows: ve quÃ© hacen tus chats, aprueba permisos y habla con tu Claude",
   "main": "src/main/main.js",
   "private": true,
   "scripts": {
@@ -24,7 +24,7 @@
     "@huggingface/transformers": "^4.3.0"
   },
   "license": "MIT",
-  "author": "Federico Martínez",
+  "author": "Federico MartÃ­nez",
   "keywords": [
     "claude-code",
     "electron",
@@ -95,7 +95,7 @@
       "artifactName": "Nimbo-mac-${arch}.${ext}",
       "extendInfo": {
         "LSUIElement": true,
-        "NSMicrophoneUsageDescription": "Nimbo usa el micrófono solo para dictar en su chat; el audio se transcribe en tu Mac.",
+        "NSMicrophoneUsageDescription": "Nimbo usa el micrÃ³fono solo para dictar en su chat; el audio se transcribe en tu Mac.",
         "NSAppleEventsUsageDescription": "Nimbo muestra lo que suena en Spotify y sus botones de pausa y siguiente."
       }
     },

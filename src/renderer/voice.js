@@ -7,6 +7,7 @@
   const END_SILENCE_MS = 1100; // este silencio después de hablar = terminaste la frase
   const MIN_SPEECH_MS = 350;
   const MAX_MS = 30_000;
+  const NO_SPEECH_MS = 3000; // llamada por voz: sin habla en este tiempo, se apaga el micrófono
   const PREROLL = 0.3 * SR; // guarda 0,3 s antes de que empieces, para no comerse la primera sílaba
 
   // Whisper a veces "oye" estas frases en el silencio.
@@ -101,7 +102,8 @@
     }
     // Antes de que hables solo se guarda un poquito, el resto se descarta.
     if (!rec.speech) while (rec.chunks.length * buf.length > PREROLL) rec.chunks.shift();
-    if ((rec.speech > MIN_SPEECH_MS && rec.silence > END_SILENCE_MS) || rec.total > MAX_MS) finish();
+    // Con «Oye Nimbo» pediste algo de inmediato: si en 3 s no hay voz, fue una falsa alarma y el micrófono se apaga.
+    if ((rec.speech > MIN_SPEECH_MS && rec.silence > END_SILENCE_MS) || rec.total > MAX_MS || (rec.strict && rec.speech < MIN_SPEECH_MS && rec.total > NO_SPEECH_MS)) finish();
   }
   const joinAudio = (chunks) => { const a = new Float32Array(chunks.reduce((n, c) => n + c.length, 0)); let o = 0; for (const c of chunks) { a.set(c, o); o += c.length; } return a; };
   // Texto en vivo: el dictado de Windows (live.ps1, en main) va escribiendo lo que oye mientras Whisper graba. Medido en este PC: con
@@ -113,9 +115,9 @@
   });
 
   /** Graba una frase: termina sola cuando te callas (o con finish()). */
-  function listenOnce() {
+  function listenOnce(strict = false) {
     return new Promise((resolve) => {
-      rec = { chunks: [], speech: 0, silence: 0, total: 0, resolve, base: msg.value.trim() };
+      rec = { chunks: [], speech: 0, silence: 0, total: 0, resolve, strict, base: msg.value.trim() };
     });
   }
   function finish() {
@@ -277,7 +279,7 @@
     const base = msg.value;
     try {
       await openMic();
-      const heardP = listenOnce();
+      const heardP = listenOnce(autoSend);
       const show = () => {
         micBtn.classList.add("live");
         api.liveDictation?.(true);
@@ -303,6 +305,7 @@
         const words = msg.value.trim();
         const why = !heard || !words ? t("no dijiste nada") : junk(words);
         api.wakeLog?.("said", words, why ? t("no lo mandé ({0})", why) : t("enviado"));
+        if (!heard) { answer.replaceChildren(); answerBox.classList.add("hidden"); } // nada que decir: se quita el "Te escucho"
         if (why && words) {
           msg.value = base;
           answer.replaceChildren(el("div", "afoot", t("No te entendí bien («{0}»), así que no lo mandé.", words.slice(0, 80))));
