@@ -40,7 +40,7 @@ async function main(body) {
     method: "POST",
     headers: { "content-type": "application/json", "x-nimbo-nonce": nonce, "x-nimbo-mac": mac(`req:${nonce}:${body}`) },
     body,
-    signal: AbortSignal.timeout(isPermission ? 70_000 : 400),
+    signal: AbortSignal.timeout(isPermission ? 610_000 : 400), // hasta 10 min por si respondes por WhatsApp; en el PC Nimbo suelta a los 60 s
   });
   if (!isPermission || !res.ok) return;
 

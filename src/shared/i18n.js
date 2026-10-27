@@ -491,6 +491,9 @@ const NIMBO_EN = {
   "Nombre de tu IA de WhatsApp": "Your WhatsApp AI's name",
   "Cómo le dices a tu IA de WhatsApp (Instinct): así sale en Nimbo": "What you call your WhatsApp AI (Instinct): that's how it shows in Nimbo",
   "Guardar nombre": "Save name",
+  "Le escribes a tu IA de WhatsApp «[orden] chat :: mensaje» y Nimbo lo manda a ese chat de Claude, pero SOLO cuando le respondes con el código de 4 cifras que te llega por WhatsApp. Si estás lejos del PC y un chat pide permiso, también te llega para PERMITIR o DENEGAR con código. Necesita la carpeta de Drive con tu IA (Conexiones → Tu Google).": "You tell your WhatsApp AI “[orden] chat :: message” and Nimbo sends it to that Claude chat, but ONLY after you reply with the 4-digit code you get on WhatsApp. If you're away and a chat asks for permission, it also reaches you to ALLOW or DENY with a code. Needs the Drive folder with your AI (Connections → Your Google).",
+  "Control remoto por WhatsApp (con tu IA de WhatsApp)": "Remote control via WhatsApp (with your WhatsApp AI)",
+  "Claude (chat «{0}») pide permiso: {1} {2}": "Claude (chat “{0}”) asks for permission: {1} {2}",
   // Ventana de opciones (options-page.js)
   "Opciones": "Options",
   "Opciones…": "Options…",

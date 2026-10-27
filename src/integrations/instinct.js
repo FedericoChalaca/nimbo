@@ -9,7 +9,8 @@ const crypto = require("crypto");
 const fs = require("fs");
 
 // "respuesta" = lo que contestaste por WhatsApp a una [pregunta #p3] que Nimbo le dejó a Instinct: llega como "[respuesta #p3] texto".
-const TAGS = ["nota", "idea", "tarea", "calendario", "pedido", "respuesta"];
+// "orden" = control remoto (remote-neo.js): "[orden] chat :: mensaje", siempre con confirmación por código.
+const TAGS = ["nota", "idea", "tarea", "calendario", "pedido", "respuesta", "orden"];
 const hash = (s) => crypto.createHash("sha1").update(s).digest("hex").slice(0, 16);
 
 /** Texto del documento → líneas con etiqueta. Las que no tienen etiqueta (como la explicación de arriba) no cuentan. */

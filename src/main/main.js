@@ -34,6 +34,7 @@ const { createTelegram, parseInbox } = require("../integrations/telegram");
 const { createSpotifyApi, CLIENT_ID } = require("../integrations/spotify-api");
 const { createGoogle, CLIENT_ID: GOOGLE_ID, SECRET: GOOGLE_SECRET } = require("../integrations/google");
 const { createInstinct } = require("../integrations/instinct");
+const { createRemoteNeo } = require("./remote-neo");
 const { createWhatsapp } = require("../integrations/whatsapp");
 const { fetchSpeech, speechUrl } = require("./tts");
 const { readPlan, planSpeech } = require("./plan");
@@ -704,7 +705,13 @@ const neoName = () => String(prefs.instinctName || "").trim() || "Instinct"; // 
 const instinct = createInstinct({
   google, bridge: () => prefs.googleBridge, file: path.join(app.getPath("userData"), "instinct.json"),
   topic: () => { if (!/^nimbo-[a-f0-9]{32}$/.test(prefs.instinctTopic ?? "")) { prefs.instinctTopic = `nimbo-${require("crypto").randomBytes(16).toString("hex")}`; savePrefs(); } return prefs.instinctTopic; },
-  onNew: (pending, fresh) => {
+  onNew: async (pending, fresh) => {
+    // Control remoto: las órdenes y las respuestas a sus códigos las atiende remote-neo (y salen de la pastilla)
+    const mine = [];
+    for (const f of fresh) if (await remoteNeo.onItem(f).catch(() => false)) { instinct.done(f.id); mine.push(f.id); }
+    pending = instinct.pending();
+    fresh = fresh.filter((f) => !mine.includes(f.id));
+    if (!fresh.length) { if (win && !win.isDestroyed()) win.webContents.send("instinct", withQ(pending)); return; }
     if (win && !win.isDestroyed()) { win.webContents.send("instinct", withQ(pending)); win.webContents.send("instinct-new", fresh); }
     if (Notification.isSupported() && !mini) new Notification({ title: t("{0} anotó para Nimbo", neoName()), body: fresh.map((f) => `[${f.tag}] ${f.text}`).join("\n").slice(0, 200) }).show();
   },
@@ -712,6 +719,14 @@ const instinct = createInstinct({
 // Cada [respuesta #pN] va con la pregunta que contesta (para verlas juntas)
 const withQ = (list) => list.map((p) => (p.tag === "respuesta" ? { ...p, q: instinct.question(p.ref) } : p));
 ipcMain.handle("instinct", () => withQ(instinct.pending()));
+// Control remoto por WhatsApp (remote-neo.js): apagado hasta que lo actives en Opciones → Avisos.
+const remoteNeo = createRemoteNeo({
+  enabled: () => prefs.remoteNeo === true && !!prefs.googleBridge?.para,
+  ask: (text) => instinct.reply(text, true),
+  say: (text) => instinct.reply(text, false),
+  findChat: (name) => orchestrator.findChat(name),
+  dispatch: (id, message) => orchestrator.dispatch(id, message),
+});
 ipcMain.handle("instinct-name", () => neoName());
 ipcMain.handle("instinct-check", async () => withQ(await instinct.check(true)));
 // Lo que haces con cada cosa: guardarla como pendiente, darla por vista, o escribirle a Instinct en «De Nimbo». Siempre con tu clic.
@@ -1501,6 +1516,8 @@ function menuTemplate() {
         watchWhatsapp();
       },
     },
+    { id: "remote-neo", label: t("Control remoto por WhatsApp (con tu IA de WhatsApp)"), type: "checkbox", checked: prefs.remoteNeo === true, enabled: !!prefs.googleBridge?.para,
+      click: (item) => { prefs.remoteNeo = item.checked; savePrefs(); } },
     { id: "wa-rules", label: t("Reglas de WhatsApp…"), enabled: prefs.whatsappRead === true, click: () => shell.openPath(wa.rulesFile) },
     {
       id: "engine", label: t("Motor de Nimbo"),
@@ -1631,13 +1648,22 @@ function askPermission(payload, nonce, res) {
       // Cada petición solo cierra su propia tarjeta, nunca la de la siguiente.
       if (pending !== me) return;
       clearTimeout(timer);
+      if (me.remoteQ) remoteNeo.forget(me.remoteQ); // respondiste en el PC: la pregunta de WhatsApp ya no vale
       pending = null;
       if (!win.isDestroyed()) win.webContents.send("permission-done");
       if (!res.writableEnded) reply(["allow", "always", "deny"].includes(decision) ? decision : "");
     },
   };
   pending = me;
-  const timer = setTimeout(() => me.finish(""), DECISION_TIMEOUT);
+  let timer = setTimeout(() => me.finish(""), DECISION_TIMEOUT);
+  if (prefs.remoteNeo === true && prefs.googleBridge?.para && powerMonitor.getSystemIdleTime() >= 120) {
+    const ti = payload.tool_input ?? {};
+    const what = String(ti.command ?? ti.file_path ?? ti.url ?? ti.description ?? "").replace(/\s+/g, " ").slice(0, 300);
+    const summary = t("Claude (chat «{0}») pide permiso: {1} {2}", payload.title || "?", String(payload.tool_name ?? ""), what);
+    clearTimeout(timer);
+    timer = setTimeout(() => me.finish(""), 10 * 60_000); // por WhatsApp se tarda más: hasta 10 min, luego la terminal pregunta
+    remoteNeo.askPermission(summary, (d) => me.finish(d)).then((q) => { if (q) me.remoteQ = q; }).catch(() => {});
+  }
   // Claude Code mató el hook (o respondiste en la terminal): quita la tarjeta.
   res.on("close", () => me.finish(""));
   win.webContents.send("permission", { ...payload, rid: nonce });

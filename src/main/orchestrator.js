@@ -478,6 +478,20 @@ function createOrchestrator(chatDir, { vault, lang, plan, model, engine, claudeA
       };
     },
 
+    /** Un chat por su nombre (como lo dices por WhatsApp): busca en la lista fresca. → { id, title } | { many: [títulos] } | null */
+    async findChat(name) {
+      const norm = (x) => String(x ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+      const want = norm(name);
+      if (!want) return null;
+      const sessions = await listSessions(chatDir, { limit: 40 });
+      for (const s of sessions) known.set(s.id, s);
+      const label = (s) => s.title || s.project;
+      const exact = sessions.filter((s) => norm(label(s)) === want);
+      const hits = exact.length ? exact : sessions.filter((s) => norm(label(s)).includes(want) || (want.length >= 4 && want.includes(norm(label(s)))));
+      if (hits.length === 1) return { id: hits[0].id, title: label(hits[0]) };
+      return hits.length ? { many: hits.slice(0, 5).map(label) } : null;
+    },
+
     // Manda el prompt al chat elegido, en su carpeta y con acceso a las carpetas
     // donde de verdad trabaja. Modo "auto": edita y ejecuta lo que el clasificador
     // de Claude Code considera seguro; lo riesgoso lo sigue bloqueando.

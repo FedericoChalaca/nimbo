@@ -18,8 +18,8 @@ const EVENTS = [
   "StopFailure",
   "PermissionRequest",
 ];
-// PermissionRequest espera a que decidas (60 s en Nimbo + margen).
-const TIMEOUTS = { PermissionRequest: 75 };
+// PermissionRequest espera a que decidas: 60 s en Nimbo, o hasta 10 min si estás lejos y respondes por WhatsApp (control remoto) + margen.
+const TIMEOUTS = { PermissionRequest: 620 };
 // hook.js vive en la raíz de Nimbo, no en src/: su ruta queda escrita en la configuración de Claude Code de
 // cada usuario, así que no se mueve.
 const hookPath = path.join(__dirname, "..", "..", "hook.js").replace(/\\/g, "/");
@@ -42,9 +42,10 @@ function read() {
 /** "on" = los 10 eventos apuntan a `command` · "stale" = hay hooks de Nimbo con otra ruta o incompletos · "off". */
 function status(command = NODE_COMMAND) {
   const hooks = read().hooks ?? {};
-  const ours = EVENTS.map((ev) => (hooks[ev] ?? []).filter(isOurs).flatMap((g) => g.hooks.map((h) => h.command)));
+  // Con el tiempo de espera: si cambió (p. ej. 75 → 620 s), "stale" y el panel pide reconectar.
+  const ours = EVENTS.map((ev) => (hooks[ev] ?? []).filter(isOurs).flatMap((g) => g.hooks.map((h) => `${h.command}|${h.timeout ?? ""}`)));
   if (ours.every((list) => !list.length)) return "off";
-  return ours.every((list) => list.length === 1 && list[0] === command) ? "on" : "stale";
+  return ours.every((list, i) => list.length === 1 && list[0] === `${command}|${TIMEOUTS[EVENTS[i]] ?? 5}`) ? "on" : "stale";
 }
 
 function apply(uninstall, command = NODE_COMMAND) {

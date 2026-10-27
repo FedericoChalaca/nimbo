@@ -43,6 +43,7 @@ const SECTIONS = [
     ["phone-alerts", t("Te escribe por Telegram cuando Claude termina o te necesita, de recordatorios y correo importante (primero conecta Telegram en Conexiones).")],
     ["wa-read", t("Lee las notificaciones de WhatsApp de Windows y te dice qué es urgente. Nunca escribe ni marca como leído.")],
     ["wa-rules", t("Tus reglas para WhatsApp en un archivo de texto: quién es trabajo, qué ignorar, qué es urgente.")],
+    ["remote-neo", t("Le escribes a tu IA de WhatsApp «[orden] chat :: mensaje» y Nimbo lo manda a ese chat de Claude, pero SOLO cuando le respondes con el código de 4 cifras que te llega por WhatsApp. Si estás lejos del PC y un chat pide permiso, también te llega para PERMITIR o DENEGAR con código. Necesita la carpeta de Drive con tu IA (Conexiones → Tu Google).")],
   ] },
   { id: "conn", icon: "🔌", name: t("Conexiones"), lead: t("Cada conexión con su estado y los pasos para dejarla lista. Todo es opcional."), conn: true },
   { id: "about", icon: "☁", name: t("Acerca de"), lead: "", about: true },
