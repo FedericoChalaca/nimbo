@@ -8,7 +8,8 @@
 const crypto = require("crypto");
 const fs = require("fs");
 
-const TAGS = ["nota", "idea", "tarea", "calendario", "pedido"];
+// "respuesta" = lo que contestaste por WhatsApp a una [pregunta #p3] que Nimbo le dejó a Instinct: llega como "[respuesta #p3] texto".
+const TAGS = ["nota", "idea", "tarea", "calendario", "pedido", "respuesta"];
 const hash = (s) => crypto.createHash("sha1").update(s).digest("hex").slice(0, 16);
 
 /** Texto del documento → líneas con etiqueta. Las que no tienen etiqueta (como la explicación de arriba) no cuentan. */
@@ -16,9 +17,9 @@ function parseLines(text) {
   const out = [];
   for (const raw of String(text ?? "").split(/\r?\n/).slice(0, 5000)) {
     const line = raw.replace(/\s+/g, " ").trim();
-    const m = line.match(/^(\d{4}-\d{2}-\d{2})?\s*\[(\w+)\]\s*(.+)$/);
+    const m = line.match(/^(\d{4}-\d{2}-\d{2})?\s*\[(\w+)(?:\s+#(p\d{1,6}))?\]\s*(.+)$/);
     if (!m || !TAGS.includes(m[2].toLowerCase())) continue;
-    out.push({ id: hash(line), date: m[1] ?? "", tag: m[2].toLowerCase(), text: m[3].slice(0, 500) });
+    out.push({ id: hash(line), date: m[1] ?? "", tag: m[2].toLowerCase(), ref: m[3] ?? "", text: m[4].slice(0, 500) });
   }
   return out;
 }
@@ -78,7 +79,7 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
       const seen = new Set(state.seen);
       // La primera vez, lo que ya estaba escrito no es "nuevo" (no se llena de avisos al conectar)
       const fresh = state.primed ? lines.filter((l) => !seen.has(l.id)) : [];
-      state = { version: v, seen: [...new Set([...state.seen, ...lines.map((l) => l.id)])].slice(-3000), pending: [...state.pending, ...fresh].slice(-200), primed: true };
+      state = { ...state, version: v, seen: [...new Set([...state.seen, ...lines.map((l) => l.id)])].slice(-3000), pending: [...state.pending, ...fresh].slice(-200), primed: true };
       save();
       if (fresh.length) onNew(state.pending, fresh);
     } catch {} finally { busy = false; }
@@ -102,14 +103,23 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
     pending: () => state.pending,
     /** Ya lo atendiste (guardado como pendiente, enviado a Claude o descartado): sale de la lista. */
     done(id) { state.pending = state.pending.filter((p) => p.id !== id); save(); return state.pending; },
-    /** Escribe en «De Nimbo» (para que Instinct te lo cuente). Solo con tu clic. */
-    async reply(text) {
+    /** Escribe en «De Nimbo» (para que Instinct te lo cuente). Con `ask`, es una [pregunta #pN] que Instinct te hace por WhatsApp
+     *  y cuya respuesta vuelve como "[respuesta #pN]". Solo con tu clic. → el id de la pregunta, true, o false. */
+    async reply(text, ask = false) {
       const b = bridge();
       const clean = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, 1000);
       if (!b?.de || !clean) return false;
-      await google.append(b.de, `${new Date().toLocaleDateString("sv")} ${clean}\n`);
-      return true;
+      const day = new Date().toLocaleDateString("sv");
+      if (!ask) { await google.append(b.de, `${day} ${clean}\n`); return true; }
+      const q = `p${(state.asked ?? 0) + 1}`;
+      await google.append(b.de, `${day} [pregunta #${q}] ${clean}\n`);
+      state.asked = (state.asked ?? 0) + 1;
+      state.questions = { ...(state.questions ?? {}), [q]: clean };
+      save();
+      return q;
     },
+    /** La pregunta a la que responde una [respuesta #pN] (para mostrarlas juntas). */
+    question: (ref) => state.questions?.[ref] ?? "",
   };
 }
 

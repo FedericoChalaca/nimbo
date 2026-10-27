@@ -704,19 +704,22 @@ const instinct = createInstinct({
   google, bridge: () => prefs.googleBridge, file: path.join(app.getPath("userData"), "instinct.json"),
   topic: () => { if (!/^nimbo-[a-f0-9]{32}$/.test(prefs.instinctTopic ?? "")) { prefs.instinctTopic = `nimbo-${require("crypto").randomBytes(16).toString("hex")}`; savePrefs(); } return prefs.instinctTopic; },
   onNew: (pending, fresh) => {
-    if (win && !win.isDestroyed()) { win.webContents.send("instinct", pending); win.webContents.send("instinct-new", fresh); }
+    if (win && !win.isDestroyed()) { win.webContents.send("instinct", withQ(pending)); win.webContents.send("instinct-new", fresh); }
     if (Notification.isSupported() && !mini) new Notification({ title: t("Instinct anotó para Nimbo"), body: fresh.map((f) => `[${f.tag}] ${f.text}`).join("\n").slice(0, 200) }).show();
   },
 });
-ipcMain.handle("instinct", () => instinct.pending());
-ipcMain.handle("instinct-check", () => instinct.check(true));
+// Cada [respuesta #pN] va con la pregunta que contesta (para verlas juntas)
+const withQ = (list) => list.map((p) => (p.tag === "respuesta" ? { ...p, q: instinct.question(p.ref) } : p));
+ipcMain.handle("instinct", () => withQ(instinct.pending()));
+ipcMain.handle("instinct-check", async () => withQ(await instinct.check(true)));
 // Lo que haces con cada cosa: guardarla como pendiente, darla por vista, o escribirle a Instinct en «De Nimbo». Siempre con tu clic.
 ipcMain.handle("instinct-do", async (_e, id, action, text) => {
   const item = instinct.pending().find((p) => p.id === String(id));
-  if (action === "reply") { await instinct.reply(String(text ?? "")).catch(() => false); return instinct.pending(); }
-  if (!item) return instinct.pending();
+  // reply = un aviso para ti; ask = una pregunta que Instinct te hace por WhatsApp (tu respuesta vuelve a «Para Nimbo»)
+  if (action === "reply" || action === "ask") { await instinct.reply(String(text ?? ""), action === "ask").catch(() => false); return withQ(instinct.pending()); }
+  if (!item) return withQ(instinct.pending());
   if (action === "pending") { reminders.add({ text: item.text, due: "" }); remindersChanged(); }
-  return instinct.done(item.id);
+  return withQ(instinct.done(item.id));
 });
 app.whenReady().then(() => { if (prefs.googleBridge?.para) instinct.start(); });
 app.on("before-quit", () => instinct.stop());

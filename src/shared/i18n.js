@@ -476,6 +476,11 @@ const NIMBO_EN = {
   "Instinct anotó: {0}": "Instinct noted: {0}",
   "Instinct anotó para Nimbo": "Instinct left something for Nimbo",
   "Escuchando avisos de Instinct: Drive avisa cuando escribe (nada revisa cada tanto). ": "Listening for Instinct: Drive notifies when it writes (nothing checks on a timer). ",
+  "Nimbo preguntó: {0}": "Nimbo asked: {0}",
+  "Mi respuesta (por WhatsApp) a «{0}»: {1}": "My answer (via WhatsApp) to “{0}”: {1}",
+  "Preguntarme por WhatsApp": "Ask me on WhatsApp",
+  "Instinct te hace esta pregunta por WhatsApp y tu respuesta vuelve a Nimbo": "Instinct asks you this on WhatsApp and your answer comes back to Nimbo",
+  "Instinct te lo va a preguntar por WhatsApp ✓": "Instinct will ask you on WhatsApp ✓",
   // Ventana de opciones (options-page.js)
   "Opciones": "Options",
   "Opciones…": "Options…",

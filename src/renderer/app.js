@@ -915,12 +915,15 @@ function renderAppView() {
       const r = el("div", "irow");
       const top = el("div", "itop");
       top.append(el("span", `chip2 itag-${it.tag}`, it.tag), el("span", "idate", it.date));
-      r.append(top, el("div", "itext", it.text));
+      if (it.tag === "respuesta" && it.q) r.append(top, el("div", "iq", t("Nimbo preguntó: {0}", it.q)), el("div", "itext", it.text));
+      else r.append(top, el("div", "itext", it.text));
       const b = el("div", "iacts");
       const mk = (label, fn, cls = "") => { const x = el("button", cls, label); x.type = "button"; x.onclick = (e) => { e.stopPropagation(); fn(); }; return x; };
-      if (it.tag === "pedido") b.append(mk(t("Pasárselo a Claude"), () => {
+      if (it.tag === "pedido" || it.tag === "respuesta") b.append(mk(t("Pasárselo a Claude"), () => {
         // Va al chat para que TÚ lo revises y lo envíes (Claude propondrá el encargo con su tarjeta). Nada se ejecuta solo.
-        act(it.id, "done"); pillFocus = false; openApp = null; renderAppView(); toggleChat(true); msg.value = t("Pedido de Instinct: {0}", it.text); msg.focus();
+        act(it.id, "done"); pillFocus = false; openApp = null; renderAppView(); toggleChat(true);
+        msg.value = it.tag === "respuesta" ? t("Mi respuesta (por WhatsApp) a «{0}»: {1}", it.q || "?", it.text) : t("Pedido de Instinct: {0}", it.text);
+        msg.focus();
       }, "main"));
       else b.append(mk(t("A mis pendientes"), () => act(it.id, "pending"), "main"));
       b.append(mk(t("Listo"), () => act(it.id, "done")));
@@ -934,7 +937,12 @@ function renderAppView() {
     send.type = "button";
     send.onclick = async () => { if (!input.value.trim()) return; await api.instinctDo("", "reply", input.value); input.value = ""; setState(state, t("Le dejé el mensaje a Instinct ✓"), { labelFor: 3500 }); };
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") send.click(); });
-    reply.append(input, send);
+    // Preguntar: Instinct te lo pregunta por WhatsApp y tu respuesta vuelve aquí como [respuesta]
+    const ask = el("button", "", t("Preguntarme por WhatsApp"));
+    ask.type = "button";
+    ask.title = t("Instinct te hace esta pregunta por WhatsApp y tu respuesta vuelve a Nimbo");
+    ask.onclick = async () => { if (!input.value.trim()) return; await api.instinctDo("", "ask", input.value); input.value = ""; setState(state, t("Instinct te lo va a preguntar por WhatsApp ✓"), { labelFor: 4000 }); };
+    reply.append(input, send, ask);
     rows.push(reply);
   } else if (app.id === "agenda") {
     // Tus próximos 7 días de Google Calendar, por día. Clic = abrirlo en Calendar.
