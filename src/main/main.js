@@ -884,6 +884,7 @@ const wake = createWake({
   onWake: async (ev) => {
     if (mini || !win || win.isDestroyed()) return;
     wake.set(false); // mientras te escucha el dictado, la palabra de activación descansa
+    duckMusic(true); // con música sonando, se baja mientras te escucha (si no, Whisper oye la canción)
     // El pedacito de audio de la llamada: la página lo revisa con Whisper antes de despertarse (Windows solo se confundía con videos).
     let clip = null;
     if (ev.clip) { clip = await fs.promises.readFile(ev.clip).catch(() => null); fs.promises.rm(ev.clip, { force: true }).catch(() => {}); }
@@ -897,6 +898,7 @@ const wake = createWake({
 });
 function syncWake() {
   clearTimeout(wakeTimer);
+  duckMusic(false); // por si la página nunca avisó (el corte de 60 s)
   const on = prefs.wakeWord === true && !mini;
   wake.set(on);
   if (win && !win.isDestroyed()) win.webContents.send("wake-on", on); // la isla muestra un puntito mientras escucha la frase
@@ -905,7 +907,15 @@ function syncWake() {
 const live = createLive({ lang, onPartial: (text) => { if (win && !win.isDestroyed()) win.webContents.send("dictation-partial", text); } });
 ipcMain.on("live-dictation", (_e, on) => (on === true ? live.start() : live.stop()));
 app.on("before-quit", () => live.stop());
-ipcMain.on("wake-done", syncWake);
+// Bajar la música mientras Nimbo te escucha (como Alexa) y devolverla como estaba al terminar. Solo la app que suena.
+let ducked = null; // { app, prev }
+async function duckMusic(on) {
+  if (on && !ducked && media?.playing) {
+    const app = media.app, prev = await volume.get(app);
+    if (prev > 25) { ducked = { app, prev }; volume.set(app, 25); }
+  } else if (!on && ducked) { const d = ducked; ducked = null; volume.set(d.app, d.prev); }
+}
+ipcMain.on("wake-done", () => { duckMusic(false); syncWake(); });
 // Lo que pasó después de una llamada (lo manda la página): qué oyó Whisper en ella y qué dijiste.
 ipcMain.on("wake-log", (_e, kind, text, note) => {
   const q = String(text ?? "").slice(0, 200);

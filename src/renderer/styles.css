@@ -542,11 +542,13 @@
   .music-sm .prog { position: absolute; left: 66px; right: 76px; bottom: 6px; margin: 0; }
   .music-sm .prog .pt { display: none; }
   .music-sm .pbar { height: 3px; }
-  .music-sm .vcap { position: absolute; right: 9px; top: 9px; bottom: 9px; width: 13px; height: auto !important; margin: 0 !important; border-radius: 7px; cursor: ns-resize; }
-  .music-sm .vcap:hover, .music-sm .vcap.drag { width: 17px; right: 7px; }
+  .music-sm .vcap { position: absolute; right: 9px; top: 9px; bottom: 9px; width: 17px; height: auto !important; margin: 0 !important; border-radius: 7px; cursor: ns-resize; }
+  .music-sm .vcap:hover, .music-sm .vcap.drag { width: 21px; right: 7px; }
   .music-sm .vfill { top: auto; bottom: 0; width: 100%; height: var(--v, 50%); transition: height .12s ease-out; background: linear-gradient(0deg, color-mix(in srgb, var(--c) 70%, #000), var(--c)); }
   .music-sm .vcap.drag .vfill { transition: none; }
-  .music-sm .vcap :is(svg, .vnum) { display: none; }
+  .music-sm .vcap .vnum { display: none; }
+  /* El parlante abajo, adentro de la barra: así se entiende que es el volumen */
+  .music-sm .vcap svg { left: 50%; top: auto; bottom: 4px; width: 11px; height: 11px; margin: 0 0 0 -5.5px; stroke-width: 2.4; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6)); }
   .music #content > :not(#appview) { display: none !important; } /* ni chat ni otras tarjetas: solo la música (siguen ahí al volver a Nimbo) */
   .music #content { top: 7px !important; }
   .music #appview { cursor: grab; }
