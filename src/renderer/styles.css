@@ -713,6 +713,20 @@
   .edge-right #info { left: auto; right: 0; border-radius: 0 0 0 22px; }
   :is(.edge-left, .edge-right) #info::after { display: none; }
   :is(.edge-left, .edge-right) #info #ticker { flex: 1; width: auto; min-width: 0; }
+  /* Volteado (soltado en la mitad de abajo del lateral): de arriba a abajo tus programas, el texto y Nimbo al final */
+  :is(.edge-left, .edge-right).flip:not(.open) #island { top: calc(var(--dock, 0px) + var(--info, 0px)); }
+  :is(.edge-left, .edge-right).flip.split:not(.open) #island { border-bottom-left-radius: 22px !important; border-bottom-right-radius: 22px !important; }
+  .edge-left.flip.split:not(.open) #island { border-top-right-radius: 0 !important; border-bottom-left-radius: 0 !important; }
+  .edge-right.flip.split:not(.open) #island { border-top-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+  :is(.edge-left, .edge-right).flip #info { top: var(--dock, 0px); }
+  .edge-left.flip #info { border-radius: 0 22px 0 0; }
+  .edge-right.flip #info { border-radius: 22px 0 0 0; }
+  :is(.edge-left, .edge-right).flip #dock { top: 0; }
+  .edge-left.flip #dock { border-radius: 0 14px 0 0; }
+  .edge-right.flip #dock { border-radius: 14px 0 0 0; }
+  .edge-left.flip #dock::before { top: auto; bottom: 0; background: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px); }
+  .edge-right.flip #dock::before { top: auto; bottom: 0; background: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px); }
+  /* Volteado, la pieza de abajo es la isla: el brillo del estado se queda en ella (ver :not(.flip) más abajo) */
 
   /* Flotando: una isla redonda con la nube y, colgando debajo, tus 4 últimos programas. Sin texto. */
   .edge-float #wrap { left: 50%; top: 14px; transform: translateX(-50%); }
@@ -723,7 +737,8 @@
   .edge-float.docked:not(.open) #island { border-radius: 22px 22px 12px 12px !important; }
   .edge-float:not(.open) #bar > :not(#menuBtn, #progress) { display: none; }
   .edge-float:not(.open) #char { left: calc(50% - 55px); }
-  .edge-float #dock { top: 68px; left: 50%; right: auto; transform: translateX(-50%); border-radius: 0 0 14px 14px; }
+  /* Centrada con márgenes y NO con transform: las animaciones de agarrar/soltar usan transform y, mientras duraban, la franja saltaba a la derecha */
+  .edge-float #dock { top: 68px; left: 0; right: 0; margin: 0 auto; border-radius: 0 0 14px 14px; }
   .edge-float #dock::before { left: auto; right: 100%; top: 0; background: radial-gradient(circle at 0 100%, transparent 11.5px, #000 12px); }
   .edge-float #dock::after { content: ""; position: absolute; left: 100%; top: 0; width: 12px; height: 12px;
     background: radial-gradient(circle at 100% 100%, transparent 11.5px, #000 12px); }
@@ -771,10 +786,10 @@
   .edge-bottom:is(.split, .docked):not(.open) :is(#dock, #info) { box-shadow: 0 0 0 1px #000, 0 -10px 24px rgba(0, 0, 0, .38); }
   .dragging:is(.split, .docked) #island::after { opacity: 0; }
   /* En columna (lados y flotando) el brillo del estado va en la pieza de MÁS ABAJO: en la isla quedaría justo en la unión con la franja */
-  :is(.edge-left, .edge-right, .edge-float):is(.split, .docked):not(.open) #island::before { opacity: 0 !important; }
-  :is(.edge-left, .edge-right, .edge-float).docked:not(.open) #dock, :is(.edge-left, .edge-right):not(.docked).split:not(.open) #info {
+  :is(.edge-left, .edge-right, .edge-float):is(.split, .docked):not(.open, .flip) #island::before { opacity: 0 !important; }
+  :is(.edge-left, .edge-right, .edge-float).docked:not(.open, .flip) #dock, :is(.edge-left, .edge-right):not(.docked).split:not(.open, .flip) #info {
     background: radial-gradient(ellipse 90% 70% at 50% 100%, var(--glow), transparent 75%), #000; }
-  .theme-jarvis:is(.edge-left, .edge-right, .edge-float).docked:not(.open) #dock, .theme-jarvis:is(.edge-left, .edge-right):not(.docked).split:not(.open) #info {
+  .theme-jarvis:is(.edge-left, .edge-right, .edge-float).docked:not(.open, .flip) #dock, .theme-jarvis:is(.edge-left, .edge-right):not(.docked).split:not(.open, .flip) #info {
     background: radial-gradient(ellipse 90% 70% at 50% 100%, var(--glow), transparent 75%), repeating-linear-gradient(0deg, rgba(255, 255, 255, .016) 0 1px, transparent 1px 3px), #000; }
   .dragging:is(.split, .docked) :is(#dock, #info) { box-shadow: 0 0 0 1px #000, 0 22px 44px rgba(0, 0, 0, .55); }
 

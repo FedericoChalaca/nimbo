@@ -72,6 +72,7 @@ function layout() {
   if (open) { wrap.style.setProperty("--blk", "0px"); wrap.style.setProperty("--iw", "0px"); }
   root.classList.toggle("corner-l", corner === "l");
   root.classList.toggle("corner-r", corner === "r");
+  root.classList.toggle("flip", vert && anchorF > 0.5); // en un lateral, soltado en la mitad de abajo: Nimbo abajo y sus franjas encima
   for (const x of EDGE_CLASSES) root.classList.toggle(x, x === `edge-${e}`);
   // Tus programas van en su franja (#dock), salvo con la isla abierta (ahí salen en grande). En columna se mide su alto.
   const dockW = !open && tasksEl.children.length ? (vert ? tasksEl.offsetHeight : tasksEl.offsetWidth) + 14 : 0;
@@ -98,7 +99,8 @@ function layout() {
       w = 132;
       h = dockW + ih + infoW;
     } else if (corner) {
-      const textW = text ? Math.min(measure.offsetWidth * 12.5 / 13.5, 230, innerWidth - 28 - 150 - 34 - pipsW) : 0;
+      // Programas + texto tienen que caber en la ventana (si no, la franja se salía por la derecha y su punta redonda quedaba cortada, cuadrada).
+      const textW = text ? Math.max(0, Math.min(measure.offsetWidth * 12.5 / 13.5, 230, innerWidth - 28 - 150 - dockW - 34 - pipsW)) : 0;
       infoW = text || pipsW ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
       wrap.style.setProperty("--tw", `${Math.ceil(Math.max(0, textW))}px`);
       const blk = infoW + dockW; // una sola fila de media altura al lado de Nimbo: programas y texto, uno junto al otro
@@ -109,7 +111,7 @@ function layout() {
       w = Math.max(150, dockW + 28);
       h = BAR_H + (dockW ? 34 : 0);
     } else if (split) {
-      const textW = text ? Math.min(measure.offsetWidth * 12.5 / 13.5, 260, innerWidth - 28 - 150 - dockW - pipsW - 34) : 0;
+      const textW = text ? Math.max(0, Math.min(measure.offsetWidth * 12.5 / 13.5, 260, innerWidth - 28 - 150 - dockW - pipsW - 34)) : 0;
       infoW = text || pipsW ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
       wrap.style.setProperty("--tw", `${Math.ceil(textW)}px`);
       w = infoW + 150 + dockW;
