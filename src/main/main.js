@@ -1,5 +1,9 @@
 // Nimbo: ventana transparente arriba de la pantalla + servidor local que recibe
 // los hooks de Claude Code y se los pasa al personaje.
+// Rastro desde la PRIMERA línea (2026-10-28: al encender el PC Nimbo quedó corriendo sin barra y sin escribir nada en arranque.log).
+// Sin Electron ni nada más: así se ve hasta dónde llegó cada proceso aunque falle muy temprano.
+const trace = (m) => { try { require("fs").appendFileSync(require("path").join(process.env.APPDATA || ".", "nimbo", "arranque.log"), `${new Date().toISOString()} [pid ${process.pid}] ${m}\n`); } catch {} };
+trace("proceso empieza");
 const { app, BrowserWindow, powerMonitor, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer, Tray, nativeImage, safeStorage, dialog } = require("electron");
 const { execFile } = require("child_process");
 const { pathToFileURL } = require("url");
@@ -61,6 +65,7 @@ const DECISION_TIMEOUT = 60_000;
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 if (!app.requestSingleInstanceLock()) {
+  trace("ya hay otro Nimbo abierto: este se cierra");
   app.quit();
   process.exit(0); // sin esto el resto del archivo corría y pisaba el token de la instancia viva
 }
@@ -92,6 +97,7 @@ const TOKEN = crypto.randomBytes(32).toString("hex");
 const tokenFile = path.join(app.getPath("userData"), "token");
 fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
 fs.writeFileSync(tokenFile, TOKEN, { mode: 0o600 });
+trace("tiene el candado y escribió el token");
 const mac = (msg) => crypto.createHmac("sha256", TOKEN).update(msg).digest("hex");
 const sameMac = (a, b) => {
   const x = Buffer.from(String(a ?? ""));
