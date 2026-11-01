@@ -10,3 +10,7 @@ dist/
 HANDOFF.md
 tasks/
 evals/
+
+# Carpeta de intercambio con tareas programadas (datos del dueño: nunca al repo)
+_real/
+rastro-local.log

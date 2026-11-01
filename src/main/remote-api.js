@@ -42,7 +42,7 @@ const sameToken = (a, b) => {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 };
 
-function createRemoteApi({ tokenFile, ask, dispatch, reminders, remindersChanged, permission, decide, idle = () => 0, now = Date.now }) {
+function createRemoteApi({ tokenFile, ask, dispatch, reminders, remindersChanged, permission, decide, idle = () => 0, now = Date.now, diag = () => ({}) }) {
   const token = readToken(tokenFile);
   const chats = new Map(); // session_id → { id, title, state, step, at }
   const proposals = new Map(); // id → encargo propuesto en la última respuesta de Nimbo
@@ -77,6 +77,7 @@ function createRemoteApi({ tokenFile, ask, dispatch, reminders, remindersChanged
 
   async function route(method, url, body) {
     if (method === "GET" && url === "/estado") return [200, status()];
+    if (method === "GET" && url === "/diagnostico") return [200, diag()]; // rutas y entorno que ve el proceso (para el fallo de arranque)
     if (method !== "POST") return [404, { error: "No existe" }];
     switch (url) {
       case "/pedir": {

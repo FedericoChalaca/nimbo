@@ -8,10 +8,24 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 
 ## Estado y siguiente paso (2026-10-27)
 Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el contexto del dueño y lo que está abierto.
-- **Publicado:** 0.8.0 (release con instalador). Desde entonces todo va en la rama `multiplataforma` (subida, NO fusionada a main ni publicada): **0.9.33**. Regla: cada cambio = commit + push, versión 0.9.x; nunca 1.0 ni release sin que el dueño lo diga.
+- **Publicado:** 0.8.0 (release con instalador). Desde entonces todo va en la rama `multiplataforma` (subida, NO fusionada a main ni publicada): **0.9.34**. Regla: cada cambio = commit + push, versión 0.9.x; nunca 1.0 ni release sin que el dueño lo diga.
 - **Hecho desde la 0.8:** Linux/macOS en vista previa; modo barra de tareas (programas abiertos y anclados, buscador, posiciones arriba/abajo/lados/esquinas/flotando en cualquier pantalla, arrastre con resistencia); ventana de Opciones (secciones, guías paso a paso); isla de música (cualquier reproductor, avance con salto, letra LRCLIB, volumen por app); «Oye Nimbo» más estricto (sin guardar audios ni textos) con Piper; logros (Platino) con superposición para jugar; tu Google directo (agenda, carpeta con la IA de WhatsApp); puente con Instinct (avisos por Drive + ntfy.sh y por Calendar) y control remoto por WhatsApp con códigos.
 - **Arranque (2026-10-27):** al encender el PC Nimbo arrancó sin barra (como con ajustes de fábrica). Ahora lee prefs.json con reintentos (~3 s), anota en `%APPDATA%\nimbo\arranque.log` de dónde salieron los ajustes y cualquier error, y a los 20 s revisa que el lector de la barra corra. Si vuelve a pasar: leer arranque.log y barra.log PRIMERO. 2026-10-28 volvió a pasar SIN ninguna línea en arranque.log (aunque Nimbo corría y tenía sus puertos): desde 0.9.33 cada proceso anota `[pid] proceso empieza / tiene el candado / ya hay otro` desde la primera línea de main.js. Se arrancaba DOS veces al iniciar sesión (Nimbo.lnk en Inicio + la entrada Run del registro que pone «Iniciar con Windows»): el .lnk de Inicio se quitó (copia en %APPDATA%
 imboNimbo-inicio.lnk.bak); quedan el del escritorio y el del menú Inicio.
+- **Carpeta de datos VIRTUAL (2026-11-01, causa raíz de "arranca de fábrica", "sin barra", "no se guardan los ajustes" y de que mis trazas no aparecieran):**
+  la app de escritorio de Claude es una app empaquetada de Windows (MSIX, `Claude_pzs8sxrjxfjjc`) y TODO lo que se lanza desde una sesión de Claude Code de esa
+  app (esta terminal, `node`, Electron) ve `%APPDATA%` redirigido a `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\`. El Nimbo que arranca
+  Windows usa la carpeta REAL `C:\Users\<u>\AppData\Roaming\nimbo`. Había dos `prefs.json`, dos `token`, dos `arranque.log`. Las lecturas de un archivo que no
+  existe en la copia virtual caen a la real; la PRIMERA ESCRITURA crea la copia virtual y desde ahí divergen. El 2026-11-01 se fusionaron (la virtual tenía todo lo
+  nuevo; de la real se rescató `name`), se apartó la virtual a `...\LocalCache\Roaming\nimbo.apartada-2026-11-01` y queda UNA carpeta. **Reglas:** (1) NUNCA lanzar
+  Nimbo desde la terminal de una sesión de Claude: siempre `schtasks /Run /TN Nimbo` (corre fuera del contenedor); para depurar con CDP, registrar una tarea
+  temporal (abajo en "Probar cambios"). (2) NUNCA escribir en `%APPDATA%\nimbo` desde la terminal (ni `cp`, ni Node, ni PowerShell): volvería a crear la copia
+  virtual; si hace falta tocar un archivo de ahí, se hace con un `.cmd` corrido por una tarea programada (ejemplo en `_real/sincronizar.cmd`, fuera del repo).
+  (3) Señal de que volvió a pasar: existe `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\nimbo`. `fsutil hardlink list <archivo>` muestra la
+  ruta real de lo que se está leyendo. (4) `GET /diagnostico` en la API del celular (127.0.0.1:47824, token de `remote-token`) dice qué rutas ve el proceso vivo.
+- **Arranque con Windows (2026-11-01):** una TAREA PROGRAMADA «Nimbo» (al iniciar sesión, 20 s después, sin límite de tiempo, también con batería), no la entrada
+  Run del registro: Windows dejó de ejecutar esa entrada (del 28 al 31-oct ningún encendido arrancó Nimbo, otras entradas Run sí corrían) y el .lnk de Inicio se
+  había quitado. `setAutostart`/`autostartOn` en `main.js` crean/borran/consultan la tarea con PowerShell; `prefs.autostartV = 2` marca la migración (quita la Run).
 - **Sin verificar con uso real:** control remoto de permisos estando lejos; arrastre fino con mouse real; isla de música y logros encima de un juego real; el instalador nuevo.
 - **Abierto:** publicar la app de Google Cloud (hoy en prueba: el permiso puede vencer cada 7 días); motor de palabra de activación dedicado (la música confunde a «Oye Nimbo»); firma del instalador (SignPath la rechazó el 2026-10-13); partir `app.js` (>2.700 líneas); regenerar GIF y video del README.
 
@@ -27,8 +41,9 @@ imboNimbo-inicio.lnk.bak); quedan el del escritorio y el del menú Inicio.
 - No mover el mouse ni hacer clics reales en su PC sin preguntar.
 
 ## Arrancar
-- `npm start` (o el acceso directo `Nimbo.lnk` en la carpeta Inicio de Windows, que arranca
-  `node_modules\electron\dist\electron.exe "<carpeta de nimbo>"` al iniciar sesión).
+- Para el dueño: la tarea programada «Nimbo» al iniciar sesión, o `Nimbo.lnk` del escritorio / menú Inicio (ambos corren
+  `node_modules\electron\dist\electron.exe "<carpeta de nimbo>"`). Desde una sesión de Claude: `schtasks /Run /TN Nimbo`, NUNCA `npm start`
+  (ver "Carpeta de datos VIRTUAL").
 - Hooks de Claude Code: `npm run install-hooks` / `npm run uninstall-hooks`. Escribe en
   `~/.claude/settings.json` con backup fechado `settings.json.bak-*`. Si se mueve la carpeta,
   hay que reinstalarlos (guardan la ruta de `hook.js`).
@@ -575,9 +590,10 @@ de la app en su propia carpeta, que reparte con `ListAgents`/`SendMessage`; el c
 para preguntas rápidas, recordatorios y el vault.
 
 ## Probar cambios
-1. `taskkill /F /IM electron.exe`, luego `npx electron . --remote-debugging-port=9477` y evaluar
-   en la página por CDP (`Runtime.evaluate`).
-2. Al terminar, cerrar esa instancia y relanzar con `Nimbo.lnk`: el puerto 9477 NO debe quedar
+1. `taskkill /F /IM electron.exe`, luego lanzar FUERA del contenedor de la app de Claude con una tarea temporal (PowerShell):
+   `$a = New-ScheduledTaskAction -Execute "<nimbo>\node_modules\electron\dist\electron.exe" -Argument '"<nimbo>" --remote-debugging-port=9477'; Register-ScheduledTask -TaskName NimboDepurar -Action $a -Force | Out-Null; Start-ScheduledTask NimboDepurar; Unregister-ScheduledTask NimboDepurar -Confirm:$false`
+   y evaluar en la página por CDP (`Runtime.evaluate`). `npx electron .` desde esta terminal crea la carpeta de datos VIRTUAL: no.
+2. Al terminar, cerrar esa instancia y relanzar con `schtasks /Run /TN Nimbo`: el puerto 9477 NO debe quedar
    abierto y no hay que dejar estilos de prueba (fondo oscuro, zoom) en la ventana del usuario.
    El puerto de depuración NO puede ser 9333 ni 9222: otra sesión de Claude que automatiza un navegador se
    conectó a ese puerto y navegó la ventana de Nimbo a su propia página. Usar uno raro (9477) y cerrarlo.

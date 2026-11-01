@@ -1,11 +1,11 @@
 // Nimbo: ventana transparente arriba de la pantalla + servidor local que recibe
 // los hooks de Claude Code y se los pasa al personaje.
-// Rastro desde la PRIMERA línea (2026-10-28: al encender el PC Nimbo quedó corriendo sin barra y sin escribir nada en arranque.log).
-// Sin Electron ni nada más: así se ve hasta dónde llegó cada proceso aunque falle muy temprano.
+// Rastro desde la PRIMERA línea de main.js: así se ve hasta dónde llegó cada proceso aunque falle muy temprano. 2026-11-01: gracias a esto se
+// descubrió que lo lanzado desde la app de Claude ve una carpeta AppData VIRTUAL (ver CLAUDE.md, "Carpeta de datos virtual").
 const trace = (m) => { try { require("fs").appendFileSync(require("path").join(process.env.APPDATA || ".", "nimbo", "arranque.log"), `${new Date().toISOString()} [pid ${process.pid}] ${m}\n`); } catch {} };
 trace("proceso empieza");
 const { app, BrowserWindow, powerMonitor, screen, ipcMain, Menu, globalShortcut, session, protocol, net, shell, Notification, clipboard, desktopCapturer, Tray, nativeImage, safeStorage, dialog } = require("electron");
-const { execFile } = require("child_process");
+const { execFile, execFileSync } = require("child_process");
 const { pathToFileURL } = require("url");
 const crypto = require("crypto");
 const fs = require("fs");
@@ -597,6 +597,9 @@ const alerts = createAlerts({ send: (text) => telegram.notify(text), enabled: (k
 ipcMain.handle("dispatch", (_e, id, prompt) => orchestrator.dispatch(String(id), String(prompt)));
 // --- Celular (remote-api.js): Nimbo en el iPhone, por el puente del asistente. Solo 127.0.0.1 y con su token. ---
 const remote = createRemoteApi({
+  diag: () => ({ version: app.getVersion(), file: __filename, cwd: process.cwd(), userData: app.getPath("userData"), appData: process.env.APPDATA, exec: process.execPath, argv: process.argv, token: TOKEN.slice(0, 8), bootLog: BOOT_LOG, pid: process.pid, uptime: process.uptime(),
+    diskToken: (() => { try { return fs.readFileSync(tokenFile, "utf8").slice(0, 8); } catch (e) { return "ERR " + e.code; } })(),
+    lastLog: (() => { try { return fs.readFileSync(BOOT_LOG, "utf8").trim().split(/\r?\n/).pop(); } catch (e) { return "ERR " + e.code; } })() }),
   tokenFile: path.join(app.getPath("userData"), "remote-token"),
   ask: askNimbo,
   dispatch: (id, prompt) => orchestrator.dispatch(String(id), String(prompt)),
@@ -1206,6 +1209,8 @@ app.whenReady().then(() => {
   try { windows.set(true); } catch (e) { barraLog("windows.set falló: " + e.message); } // un fallo aquí NO puede impedir que salgan las ancladas
   sendTasks(); // las ancladas salen ya: al encender el PC el lector de ventanas puede tardar en responder
   importWindowsPins();
+  // Quien tenía "Iniciar con Windows" con la entrada Run pasa a la tarea programada (una vez)
+  if (process.platform === "win32" && prefs.autostartV !== 2) { prefs.autostartV = 2; savePrefs(); if (runKeyOn() && !taskOn()) setAutostart(true); }
 });
 app.on("before-quit", () => windows.stop());
 
@@ -1254,8 +1259,26 @@ const LINKS = { googleCloud: "https://console.cloud.google.com/auth/clients", ol
 const loginItem = () => (app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] });
 // Iniciar con el sistema: Electron lo hace en Windows y macOS; en Linux se deja un archivo .desktop en la carpeta de autoinicio.
 const linuxAutostart = () => path.join(process.env.XDG_CONFIG_HOME || path.join(require("os").homedir(), ".config"), "autostart", "nimbo.desktop");
-const autostartOn = () => (process.platform === "linux" ? fs.existsSync(linuxAutostart()) : app.getLoginItemSettings(loginItem()).openAtLogin);
+// Windows: una tarea programada al iniciar sesión (20 s después), no la entrada Run del registro. 2026-10-31: Windows dejó de ejecutar la
+// entrada Run de Nimbo en 10 encendidos seguidos (ni rastro en arranque.log; otras entradas Run sí corrían), y el .lnk de la carpeta Inicio
+// arrancaba a veces sin barra. La tarea: sin límite de tiempo (el defecto la mataría a los 3 días), también con batería, una sola instancia.
+const TASK = "Nimbo";
+const psTask = (script) => { try { return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: 20_000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return null; } };
+const taskOn = () => psTask(`if (Get-ScheduledTask -TaskName '${TASK}' -ErrorAction SilentlyContinue) { 'si' }`) === "si";
+const runKeyOn = () => app.getLoginItemSettings(loginItem()).openAtLogin;
+const autostartOn = () => (process.platform === "linux" ? fs.existsSync(linuxAutostart()) : process.platform === "win32" ? taskOn() : runKeyOn());
 function setAutostart(on) {
+  if (process.platform === "win32") {
+    if (runKeyOn()) app.setLoginItemSettings({ ...loginItem(), openAtLogin: false }); // la entrada Run vieja sobra (y evita el arranque doble)
+    if (!on) return psTask(`Unregister-ScheduledTask -TaskName '${TASK}' -Confirm:$false -ErrorAction SilentlyContinue`);
+    const args = app.isPackaged ? "" : `'"${app.getAppPath()}"'`;
+    const ok = psTask(`$a = New-ScheduledTaskAction -Execute '${process.execPath}' ${args ? `-Argument ${args}` : ""} -WorkingDirectory '${ROOT}'
+$t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME; $t.Delay = 'PT20S'
+$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -StartWhenAvailable -Priority 5
+Register-ScheduledTask -TaskName '${TASK}' -Action $a -Trigger $t -Settings $s -Description 'Abre Nimbo al entrar a Windows' -Force | Out-Null; 'ok'`);
+    if (ok !== "ok") bootLog("no se pudo crear la tarea de inicio de Windows");
+    return;
+  }
   if (process.platform !== "linux") return app.setLoginItemSettings({ ...loginItem(), openAtLogin: on });
   if (!on) return fs.rmSync(linuxAutostart(), { force: true });
   fs.mkdirSync(path.dirname(linuxAutostart()), { recursive: true });
