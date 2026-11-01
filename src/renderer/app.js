@@ -141,10 +141,11 @@ function layout() {
   wrap.style.setProperty("--w", `${Math.round(w)}px`);
   wrap.style.setProperty("--h", `${Math.round(h)}px`);
   lastSize = { w, h };
-  fitWindow(open ? 480 : h + 62); // 62 = sombra de la isla
+  fitWindow(open ? MAX_WIN_H : h + 62); // 62 = sombra de la isla
 }
 // La ventana mide lo que muestra la isla: crece ANTES de la animación y encoge cuando la animación de cierre ya terminó.
-let winH = 480, winShrink = 0;
+const MAX_WIN_H = 560; // = H en main.js (2026-11-01: 480 cortaba la última fila de pastillas)
+let winH = MAX_WIN_H, winShrink = 0;
 function fitWindow(need) {
   clearTimeout(winShrink);
   if (need > winH) { winH = need; api.winHeight(need); }
@@ -741,6 +742,8 @@ function renderAppView() {
   if (!openApp) pillFocus = false;
   root.classList.toggle("appfocus", pillFocus && !!openApp && !musicMode);
   if (pillFocus && appBack.parentNode !== content) content.prepend(appBack);
+  // Sin pastilla enfocada el botón se saca del todo: si se queda (aunque no se vea), layout() lo cuenta como contenido y la isla no vuelve a encogerse (pasaba al salir de la música)
+  if (!(pillFocus && openApp)) appBack.remove();
   const app = appsList().find((a) => a.id === openApp);
   // "Chats" usa sus dos cajas de siempre (lista de chats + vista en vivo) en vez de #appview.
   const chats = app?.id === "chats";

@@ -53,7 +53,7 @@ if (process.env.APPIMAGE) app.commandLine.appendSwitch("no-sandbox");
 const PORT = 47823;
 // Ancho de la ventana (transparente: fuera de la isla no atrapa el mouse). En modo barra es más ancha: caben el texto, Nimbo y tus programas.
 let W = 440; // se ajusta al leer prefs (setWinWidth)
-const H = 480;
+const H = 560; // 2026-11-01: 480 cortaba la última fila de pastillas con la barra de programas abierta (#content llega a 466)
 // Alto real de la ventana: la página lo pide según lo que muestra (isla compacta ≈ 130 px, abierta = H). La ventana es
 // transparente y Windows copia la ventana ENTERA en cada cuadro animado: cuanto más chica, menos gasta.
 let winH = H;
@@ -312,7 +312,7 @@ const MARGIN = 8;
 // { edge, display (id de la pantalla), pos (0…1 a lo largo del borde), x, y (flotando: el centro de arriba de la isla) }.
 const EDGES = ["top", "bottom", "left", "right", "float"];
 const SIDE_W = 440, SIDE_H = 640; // a los lados: la ventana es vertical
-const FLOAT_W = 440, FLOAT_H = 500; // abierta mide hasta 470 + 14 de margen arriba
+const FLOAT_W = 440, FLOAT_H = 580; // abierta mide hasta 550 + 14 de margen arriba
 function dockState() {
   const d = prefs.dock ?? {};
   return { edge: EDGES.includes(d.edge) ? d.edge : "top", display: d.display, pos: Number.isFinite(d.pos) ? d.pos : Number(prefs.pos) || 0.5, x: d.x, y: d.y };
