@@ -582,9 +582,24 @@ function renderTasks() {
   fsvg.append(fp);
   find.append(fsvg);
   if (tasks.length) shown.push(find);
+  // Reloj: como barra de tareas, la de Windows está escondida y no se veía la hora (Coucou trae uno opcional en su isla). Solo en fila.
+  if (tasks.length && curEdge() !== "float" && curEdge() !== "left" && curEdge() !== "right") { tickClock(); shown.push(clockEl); }
   tasksEl.replaceChildren(...shown);
   relayout();
 }
+const clockEl = el("span", "tkclock");
+function tickClock() {
+  const d = new Date();
+  const txt = d.toLocaleTimeString(LANG === "en" ? "en-US" : "es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (clockEl.textContent !== txt) clockEl.textContent = txt;
+  clockEl.title = d.toLocaleDateString(LANG === "en" ? "en-US" : "es-CO", { weekday: "long", day: "numeric", month: "long" });
+}
+setInterval(tickClock, 10_000);
+// El PC caliente (main: vitals.js): Nimbo se sonroja mientras dure y lo dice de vez en cuando
+api.onVitals?.((v) => {
+  root.classList.toggle("hot", !!v.hot);
+  if (v.say && !mini) setState(state, v.gpuTemp ? t("La gráfica va a {0} °C: ojo con el calor", v.gpuTemp) : t("El procesador va al {0} %", v.cpu), { labelFor: 9000 });
+});
 let taskQuery = "";
 const taskSearch = Object.assign(el("input", "tsearch"), { type: "search", spellcheck: false, autocomplete: "off" });
 taskSearch.placeholder = t("Buscar entre tus programas…");
@@ -1988,6 +2003,10 @@ card.addEventListener("click", (e) => {
   setState(d === "allow" || d === "always" ? "working" : "idle", text, { labelFor: 2500 });
 });
 api.onPermissionDone(() => card.classList.add("hidden"));
+// Cola de permisos (main): cuántas preguntas esperan detrás de esta tarjeta
+const cardQueue = el("span", "cq hidden");
+card.querySelector(".what").after(cardQueue);
+api.onPermissionQueue?.((n) => { cardQueue.textContent = n ? t("+{0} en espera", n) : ""; cardQueue.classList.toggle("hidden", !n); });
 
 // --- Recordatorios: main.js los avisa cuando vencen; aquí la tarjeta y la lista de pendientes ---
 const remindCard = document.getElementById("remind");

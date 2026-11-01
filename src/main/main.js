@@ -15,6 +15,7 @@ const { createOrchestrator, sessionTitle, sessionContext, claudeFound, listSessi
 const { createVillage } = require("./village");
 const { createWake, createLive } = require("../integrations/wake");
 const { createWindows, AUMID } = require("../integrations/windows");
+const { createVitals } = require("./vitals");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -788,6 +789,16 @@ app.whenReady().then(() => {
   powerMonitor.on("resume", () => { if (prefs.googleBridge?.para) setTimeout(() => instinct.restart(), 5000); }); // tras dormir el PC: conexión y aviso nuevos
 });
 app.on("before-quit", () => instinct.stop());
+
+// Nimbo siente el PC (vitals.js): tarjeta de video muy caliente o procesador a tope → se sonroja y lo dice; en mini (jugando) avisa con una
+// notificación silenciosa, que es cuando más importa y la isla no se ve.
+const hotText = (v) => (v.gpuTemp ? t("La gráfica va a {0} °C: ojo con el calor", v.gpuTemp) : t("El procesador va al {0} %", v.cpu));
+const vitals = createVitals({ onChange: (v) => {
+  if (win && !win.isDestroyed()) win.webContents.send("vitals", v);
+  if (v.say && mini && Notification.isSupported()) new Notification({ title: "Nimbo", body: hotText(v), silent: true }).show();
+} });
+app.whenReady().then(() => vitals.start());
+app.on("before-quit", () => vitals.stop());
 // La agenda (pastilla): tus próximos eventos de Google Calendar.
 ipcMain.handle("agenda", async () => (google.connected() ? google.events(7).catch(() => null) : null));
 ipcMain.on("agenda-open", (_e, link) => { if (/^https:\/\/www\.google\.com\/calendar\//.test(String(link))) shell.openExternal(String(link)); });
@@ -1701,45 +1712,67 @@ function createTray() {
 }
 
 // --- Permisos: una tarjeta a la vez ---
-let pending = null; // { finish(decision) }
+let pending = null; // la tarjeta abierta: { id, remoteId, payload, finish(decision) }
+// Cola (idea de Coucou, que guarda hasta 5): con varios chats a la vez, la segunda pregunta ya no se va directo a la terminal; espera su turno
+// (cada una con su propio plazo desde que llegó). Más de 4 esperando → esa sí va a la terminal.
+const queue = [];
+const MAX_QUEUE = 4;
+const sendQueue = () => { if (win && !win.isDestroyed()) win.webContents.send("permission-queue", queue.length); };
 
 ipcMain.on("decision", (_e, decision, rid) => { if (pending && pending.id === rid) pending.finish(decision); });
 
+/** Pone una petición en la tarjeta (y, si llevas ≥ 2 min sin tocar el PC, también la pregunta por WhatsApp). */
+function present(me) {
+  pending = me;
+  const payload = me.payload;
+  if (prefs.remoteNeo === true && prefs.googleBridge?.para && powerMonitor.getSystemIdleTime() >= 120) {
+    const ti = payload.tool_input ?? {};
+    const what = String(ti.command ?? ti.file_path ?? ti.url ?? ti.description ?? "").replace(/\s+/g, " ").slice(0, 300);
+    const summary = t("Claude (chat «{0}») pide permiso: {1} {2}", payload.title || "?", String(payload.tool_name ?? ""), what);
+    clearTimeout(me.timer);
+    me.timer = setTimeout(() => me.finish(""), 10 * 60_000); // por WhatsApp se tarda más: hasta 10 min, luego la terminal pregunta
+    remoteNeo.askPermission(summary, (d) => me.finish(d)).then((q) => { if (q) me.remoteQ = q; }).catch(() => {});
+  }
+  win.webContents.send("permission", { ...payload, rid: me.id });
+  sendQueue();
+}
 function askPermission(payload, nonce, res) {
   const reply = (decision) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ decision, mac: mac(`res:${nonce}:${decision}`) }));
   };
-  // Ya hay una tarjeta abierta, o Nimbo está en mini: la pregunta va a la terminal.
-  if (pending || mini || !win || win.isDestroyed()) return reply("");
+  // Nimbo en mini (jugando) o la cola llena: la pregunta va a la terminal.
+  if (mini || !win || win.isDestroyed() || queue.length >= MAX_QUEUE) return reply("");
 
   const me = {
     id: nonce,
     remoteId: crypto.randomUUID(), // el celular decide con este id, nunca con el nonce del hook
     payload,
+    timer: null,
+    done: false,
     finish(decision) {
-      // Cada petición solo cierra su propia tarjeta, nunca la de la siguiente.
-      if (pending !== me) return;
-      clearTimeout(timer);
+      // Cada petición solo se cierra a sí misma (su tarjeta o su puesto en la cola), nunca la de la siguiente.
+      if (me.done) return;
+      me.done = true;
+      clearTimeout(me.timer);
       if (me.remoteQ) remoteNeo.forget(me.remoteQ); // respondiste en el PC: la pregunta de WhatsApp ya no vale
-      pending = null;
-      if (!win.isDestroyed()) win.webContents.send("permission-done");
       if (!res.writableEnded) reply(["allow", "always", "deny"].includes(decision) ? decision : "");
+      if (pending === me) {
+        pending = null;
+        if (!win.isDestroyed()) win.webContents.send("permission-done");
+        const next = queue.shift();
+        if (next && !win.isDestroyed()) present(next); else sendQueue();
+      } else {
+        const i = queue.indexOf(me);
+        if (i >= 0) { queue.splice(i, 1); sendQueue(); }
+      }
     },
   };
-  pending = me;
-  let timer = setTimeout(() => me.finish(""), DECISION_TIMEOUT);
-  if (prefs.remoteNeo === true && prefs.googleBridge?.para && powerMonitor.getSystemIdleTime() >= 120) {
-    const ti = payload.tool_input ?? {};
-    const what = String(ti.command ?? ti.file_path ?? ti.url ?? ti.description ?? "").replace(/\s+/g, " ").slice(0, 300);
-    const summary = t("Claude (chat «{0}») pide permiso: {1} {2}", payload.title || "?", String(payload.tool_name ?? ""), what);
-    clearTimeout(timer);
-    timer = setTimeout(() => me.finish(""), 10 * 60_000); // por WhatsApp se tarda más: hasta 10 min, luego la terminal pregunta
-    remoteNeo.askPermission(summary, (d) => me.finish(d)).then((q) => { if (q) me.remoteQ = q; }).catch(() => {});
-  }
-  // Claude Code mató el hook (o respondiste en la terminal): quita la tarjeta.
+  me.timer = setTimeout(() => me.finish(""), DECISION_TIMEOUT);
+  // Claude Code mató el hook (o respondiste en la terminal): quita la tarjeta o el puesto en la cola.
   res.on("close", () => me.finish(""));
-  win.webContents.send("permission", { ...payload, rid: nonce });
+  if (pending) { queue.push(me); sendQueue(); return; }
+  present(me);
 }
 
 // Solo escucha en 127.0.0.1 y solo acepta mensajes firmados por hook.js, cada uno una vez.

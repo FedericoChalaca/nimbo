@@ -8,7 +8,7 @@ Solo Windows 10/11. Interfaz en español. Instalación y uso para personas: `REA
 
 ## Estado y siguiente paso (2026-10-27)
 Si existe `HANDOFF.md` (local, no se sube a GitHub), léelo PRIMERO: trae el contexto del dueño y lo que está abierto.
-- **Publicado:** 0.8.0 (release con instalador). Desde entonces todo va en la rama `multiplataforma` (subida, NO fusionada a main ni publicada): **0.9.34**. Regla: cada cambio = commit + push, versión 0.9.x; nunca 1.0 ni release sin que el dueño lo diga.
+- **Publicado:** 0.8.0 (release con instalador). Desde entonces todo va en la rama `multiplataforma` (subida, NO fusionada a main ni publicada): **0.9.37**. Regla: cada cambio = commit + push, versión 0.9.x; nunca 1.0 ni release sin que el dueño lo diga.
 - **Hecho desde la 0.8:** Linux/macOS en vista previa; modo barra de tareas (programas abiertos y anclados, buscador, posiciones arriba/abajo/lados/esquinas/flotando en cualquier pantalla, arrastre con resistencia); ventana de Opciones (secciones, guías paso a paso); isla de música (cualquier reproductor, avance con salto, letra LRCLIB, volumen por app); «Oye Nimbo» más estricto (sin guardar audios ni textos) con Piper; logros (Platino) con superposición para jugar; tu Google directo (agenda, carpeta con la IA de WhatsApp); puente con Instinct (avisos por Drive + ntfy.sh y por Calendar) y control remoto por WhatsApp con códigos.
 - **Arranque (2026-10-27):** al encender el PC Nimbo arrancó sin barra (como con ajustes de fábrica). Ahora lee prefs.json con reintentos (~3 s), anota en `%APPDATA%\nimbo\arranque.log` de dónde salieron los ajustes y cualquier error, y a los 20 s revisa que el lector de la barra corra. Si vuelve a pasar: leer arranque.log y barra.log PRIMERO. 2026-10-28 volvió a pasar SIN ninguna línea en arranque.log (aunque Nimbo corría y tenía sus puertos): desde 0.9.33 cada proceso anota `[pid] proceso empieza / tiene el candado / ya hay otro` desde la primera línea de main.js. Se arrancaba DOS veces al iniciar sesión (Nimbo.lnk en Inicio + la entrada Run del registro que pone «Iniciar con Windows»): el .lnk de Inicio se quitó (copia en %APPDATA%
 imboNimbo-inicio.lnk.bak); quedan el del escritorio y el del menú Inicio.
@@ -76,6 +76,8 @@ assets/ build/ examples/ .github/
 |---|---|
 | `main.js` | Proceso principal: ventana, protocolo `nimbo://`, servidor de hooks, permisos, menú, modo mini, zonas tocables, permiso de micrófono. |
 | `preload.js` | Puente IPC (`window.nimbo`). Todo lo que la página usa de `api.*` sale de aquí. |
+| `vitals.js` | Nimbo siente el PC (idea de Coucou): cada 15 s CPU (`os.cpus()`) y GPU NVIDIA (`nvidia-smi`, si existe). Dos lecturas seguidas con GPU ≥ 88 °C o CPU ≥ 92 % → la página pone `.hot` (la nube se sonroja) y lo dice cada 10 min; en mini, notificación silenciosa. `node src/main/vitals.js` = autoprueba. Nada se guarda ni sale del PC. |
+| Reloj (`app.js`, `tickClock`) | Como barra de tareas (arriba/abajo) la franja de programas termina con la hora (la barra de Windows está escondida y no se veía). Sin ajuste: siempre en fila, nunca flotando ni a los lados. |
 | `index.html` + `styles.css` + `app.js` | La isla: el HTML (con el SVG del tema Nube), sus estilos y su código: estados, chat, tarjeta de permisos, propuestas del orquestador, vistas de cada píldora. Donde este documento dice "en `index.html`" para código, hoy es `app.js`. |
 | `jarvis.js` | Tema JARVIS: esfera de puntos conectados en canvas; `Jarvis.setState/setLevel/look/poke/setActive`. |
 | `orchestrator.js` | Chat y orquestador vía `claude.exe -p`; lista de chats leída de `~/.claude/projects`. |
@@ -116,9 +118,11 @@ firmado con HMAC. Si Nimbo está cerrado, sale en ≤0,4 s con código 0: nunca 
 
 **Permisos.** En PermissionRequest, Nimbo muestra una tarjeta (Permitir / Denegar / Terminal).
 `hook.js` imprime `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow|deny"}}}`.
-Sin decisión en 60 s, en modo mini o con otra tarjeta abierta → no imprime nada y pregunta la terminal.
-Cada petición cierra solo su propia tarjeta (había un bug en el que el `close` tardío de una
-respuesta cerraba la tarjeta de la siguiente).
+Sin decisión en 60 s o en modo mini → no imprime nada y pregunta la terminal. Con otra tarjeta abierta la petición ESPERA
+EN COLA (hasta 4, idea de Coucou; 2026-11-01: antes iba directo a la terminal, y con 5 chats a la vez pasaba todo el tiempo):
+la tarjeta muestra «+N en espera», cada petición tiene su propio plazo desde que llegó y al decidir una sale la siguiente.
+Cada petición cierra solo su propia tarjeta o su puesto en la cola (había un bug en el que el `close` tardío de una
+respuesta cerraba la tarjeta de la siguiente). Probado con dos `hook.js` reales en paralelo.
 
 **Chat / orquestador (`orchestrator.js`).**
 - `ask`: lanza `claude.exe -p` (sin shell) con `--input-format/--output-format stream-json`,

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("nimbo", {
   onMuted: (fn) => ipcRenderer.on("muted", (_e, m) => fn(m)),
   onPermission: (fn) => ipcRenderer.on("permission", (_e, p) => fn(p)),
   onPermissionDone: (fn) => ipcRenderer.on("permission-done", () => fn()),
+  onPermissionQueue: (fn) => ipcRenderer.on("permission-queue", (_e, n) => fn(n)),
   decide: (decision, rid) => ipcRenderer.send("decision", decision, rid),
   onMini: (fn) => ipcRenderer.on("mini", (_e, m) => fn(m)),
   toggleMini: () => ipcRenderer.send("toggle-mini"),
@@ -13,6 +14,7 @@ contextBridge.exposeInMainWorld("nimbo", {
   chatCmd: (action, value) => ipcRenderer.invoke("chat-cmd", action, value),
   village: () => ipcRenderer.send("village-show"),
   onTasks: (fn) => ipcRenderer.on("tasks", (_e, list) => fn(list)),
+  onVitals: (fn) => ipcRenderer.on("vitals", (_e, v) => fn(v)),
   taskDo: (action, h) => ipcRenderer.send("task-do", action, h), // focus · min · close de una ventana de la lista
   taskLaunch: (key) => ipcRenderer.send("task-launch", String(key)), // abrir un programa anclado que está cerrado
   taskMenu: (key) => ipcRenderer.send("task-menu", String(key)), // clic derecho: anclar / quitar / cerrar
