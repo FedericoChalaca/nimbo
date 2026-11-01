@@ -4,6 +4,9 @@
 // Por AVISO, sin revisar cada tanto: Drive avisa cuando «Para Nimbo» cambia (files.watch). Como el PC no tiene dirección pública, el aviso va a
 // un tema de ntfy.sh con nombre aleatorio y Nimbo deja UNA conexión quieta escuchándolo; solo al llegar "cambió" lee el documento. ntfy.sh
 // solo ve que algo cambió (Drive manda encabezados, sin contenido). El permiso de aviso dura un día: se renueva una vez al día.
+// 2026-11-01: el aviso NO es garantía (Google lo dice: "a small percentage of messages get dropped"; además hay un hueco al renovar el canal y la
+// conexión a ntfy se cae en silencio). Por eso además hay una RED DE SEGURIDAD: cada 60 s se pregunta la versión del documento (una llamada chica,
+// sin leer el contenido si no cambió), y se relee al reconectar con ntfy y al despertar el PC. El aviso sigue siendo lo que lo hace instantáneo.
 // Lo que escribe Instinct es un DATO de otra app: nunca se ejecuta; se muestra con textContent y cada acción la decides tú.
 const crypto = require("crypto");
 const fs = require("fs");
@@ -54,7 +57,7 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
     state.nudges = (state.nudges ?? []).filter((n) => !old.includes(n));
     save();
   }
-  let busy = false, stopped = true, renew = null, retry = null, stream = null, channel = null, wait = 5000;
+  let busy = false, stopped = true, renew = null, retry = null, stream = null, channel = null, wait = 5000, poll = null;
   /** Pide a Drive el aviso (y lo renueva un rato antes de que venza). */
   async function ensureWatch() {
     clearTimeout(renew);
@@ -75,6 +78,7 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
       const r = await doFetch(`${relay}/${topic()}/json`, { signal: ctrl.signal });
       if (!r.ok || !r.body) throw new Error(`ntfy ${r.status}`);
       wait = 5000;
+      check(); // lo que haya llegado mientras la conexión estuvo caída
       const dec = new TextDecoder();
       let buf = "";
       for await (const chunk of r.body) {
@@ -115,9 +119,10 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
       listen();
       ensureWatch();
       setTimeout(() => check(), 3000);
+      poll = setInterval(() => check(), 60_000); // red de seguridad (ver arriba)
       cleanNudges(); // los avisos de calendario viejos (si Nimbo estaba cerrado cuando tocaba borrarlos)
     },
-    stop() { stopped = true; clearTimeout(renew); clearTimeout(retry); stream?.abort(); google.stopWatch(channel); channel = null; },
+    stop() { stopped = true; clearTimeout(renew); clearTimeout(retry); clearInterval(poll); stream?.abort(); google.stopWatch(channel); channel = null; },
     restart() { this.stop(); this.start(); },
     /** ¿Drive aceptó avisar y la conexión al tema está abierta? (para Opciones) */
     status: () => ({ watching: !!channel && channel.until > Date.now(), listening: !!stream && !stopped }),

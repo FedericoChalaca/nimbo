@@ -783,7 +783,10 @@ ipcMain.handle("instinct-do", async (_e, id, action, text) => {
   if (action === "pending") { reminders.add({ text: item.text, due: "" }); remindersChanged(); }
   return withQ(instinct.done(item.id));
 });
-app.whenReady().then(() => { if (prefs.googleBridge?.para) instinct.start(); });
+app.whenReady().then(() => {
+  if (prefs.googleBridge?.para) instinct.start();
+  powerMonitor.on("resume", () => { if (prefs.googleBridge?.para) setTimeout(() => instinct.restart(), 5000); }); // tras dormir el PC: conexión y aviso nuevos
+});
 app.on("before-quit", () => instinct.stop());
 // La agenda (pastilla): tus próximos eventos de Google Calendar.
 ipcMain.handle("agenda", async () => (google.connected() ? google.events(7).catch(() => null) : null));
