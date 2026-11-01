@@ -1278,11 +1278,13 @@ const linuxAutostart = () => path.join(process.env.XDG_CONFIG_HOME || path.join(
 // arrancaba a veces sin barra. La tarea: sin límite de tiempo (el defecto la mataría a los 3 días), también con batería, una sola instancia.
 const TASK = "Nimbo";
 const psTask = (script) => { try { return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: 20_000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return null; } };
-const taskOn = () => psTask(`if (Get-ScheduledTask -TaskName '${TASK}' -ErrorAction SilentlyContinue) { 'si' }`) === "si";
+let taskKnown = null; // PowerShell tarda 2–5 s: se pregunta una vez (y se olvida al cambiarlo), no cada vez que Opciones pide el estado
+const taskOn = () => (taskKnown ??= psTask(`if (Get-ScheduledTask -TaskName '${TASK}' -ErrorAction SilentlyContinue) { 'si' }`) === "si");
 const runKeyOn = () => app.getLoginItemSettings(loginItem()).openAtLogin;
 const autostartOn = () => (process.platform === "linux" ? fs.existsSync(linuxAutostart()) : process.platform === "win32" ? taskOn() : runKeyOn());
 function setAutostart(on) {
   if (process.platform === "win32") {
+    taskKnown = null;
     if (runKeyOn()) app.setLoginItemSettings({ ...loginItem(), openAtLogin: false }); // la entrada Run vieja sobra (y evita el arranque doble)
     if (!on) return psTask(`Unregister-ScheduledTask -TaskName '${TASK}' -Confirm:$false -ErrorAction SilentlyContinue`);
     const args = app.isPackaged ? "" : `'"${app.getAppPath()}"'`;
