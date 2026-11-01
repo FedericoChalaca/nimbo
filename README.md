@@ -28,6 +28,8 @@ No API key: it uses the `claude` you already have installed and signed in.
 | 💬 **Talk to Claude** | Type, dictate (local Whisper), paste images, drop files, or say **“Hey Nimbo”**. Slash commands that cost nothing. |
 | 🧭 **Orchestrator** | Ask for something that belongs to another project: Nimbo drafts the prompt for that chat and sends it when you confirm. |
 | 🗂️ **Your taskbar, reimagined** | Open and pinned apps live next to Nimbo, with search. Dock it top, bottom, left, right, in a corner, or let it float on any monitor. |
+| 🕒 **Clock and permission queue** | The app strip ends with the time (your Windows taskbar is hidden). With several chats asking at once, permissions wait their turn (up to 4) instead of falling back to the terminal. |
+| 🌡️ **Feels your PC** | GPU too hot or CPU maxed out two readings in a row: Nimbo blushes and tells you (a silent notification while you game). Nothing leaves your PC. |
 | 🎵 **Music island** | Any player (Spotify, Apple Music, your browser): progress bar with seek, **synced lyrics**, and per-app volume. Nimbo steps aside while it plays. |
 | 📅 **Your Google** | Your agenda for the week and a Drive folder to work with your WhatsApp AI, with your own Google app and minimal permissions. |
 | 📱 **WhatsApp, safely** | Read-only urgent-message summaries, and an optional bridge with your WhatsApp AI (e.g. Instinct): notes reach Nimbo in seconds, Nimbo can ask you things on WhatsApp, and you can send orders to your Claude chats, **always with a one-time code**. |

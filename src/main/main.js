@@ -1281,7 +1281,7 @@ const psTask = (script) => { try { return execFileSync("powershell.exe", ["-NoPr
 let taskKnown = null; // PowerShell tarda 2–5 s: se pregunta una vez (y se olvida al cambiarlo), no cada vez que Opciones pide el estado
 const taskOn = () => (taskKnown ??= psTask(`if (Get-ScheduledTask -TaskName '${TASK}' -ErrorAction SilentlyContinue) { 'si' }`) === "si");
 const runKeyOn = () => app.getLoginItemSettings(loginItem()).openAtLogin;
-const autostartOn = () => (process.platform === "linux" ? fs.existsSync(linuxAutostart()) : process.platform === "win32" ? taskOn() : runKeyOn());
+const autostartOn = () => (process.platform === "linux" ? fs.existsSync(linuxAutostart()) : process.platform === "win32" ? taskOn() || runKeyOn() : runKeyOn());
 function setAutostart(on) {
   if (process.platform === "win32") {
     taskKnown = null;
@@ -1292,7 +1292,7 @@ function setAutostart(on) {
 $t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME; $t.Delay = 'PT20S'
 $s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -StartWhenAvailable -Priority 5
 Register-ScheduledTask -TaskName '${TASK}' -Action $a -Trigger $t -Settings $s -Description 'Abre Nimbo al entrar a Windows' -Force | Out-Null; 'ok'`);
-    if (ok !== "ok") bootLog("no se pudo crear la tarea de inicio de Windows");
+    if (ok !== "ok") { bootLog("no se pudo crear la tarea de inicio de Windows: queda la entrada Run"); app.setLoginItemSettings({ ...loginItem(), openAtLogin: true }); } // PowerShell bloqueado: mejor la Run que nada
     return;
   }
   if (process.platform !== "linux") return app.setLoginItemSettings({ ...loginItem(), openAtLogin: on });

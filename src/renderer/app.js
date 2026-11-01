@@ -1413,6 +1413,7 @@ function onMedia(m) {
   const key = m ? `${m.title}|${m.artist}` : "";
   if (key !== lyricsKey) { lyricsKey = key; lyrics = null; lastLine = -1; if (lyricsOn && m) loadLyrics(); }
   media = m;
+  root.classList.toggle("dancing", !!m?.playing && !mini); // en reposo se mece con la música (Coucou: Mochi baila)
   renderApps();
   if (openApp === "spotify") renderAppView();
 }

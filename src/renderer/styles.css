@@ -195,6 +195,9 @@
   #nimbo.drag-over .eyes-open, #nimbo.drag-over .m-big,
   #nimbo.dragging .eyes-open, #nimbo.dragging .m-big { display: inline; }
   .emote-hello #bob { animation: jump .9s ease-out; }
+  /* Con música sonando y nada que hacer, se mece (los estados y gestos mandan: solo en reposo) */
+  .dancing.state-idle:not([class*="emote-"]) #bob { animation: sway 1.3s ease-in-out infinite; }
+  @keyframes sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg) translateY(-2px); } }
   .emote-dizzy #squish { transform-origin: 120px 64px; animation: wobble .45s ease-in-out infinite; }
   @keyframes wobble { 25% { transform: rotate(-7deg); } 75% { transform: rotate(7deg); } }
   .eyes-dizzy .spin { transform-box: fill-box; transform-origin: center; }
@@ -299,6 +302,7 @@
   @keyframes live { 50% { box-shadow: 0 0 0 4px rgba(229, 72, 77, .35); } }
   .prop { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, .08); white-space: normal; }
   #answer > .prop:first-child { margin-top: 0; padding-top: 0; border-top: 0; } /* sola (p. ej. «Nimbo se actualizó»): sin la franja vacía de arriba */
+  #card:has(.cq:not(.hidden)) .what { padding-right: 92px; } /* que el título no se meta debajo del «+N en espera» */
   #card .cq { position: absolute; top: 12px; right: 14px; font-size: 11px; color: #9aa0a8; background: rgba(255, 255, 255, .07); padding: 2px 7px; border-radius: 9px; }
   .prop textarea { width: 100%; box-sizing: border-box; min-height: 40px; field-sizing: content; resize: none; overflow: hidden;
     border: 1px solid rgba(255, 255, 255, .07); outline: none; border-radius: 10px; padding: 8px 10px; color: #eceef2;
