@@ -93,7 +93,7 @@ function layout() {
   let infoW = 0;
   if (open) {
     w = musicMode && isleApp === "logros" ? (isleMin ? 300 : 360) : musicMode && !lyricsOn ? 372 : MAX_W; // islas compactas: más o menos lo que ocupa Nimbo
-    h = Math.min(470, (musicMode ? 0 : BAR_H) + content.offsetHeight + 14); // isla de música: sin la barra de Nimbo
+    h = Math.min(550, (musicMode ? 0 : BAR_H) + content.offsetHeight + 14); // 550 = 70 + 466 (#content) + 14; isla de música: sin la barra de Nimbo. Con 470 y #content de 466 la isla recortaba las pastillas de abajo (se veían cuadradas)
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
     measure.textContent = text;

@@ -795,9 +795,7 @@
   #tasks .tk.fg::before { left: 7px; right: 7px; background: var(--accent-a); }
   #tasks .tkmore { color: #8f959e; font-size: 11px; font-weight: 700; padding: 0 4px; }
   #tasks .tkclock { color: #c9ced6; font-size: 11.5px; font-weight: 600; padding: 0 6px 0 5px; font-variant-numeric: tabular-nums; letter-spacing: .2px; cursor: default; }
-  /* PC caliente (vitals.js): Nimbo se sonroja */
-  #char { transition: filter .8s; }
-  .hot #char { filter: sepia(.55) saturate(1.9) hue-rotate(-25deg) drop-shadow(0 0 10px rgba(255, 96, 64, .6)); } /* la nube es blanca: sin el resplandor cálido no se notaba */
+  /* PC caliente (vitals.js): solo el aviso en la etiqueta. Un `filter` sobre #char en la ventana transparente pintaba la nube rojiza y daba artefactos: nada de tintes. */
   .tile.off { opacity: .55; }
   .noicon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: #2a2c31; color: #eceef2; font: 800 11px "Segoe UI", sans-serif; }
   /* Al pasar el mouse: los programas en grande */
