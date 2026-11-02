@@ -1223,8 +1223,12 @@ app.whenReady().then(() => {
   try { windows.set(true); } catch (e) { barraLog("windows.set falló: " + e.message); } // un fallo aquí NO puede impedir que salgan las ancladas
   sendTasks(); // las ancladas salen ya: al encender el PC el lector de ventanas puede tardar en responder
   importWindowsPins();
-  // Quien tenía "Iniciar con Windows" con la entrada Run pasa a la tarea programada (una vez)
-  if (process.platform === "win32" && prefs.autostartV !== 2) { prefs.autostartV = 2; savePrefs(); if (runKeyOn() && !taskOn()) setAutostart(true); }
+  // Quien tenía "Iniciar con Windows" con la entrada Run o con la tarea programada pasa al acceso directo de Inicio (una vez)
+  if (process.platform === "win32" && prefs.autostartV !== 3) {
+    const had = runKeyOn() || prefs.autostartV === 2 || psTask(`if (Get-ScheduledTask -TaskName '${TASK}' -ErrorAction SilentlyContinue) { 'si' }`) === "si";
+    prefs.autostartV = 3; savePrefs();
+    if (had) setAutostart(true);
+  }
 });
 app.on("before-quit", () => windows.stop());
 
@@ -1273,26 +1277,23 @@ const LINKS = { googleCloud: "https://console.cloud.google.com/auth/clients", ol
 const loginItem = () => (app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] });
 // Iniciar con el sistema: Electron lo hace en Windows y macOS; en Linux se deja un archivo .desktop en la carpeta de autoinicio.
 const linuxAutostart = () => path.join(process.env.XDG_CONFIG_HOME || path.join(require("os").homedir(), ".config"), "autostart", "nimbo.desktop");
-// Windows: una tarea programada al iniciar sesión (20 s después), no la entrada Run del registro. 2026-10-31: Windows dejó de ejecutar la
-// entrada Run de Nimbo en 10 encendidos seguidos (ni rastro en arranque.log; otras entradas Run sí corrían), y el .lnk de la carpeta Inicio
-// arrancaba a veces sin barra. La tarea: sin límite de tiempo (el defecto la mataría a los 3 días), también con batería, una sola instancia.
-const TASK = "Nimbo";
+// Windows: un acceso directo en la carpeta Inicio del usuario (lo abre explorer al iniciar sesión). Historia (2026-11-01): la entrada Run del
+// registro dejó de ejecutarse (del 28 al 31-oct ningún encendido arrancó Nimbo) y una TAREA PROGRAMADA sí arranca pero la ventana pierde la
+// transparencia (rectángulo oscuro, pastillas cuadradas: Chromium no compone bien un proceso hijo del servicio de tareas). El .lnk de Inicio
+// arranca por explorer, con transparencia, y además fuera del contenedor de la app de Claude (ver CLAUDE.md, "Carpeta de datos VIRTUAL").
+const TASK = "Nimbo"; // la tarea de la 0.9.34–0.9.38: se quita si existe
 const psTask = (script) => { try { return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: 20_000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return null; } };
-let taskKnown = null; // PowerShell tarda 2–5 s: se pregunta una vez (y se olvida al cambiarlo), no cada vez que Opciones pide el estado
-const taskOn = () => (taskKnown ??= psTask(`if (Get-ScheduledTask -TaskName '${TASK}' -ErrorAction SilentlyContinue) { 'si' }`) === "si");
+const startupLnk = () => path.join(process.env.APPDATA || app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "Nimbo.lnk");
 const runKeyOn = () => app.getLoginItemSettings(loginItem()).openAtLogin;
-const autostartOn = () => (process.platform === "linux" ? fs.existsSync(linuxAutostart()) : process.platform === "win32" ? taskOn() || runKeyOn() : runKeyOn());
+const autostartOn = () => (process.platform === "linux" ? fs.existsSync(linuxAutostart()) : process.platform === "win32" ? fs.existsSync(startupLnk()) : runKeyOn());
 function setAutostart(on) {
   if (process.platform === "win32") {
-    taskKnown = null;
-    if (runKeyOn()) app.setLoginItemSettings({ ...loginItem(), openAtLogin: false }); // la entrada Run vieja sobra (y evita el arranque doble)
-    if (!on) return psTask(`Unregister-ScheduledTask -TaskName '${TASK}' -Confirm:$false -ErrorAction SilentlyContinue`);
-    const args = app.isPackaged ? "" : `'"${app.getAppPath()}"'`;
-    const ok = psTask(`$a = New-ScheduledTaskAction -Execute '${process.execPath}' ${args ? `-Argument ${args}` : ""} -WorkingDirectory '${ROOT}'
-$t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME; $t.Delay = 'PT20S'
-$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -StartWhenAvailable -Priority 5
-Register-ScheduledTask -TaskName '${TASK}' -Action $a -Trigger $t -Settings $s -Description 'Abre Nimbo al entrar a Windows' -Force | Out-Null; 'ok'`);
-    if (ok !== "ok") { bootLog("no se pudo crear la tarea de inicio de Windows: queda la entrada Run"); app.setLoginItemSettings({ ...loginItem(), openAtLogin: true }); } // PowerShell bloqueado: mejor la Run que nada
+    if (runKeyOn()) app.setLoginItemSettings({ ...loginItem(), openAtLogin: false }); // nada de arranques dobles
+    psTask(`Unregister-ScheduledTask -TaskName '${TASK}' -Confirm:$false -ErrorAction SilentlyContinue`);
+    if (!on) return fs.rmSync(startupLnk(), { force: true });
+    fs.mkdirSync(path.dirname(startupLnk()), { recursive: true });
+    const ok = shell.writeShortcutLink(startupLnk(), "create", { target: process.execPath, args: app.isPackaged ? "" : `"${app.getAppPath()}"`, cwd: ROOT, description: "Nimbo", icon: process.execPath, iconIndex: 0 });
+    if (!ok) { bootLog("no se pudo crear el acceso directo de Inicio: queda la entrada Run"); app.setLoginItemSettings({ ...loginItem(), openAtLogin: true }); }
     return;
   }
   if (process.platform !== "linux") return app.setLoginItemSettings({ ...loginItem(), openAtLogin: on });
