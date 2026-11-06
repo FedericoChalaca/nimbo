@@ -27,7 +27,10 @@ imboNimbo-inicio.lnk.bak); quedan el del escritorio y el del menú Inicio.
   `GPUPersistentCache`, `Code Cache`): la fusión del 2026-11-01 las mezcló y Nimbo dibujaba basura (íconos de la barra vacíos, letras borrosas, sombra como
   rectángulo gris, pastillas cuadradas, parpadeo y blanco/rojo al arrastrar), en esta versión y en la 0.9.33 por igual. Se arregló apartándolas con
   `_real/limpiar-cache-grafica.cmd` (lanzado con `explorer.exe`, quedaron en `%APPDATA%\nimbo-cache-apartada-2026-11-01`); Chromium las rehace solo. Si vuelve
-  a verse así, probar primero con `--disable-gpu-shader-disk-cache`: si se arregla, es la caché. (4) `GET /diagnostico` en la API del celular (127.0.0.1:47824, token de `remote-token`) dice qué rutas ve el proceso vivo.
+  a verse así, probar primero con `--disable-gpu-shader-disk-cache`: si se arregla, es la caché. (6) Los `.bin` (Google, Spotify, Telegram) van cifrados
+  con la llave del `Local State` de LA MISMA carpeta: la fusión copió los `.bin` de la virtual pero dejó el `Local State` de la real y Nimbo no pudo abrirlos
+  del 1 al 6-nov (Google, Spotify y Telegram caídos sin aviso). Se arregló poniendo el `Local State` de la virtual (`_real/llave-correcta.cmd`). Nunca separar
+  un `.bin` de su `Local State`. (4) `GET /diagnostico` en la API del celular (127.0.0.1:47824, token de `remote-token`) dice qué rutas ve el proceso vivo.
 - **Arranque con Windows (2026-11-01):** el acceso directo `Nimbo.lnk` en la carpeta Inicio del usuario (`shell.writeShortcutLink`), que abre explorer al
   iniciar sesión. Descartados: la entrada Run del registro (Windows dejó de ejecutarla: del 28 al 31-oct ningún encendido arrancó Nimbo, otras entradas Run sí
   corrían) y una TAREA PROGRAMADA (arranca, pero la ventana PIERDE LA TRANSPARENCIA: rectángulo oscuro, pastillas cuadradas, rojo al arrastrar; Federico lo vio
