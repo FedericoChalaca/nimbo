@@ -554,11 +554,17 @@ function taskClick(a) {
 }
 // Flotando solo van los 4 últimos que usaste (abiertos); pegado a un borde, todos (hasta MAX_TASKS) con los anclados primero.
 // Pegado a un borde: primero los abiertos (en su orden) y después los anclados cerrados, hasta MAX_TASKS.
+// Clic en «+N»: la franja se estira y muestra todos los que quepan; se recoge sola al sacar el mouse o con «‹».
+let tasksAll = false, tasksAllTimer = 0;
+// ponytail: cupo aproximado (27 px por programa, 380 para Nimbo, lupa, reloj y márgenes); los que no quepan siguen en «+N» → lista grande
+const tasksFit = () => Math.max(MAX_TASKS, Math.floor(((curEdge() === "left" || curEdge() === "right" ? innerHeight : innerWidth) - 380) / 27));
 const shownTasks = () => curEdge() === "float" ? tasks.filter((a) => a.windows.length).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 4)
-  : [...tasks.filter((a) => a.windows.length), ...tasks.filter((a) => !a.windows.length)].slice(0, MAX_TASKS);
+  : [...tasks.filter((a) => a.windows.length), ...tasks.filter((a) => !a.windows.length)].slice(0, tasksAll ? tasksFit() : MAX_TASKS);
+tasksEl.addEventListener("mouseleave", () => { if (tasksAll) tasksAllTimer = setTimeout(() => { tasksAll = false; renderTasks(); }, 2500); });
+tasksEl.addEventListener("mouseenter", () => clearTimeout(tasksAllTimer));
 function renderTasks() {
   const list = shownTasks();
-  const key = mini ? "" : curEdge() + list.map((a) => a.key + a.fg + a.min + !!a.icon + a.windows.length).join("|") + tasks.length;
+  const key = mini ? "" : curEdge() + list.map((a) => a.key + a.fg + a.min + !!a.icon + a.windows.length).join("|") + tasks.length + tasksAll;
   if (key === lastTasksKey) return;
   lastTasksKey = key;
   if (mini) { tasksEl.replaceChildren(); relayout(); return; }
@@ -570,7 +576,13 @@ function renderTasks() {
     b.append(taskIcon(a, 20));
     return b;
   });
-  if (curEdge() !== "float" && tasks.length > MAX_TASKS) shown.push(el("span", "tkmore", `+${tasks.length - MAX_TASKS}`));
+  const hidden = tasks.length - list.length;
+  if (curEdge() !== "float" && (hidden > 0 || tasksAll)) {
+    const more = el("button", "tkmore", tasksAll && !hidden ? "‹" : `+${hidden}`);
+    more.type = "button";
+    more.title = !tasksAll ? t("Mostrar todos tus programas") : hidden ? t("Ver todos tus programas") : t("Mostrar menos");
+    shown.push(more);
+  }
   // La lupa: abre Nimbo con todos tus programas y el buscador listo para escribir
   const find = el("button", "tk tkfind");
   find.type = "button";
@@ -1902,6 +1914,7 @@ let clickTimer;
 wrap.addEventListener("click", (e) => {
   if (e.target.closest("#menuBtn")) return api.openOptions(); // ⋮ = la ventana de opciones (clic derecho sigue siendo el menú rápido)
   if (e.target.closest("#tasks .tkfind")) return openTaskSearch();
+  if (e.target.closest("#tasks .tkmore")) { if (tasksAll && tasks.length > shownTasks().length) return openTaskSearch(); tasksAll = !tasksAll; return renderTasks(); }
   const tk = e.target.closest("#tasks .tk");
   if (tk) return taskClick(tasks.find((a) => a.key === tk.dataset.key));
   if (e.target.closest("#waBtn")) return openWaSummary();
