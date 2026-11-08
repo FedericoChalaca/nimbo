@@ -18,7 +18,8 @@ const cleanEvent = (e) => ({
   link: /^https:\/\/www\.google\.com\/calendar\//.test(e.htmlLink ?? "") ? e.htmlLink : "",
 });
 
-function createGoogle({ clientId, load, save, redirect, open, fetch: doFetch = fetch, base = {} }) {
+/** @param onLost () => void — Google rechazó el token de renovación (revocado o vencido): la sesión se perdió y hay que volver a entrar. */
+function createGoogle({ clientId, load, save, redirect, open, fetch: doFetch = fetch, base = {}, onLost = () => {} }) {
   const AUTH = base.auth ?? "https://accounts.google.com/o/oauth2/v2/auth";
   const TOKEN = base.token ?? "https://oauth2.googleapis.com/token";
   const API = base.api ?? "https://www.googleapis.com";
@@ -33,7 +34,8 @@ function createGoogle({ clientId, load, save, redirect, open, fetch: doFetch = f
       body: new URLSearchParams({ ...body, client_id: id(), client_secret: creds().secret ?? "" }).toString() });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.access_token) {
-      if (j.error === "invalid_grant" && body.grant_type === "refresh_token") save({ ...creds(), refresh: "" }); // revocado o vencido: hay que volver a entrar
+      // Revocado o vencido: hay que volver a entrar. Se avisa (onLost): antes se borraba en silencio y Nimbo seguía como si nada (5 días así, 2026-11).
+      if (j.error === "invalid_grant" && body.grant_type === "refresh_token") { save({ ...creds(), refresh: "" }); try { onLost(); } catch {} }
       throw new Error(`token ${r.status}`);
     }
     access = { token: j.access_token, until: Date.now() + (Number(j.expires_in) || 3600) * 1000 - 60_000 };
@@ -192,6 +194,19 @@ if (require.main === module) {
     assert.ok(seen.some((s) => s.includes(":batchUpdate") && s.includes("Bearer AT")));
     g.logout();
     assert.ok(!g.connected() && g.configured()); // el secreto se queda; solo se olvida la sesión
+    // Google rechaza el token de renovación (invalid_grant): la sesión se olvida Y se avisa
+    let lost = 0;
+    let st2 = { secret: "GOCSPX-secretito1234", refresh: "viejo" };
+    const srv2 = http.createServer((req, res) => { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: "invalid_grant" })); });
+    await new Promise((r) => srv2.listen(0, "127.0.0.1", r));
+    const g2 = createGoogle({ clientId: () => "1234567890-abcdef.apps.googleusercontent.com", load: () => st2, save: (v) => { st2 = v; }, redirect: "x", open: () => {},
+      base: { token: `http://127.0.0.1:${srv2.address().port}/token`, api: o }, onLost: () => lost++ });
+    assert.ok(g2.connected());
+    await assert.rejects(g2.events());
+    assert.ok(!g2.connected() && lost === 1, "al perder la sesión avisa una vez");
+    await assert.rejects(g2.events(), /sin sesión/); // sin token no vuelve a llamar a Google ni a avisar
+    assert.strictEqual(lost, 1);
+    srv2.close();
     server.close();
     console.log("google.js ok");
   })();

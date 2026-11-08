@@ -10,6 +10,7 @@
 // Lo que escribe Instinct es un DATO de otra app: nunca se ejecuta; se muestra con textContent y cada acción la decides tú.
 const crypto = require("crypto");
 const fs = require("fs");
+const { redact } = require("../shared/redact");
 
 // "respuesta" = lo que contestaste por WhatsApp a una [pregunta #p3] que Nimbo le dejó a Instinct: llega como "[respuesta #p3] texto".
 // "orden" = control remoto (remote-neo.js): "[orden] chat :: mensaje", siempre con confirmación por código.
@@ -33,8 +34,9 @@ function parseLines(text) {
  * @param bridge   () => { para, de } ids de los documentos (o null)
  * @param file     dónde se guarda qué líneas ya se vieron y cuáles esperan (solo ids y textos de Instinct, en tu PC)
  * @param onNew    (pendientes) => void, cuando llega algo nuevo
+ * @param onHealth (ok, detalle) => void — false tras 3 lecturas seguidas fallidas (sin red, Google 5xx…); true cuando vuelve a leer bien
  */
-function createInstinct({ google, bridge, file, onNew, topic, relay = "https://ntfy.sh", fetch: doFetch = fetch }) {
+function createInstinct({ google, bridge, file, onNew, topic, relay = "https://ntfy.sh", fetch: doFetch = fetch, onHealth = () => {} }) {
   let state = (() => { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return { version: "", seen: [], pending: [], primed: false }; } })();
   const save = () => { try { fs.writeFileSync(file, JSON.stringify(state)); } catch {} };
   // Drive no le avisa a Instinct; tu calendario sí (Instinct quedó atento a eventos nuevos llamados exactamente «Pregunta de Nimbo»).
@@ -58,6 +60,8 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
     save();
   }
   let busy = false, stopped = true, renew = null, retry = null, stream = null, channel = null, wait = 5000, poll = null;
+  let fails = 0; // lecturas seguidas que fallaron (a las 3 se avisa; antes el fallo se tragaba y nadie se enteraba)
+  const FAILS_TO_TELL = 3;
   /** Pide a Drive el aviso (y lo renueva un rato antes de que venza). */
   async function ensureWatch() {
     clearTimeout(renew);
@@ -106,8 +110,13 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
       const fresh = state.primed ? lines.filter((l) => !seen.has(l.id)) : [];
       state = { ...state, version: v, seen: [...new Set([...state.seen, ...lines.map((l) => l.id)])].slice(-3000), pending: [...state.pending, ...fresh].slice(-200), primed: true };
       save();
+      if (fails >= FAILS_TO_TELL) { try { onHealth(true, ""); } catch {} }
+      fails = 0;
       if (fresh.length) onNew(state.pending, fresh);
-    } catch {} finally { busy = false; }
+    } catch (e) {
+      fails++;
+      if (fails === FAILS_TO_TELL) { try { onHealth(false, String(e?.message ?? e).slice(0, 80)); } catch {} }
+    } finally { busy = false; }
     return state.pending;
   }
 
@@ -131,10 +140,11 @@ function createInstinct({ google, bridge, file, onNew, topic, relay = "https://n
     /** Ya lo atendiste (guardado como pendiente, enviado a Claude o descartado): sale de la lista. */
     done(id) { state.pending = state.pending.filter((p) => p.id !== id); save(); return state.pending; },
     /** Escribe en «De Nimbo» (para que Instinct te lo cuente). Con `ask`, es una [pregunta #pN] que Instinct te hace por WhatsApp
-     *  y cuya respuesta vuelve como "[respuesta #pN]". Solo con tu clic. → el id de la pregunta, true, o false. */
+     *  y cuya respuesta vuelve como "[respuesta #pN]". Solo con tu clic. → el id de la pregunta, true, o false. Si Google falla, LANZA
+     *  (quien llama debe decirlo: un error aquí fue invisible 5 días). Lo que parece un secreto sale tapado (redact.js): va a otra IA. */
     async reply(text, ask = false) {
       const b = bridge();
-      const clean = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, 1000);
+      const clean = redact(String(text ?? "")).replace(/\s+/g, " ").trim().slice(0, 1000);
       if (!b?.de || !clean) return false;
       const day = new Date().toLocaleDateString("sv");
       if (!ask) { await google.append(b.de, `${day} ${clean}\n`); await nudge(clean, ""); return true; }
@@ -174,6 +184,23 @@ if (require.main === module) {
     assert.deepStrictEqual(ins.done(p[0].id), []);
     assert.ok(await ins.reply("Listo, quedó en tus pendientes"));
     assert.ok(appended[0][0] === "D" && appended[0][1].endsWith("Listo, quedó en tus pendientes\n"));
+    // Lo que sale hacia la otra IA va sin secretos
+    await ins.reply("Chat «x» respondió: usa GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789 y listo");
+    assert.ok(appended[1][1].includes("GITHUB_TOKEN=[secreto] y listo") && !appended[1][1].includes("ghp_"));
+    // Si Google falla al escribir, reply LANZA (no devuelve true como si nada)
+    const roto = createInstinct({ google: { ...google, append: async () => { throw new Error("google 503"); } }, bridge: () => ({ para: "P", de: "D" }), file, onNew: () => {} });
+    await assert.rejects(roto.reply("hola"), /google 503/);
+    fs.rmSync(file, { force: true });
+    // Tres lecturas seguidas fallidas → onHealth(false) UNA vez; al volver a leer bien → onHealth(true)
+    const health = [];
+    let fail = true;
+    const g3 = { ...google, version: async () => { if (fail) throw new Error("fetch failed"); return "v9"; } };
+    const ins3 = createInstinct({ google: g3, bridge: () => ({ para: "P", de: "D" }), file, onNew: () => {}, onHealth: (ok, why) => health.push([ok, why]) });
+    for (let i = 0; i < 5; i++) await ins3.check();
+    assert.deepStrictEqual(health, [[false, "fetch failed"]]);
+    fail = false;
+    await ins3.check();
+    assert.deepStrictEqual(health, [[false, "fetch failed"], [true, ""]]);
     fs.rmSync(file, { force: true });
     // El aviso: un "ntfy" de mentira manda una línea "message" y eso dispara la lectura (sin revisar cada tanto)
     const http = require("http");
