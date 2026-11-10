@@ -186,7 +186,11 @@ const SLEEP_AFTER = 120_000;
 let state = "idle";
 let backTimer, sleepTimer, labelTimer;
 
-function setState(next, text = "", { back, labelFor } = {}) {
+// Un aviso importante (una ventana que te pide un permiso) se sostiene `hold` ms: lo que hacen los chats no lo tapa (cambia la cara, no el texto).
+let holdUntil = 0, holdText = "";
+function setState(next, text = "", { back, labelFor, hold } = {}) {
+  if (hold) { holdUntil = Date.now() + hold; holdText = text; labelFor = hold; }
+  else if (Date.now() < holdUntil) { text = holdText; labelFor = holdUntil - Date.now(); }
   const prev = state;
   state = next;
   Jarvis.setState(next);
@@ -548,6 +552,8 @@ const taskIcon = (a, size) => {
 function taskClick(a) {
   if (!a) return;
   if (!a.windows.length) return api.taskLaunch(a.key); // anclado y cerrado: se abre
+  const asks = a.windows.find((w) => w.attn); // la que pide atención (un permiso, por ejemplo) es la que quieres ver
+  if (asks) return api.taskDo("focus", asks.h);
   const front = a.windows.find((w) => w.fg && !w.min);
   if (front) return api.taskDo("min", front.h);
   api.taskDo("focus", (a.windows.find((w) => !w.min) ?? a.windows[0]).h);
@@ -558,21 +564,24 @@ function taskClick(a) {
 let tasksAll = false, tasksAllTimer = 0;
 // ponytail: cupo aproximado (27 px por programa, 380 para Nimbo, lupa, reloj y márgenes); los que no quepan siguen en «+N» → lista grande
 const tasksFit = () => Math.max(MAX_TASKS, Math.floor(((curEdge() === "left" || curEdge() === "right" ? innerHeight : innerWidth) - 380) / 27));
-const shownTasks = () => curEdge() === "float" ? tasks.filter((a) => a.windows.length).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 4)
-  : [...tasks.filter((a) => a.windows.length), ...tasks.filter((a) => !a.windows.length)].slice(0, tasksAll ? tasksFit() : MAX_TASKS);
+// Los que piden atención (botón naranja de Windows) van primero: nunca quedan escondidos en «+N».
+const attnFirst = (l) => [...l.filter((a) => a.attn), ...l.filter((a) => !a.attn)];
+const shownTasks = () => curEdge() === "float" ? attnFirst(tasks.filter((a) => a.windows.length).sort((a, b) => (b.used || 0) - (a.used || 0))).slice(0, 4)
+  : attnFirst([...tasks.filter((a) => a.windows.length), ...tasks.filter((a) => !a.windows.length)]).slice(0, tasksAll ? tasksFit() : MAX_TASKS);
 tasksEl.addEventListener("mouseleave", () => { if (tasksAll) tasksAllTimer = setTimeout(() => { tasksAll = false; renderTasks(); }, 2500); });
 tasksEl.addEventListener("mouseenter", () => clearTimeout(tasksAllTimer));
 function renderTasks() {
   const list = shownTasks();
-  const key = mini ? "" : curEdge() + list.map((a) => a.key + a.fg + a.min + !!a.icon + a.windows.length).join("|") + tasks.length + tasksAll;
+  const key = mini ? "" : curEdge() + list.map((a) => a.key + a.fg + a.min + !!a.attn + !!a.icon + a.windows.length).join("|") + tasks.length + tasksAll;
   if (key === lastTasksKey) return;
   lastTasksKey = key;
   if (mini) { tasksEl.replaceChildren(); relayout(); return; }
   const shown = list.map((a) => {
-    const b = el("button", `tk${a.fg ? " fg" : ""}${a.min ? " min" : ""}${a.windows.length ? "" : " off"}`);
+    const b = el("button", `tk${a.fg ? " fg" : ""}${a.min ? " min" : ""}${a.windows.length ? "" : " off"}${a.attn ? " attn" : ""}`);
     b.type = "button";
     b.dataset.key = a.key;
     b.title = a.windows.length > 1 ? t("{0} · {1} ventanas", a.name, a.windows.length) : a.windows.length ? a.name : t("{0} (anclado: clic para abrirlo)", a.name);
+    if (a.attn) b.title = t("{0} · te pide atención", b.title);
     b.append(taskIcon(a, 20));
     return b;
   });
@@ -608,6 +617,8 @@ function tickClock() {
 }
 setInterval(tickClock, 10_000);
 // El PC caliente (main: vitals.js): Nimbo se sonroja mientras dure y lo dice de vez en cuando
+// Una ventana te pide atención y lleva rato esperando (main: attention.js). La isla lo dice; el ícono naranja de la barra la trae al frente.
+api.onAttention?.((x) => { if (!mini && x?.text) setState("needs", String(x.text).slice(0, 90), { hold: 15000, back: 15000 }); });
 api.onVitals?.((v) => {
   root.classList.toggle("hot", !!v.hot);
   if (v.say && !mini) setState(state, v.gpuTemp ? t("La gráfica va a {0} °C: ojo con el calor", v.gpuTemp) : t("El procesador va al {0} %", v.cpu), { labelFor: 9000 });
@@ -630,7 +641,7 @@ function renderTaskBox() {
   if (taskBox.classList.contains("hidden")) return;
   const tiles = el("div", "tgrid");
   for (const a of taskMatches()) {
-    const tile = el("button", `tile${a.fg ? " fg" : ""}${a.min ? " min" : ""}${a.windows.length ? "" : " off"}${openTask === a.key ? " on" : ""}`);
+    const tile = el("button", `tile${a.fg ? " fg" : ""}${a.min ? " min" : ""}${a.windows.length ? "" : " off"}${openTask === a.key ? " on" : ""}${a.attn ? " attn" : ""}`);
     tile.type = "button";
     tile.title = a.windows.length ? a.windows.map((w) => w.title).join("\n") : t("{0} (anclado: clic para abrirlo)", a.name);
     tile.dataset.key = a.key;

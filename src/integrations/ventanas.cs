@@ -1,6 +1,7 @@
 // Nimbo como barra de tareas: lista las ventanas abiertas (las mismas que muestra Alt+Tab), cambia entre ellas y prende o apaga el
 // auto-ocultar de la barra de Windows. Lo compila windows.js con el csc.exe que trae Windows (sin instalar nada) y lo lanza Nimbo.
 // Escribe una línea JSON con la lista cada vez que cambia: [{"h":"123","t":"título","p":"C:\\ruta.exe","d":"descripción","m":false,"f":true}]
+// ("x":true = esa ventana pide atención: su botón estaría parpadeando en naranja en la barra de Windows)
 // Lee órdenes por la entrada estándar: focus <h> · min <h> · close <h> · autohide 1|0 · state
 // Argumentos: el id del proceso de Nimbo (si Nimbo deja de existir, este programa se cierra solo) y "hide": esconder la barra de Windows
 // mientras corre. El auto-ocultar de Windows NO basta: con un botón parpadeando (WhatsApp, Brave pidiendo atención) la barra se queda
@@ -52,6 +53,34 @@ static class Ventanas {
   [StructLayout(LayoutKind.Sequential)] struct POINT { public int x, y; }
   [StructLayout(LayoutKind.Sequential)] struct RECT { public int l, t, r, b; }
   [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int cbSize; public RECT mon, work; public uint flags; }
+  [DllImport("user32.dll")] static extern bool RegisterShellHookWindow(IntPtr h);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterWindowMessage(string s);
+
+  // Ventanas que PIDEN ATENCIÓN: lo que Windows hace parpadear en naranja en su barra (un permiso de seguridad que quedó atrás, un
+  // programa que terminó de cargar). Con la barra de Windows escondida ese aviso se perdía (2026-11-09: un permiso esperó largo rato).
+  // Windows lo cuenta a quien se registra con RegisterShellHookWindow: HSHELL_FLASH al pedir atención; al activarla o cerrarla, se olvida.
+  static readonly HashSet<long> attention = new HashSet<long>();
+  static ShellHook hook; // referencia viva: si no, el recolector se la lleva y dejan de llegar los avisos
+  class ShellHook : System.Windows.Forms.NativeWindow {
+    readonly uint msg = RegisterWindowMessage("SHELLHOOK"); // antes de crear la ventana (con 0 se confundiría con WM_NULL)
+    public ShellHook() { CreateHandle(new System.Windows.Forms.CreateParams()); RegisterShellHookWindow(Handle); }
+    protected override void WndProc(ref System.Windows.Forms.Message m) {
+      if (msg != 0 && (uint)m.Msg == msg) {
+        int code = m.WParam.ToInt32();
+        long h = m.LParam.ToInt64();
+        lock (attention) {
+          if (code == 0x8006) attention.Add(h); // HSHELL_FLASH
+          else if (code == 4 || code == 0x8004 || code == 2) attention.Remove(h); // activada (normal o "a la fuerza") o destruida
+        }
+      }
+      base.WndProc(ref m);
+    }
+  }
+  static void StartShellHook() {
+    var t = new Thread(() => { try { hook = new ShellHook(); System.Windows.Forms.Application.Run(); } catch { } }) { IsBackground = true };
+    t.SetApartmentState(ApartmentState.STA);
+    t.Start();
+  }
 
   [StructLayout(LayoutKind.Sequential)]
   struct APPBARDATA { public int cbSize; public IntPtr hWnd; public uint uCallbackMessage; public uint uEdge; public int left, top, right, bottom; public IntPtr lParam; }
@@ -146,6 +175,8 @@ static class Ventanas {
 
   static string List() {
     var fg = GetForegroundWindow();
+    // La que está al frente ya la estás viendo; las que se cerraron, fuera.
+    lock (attention) { attention.Remove(fg.ToInt64()); attention.RemoveWhere(k => !IsWindow(new IntPtr(k))); }
     var sb = new StringBuilder("[");
     bool first = true;
     EnumWindows((h, l) => {
@@ -170,6 +201,8 @@ static class Ventanas {
       sb.Append("{\"h\":\"").Append(h.ToInt64()).Append("\",\"t\":\"").Append(Esc(t.ToString())).Append("\",\"p\":\"").Append(Esc(path))
         .Append("\",\"d\":\"").Append(Esc(DescOf(path))).Append("\",\"m\":").Append(IsIconic(h) ? "true" : "false")
         .Append(",\"f\":").Append(h == fg ? "true" : "false");
+      bool wants; lock (attention) wants = attention.Contains(h.ToInt64());
+      if (wants) sb.Append(",\"x\":true");
       if (path.IndexOf("\\WindowsApps\\", StringComparison.OrdinalIgnoreCase) >= 0) sb.Append(",\"a\":\"").Append(Esc(AumidOf(real))).Append('"');
       sb.Append('}');
       return true;
@@ -251,6 +284,7 @@ static class Ventanas {
     // Pase lo que pase (hasta un error), la barra de Windows no se queda escondida.
     AppDomain.CurrentDomain.UnhandledException += (s, e) => { quitting = true; ShowTrays(); };
     if (args.Length > 1 && args[1] == "hide") new Thread(TrayLoop) { IsBackground = true }.Start();
+    StartShellHook();
     var reader = new Thread(() => {
       string line;
       var input = new System.IO.StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));

@@ -16,6 +16,7 @@ const { createVillage } = require("./village");
 const { createWake, createLive } = require("../integrations/wake");
 const { createWindows, AUMID } = require("../integrations/windows");
 const { createVitals } = require("./vitals");
+const { createAttention } = require("./attention");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -1154,7 +1155,7 @@ async function sendTasks() {
   const list = [...pins.map((p) => { const r = apps.find((a) => match(p, a)); return { ...(r ?? { windows: [], fg: false, min: false }), key: p.key, name: r?.name || p.name, path: p.path || r?.path, pinned: true }; }),
     ...apps.filter((a) => !pins.some((p) => match(p, a)))];
   const out = await Promise.all(list.map(async (a) => ({ key: a.key, name: a.key === own ? "Nimbo" : a.name, icon: a.key === own ? NIMBO_ICON() : await iconOf(a.path),
-    fg: a.fg, min: a.min, pinned: !!a.pinned, used: usedAt.get(a.key) ?? 0, windows: a.windows.map((w) => ({ h: w.h, title: w.title, fg: w.fg, min: w.min })) })));
+    fg: a.fg, min: a.min, attn: !!a.attn, pinned: !!a.pinned, used: usedAt.get(a.key) ?? 0, windows: a.windows.map((w) => ({ h: w.h, title: w.title, fg: w.fg, min: w.min, attn: !!w.attn })) })));
   lastTasks = out;
   if (win && !win.isDestroyed()) win.webContents.send("tasks", out);
 }
@@ -1184,6 +1185,18 @@ function barraLog(line) {
     fs.writeFileSync(BARRA_LOG, [...old, `${new Date().toISOString()} ${String(line).slice(0, 300)}`].join("\r\n") + "\r\n");
   } catch {}
 }
+// Una ventana te pide atención (el botón naranja de la barra de Windows, que Nimbo esconde): attention.js decide cuándo vale la pena decirlo.
+// La isla lo dice y sale una notificación; tocarla trae esa ventana al frente. Pasó el 2026-11-09: un permiso de seguridad esperó largo rato.
+let attnNote = null; // referencia viva: si el recolector se lleva la notificación, el clic no hace nada
+const attention = createAttention({ tell: (a, w, security) => {
+  const name = a.name || w.title;
+  const text = security ? t("{0} te pide un permiso de seguridad", name) : t("{0} te está esperando", name);
+  if (win && !win.isDestroyed()) win.webContents.send("attention", { key: a.key, text, security });
+  if (!Notification.isSupported()) return;
+  attnNote = new Notification({ title: text, body: `${String(w.title ?? "").slice(0, 120)}\n${t("Toca para verla")}`, silent: !security });
+  attnNote.on("click", () => windows.act("focus", w.h));
+  attnNote.show();
+} });
 const windows = createWindows({
   binDir: path.join(app.getPath("userData"), "bin"),
   log: barraLog,
@@ -1193,6 +1206,7 @@ const windows = createWindows({
     // Un programa anclado guarda su identificador de la Tienda la primera vez que se ve abierto (para poder abrirlo cerrado).
     for (const p of taskbarPins()) { const a = apps.find((x) => x.key === p.key); if (a?.aumid && !p.aumid) { p.aumid = a.aumid; savePrefs(); } }
     lastApps = apps;
+    attention.update(apps);
     sendTasks();
   },
   onAutoHide: (v) => {

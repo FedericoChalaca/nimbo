@@ -32,7 +32,7 @@ function parseLine(line) {
   let o;
   try { o = JSON.parse(String(line).trim()); } catch { return null; }
   if (Array.isArray(o?.windows)) {
-    return { windows: o.windows.filter((w) => /^\d{1,20}$/.test(w?.h)).map((w) => ({ h: w.h, title: String(w.t ?? "").slice(0, 200), path: String(w.p ?? ""), desc: String(w.d ?? "").slice(0, 80), min: w.m === true, fg: w.f === true, aumid: AUMID.test(w.a ?? "") ? w.a : "" })) };
+    return { windows: o.windows.filter((w) => /^\d{1,20}$/.test(w?.h)).map((w) => ({ h: w.h, title: String(w.t ?? "").slice(0, 200), path: String(w.p ?? ""), desc: String(w.d ?? "").slice(0, 80), min: w.m === true, fg: w.f === true, aumid: AUMID.test(w.a ?? "") ? w.a : "", attn: w.x === true })) };
   }
   if (o && (o.autohide === 0 || o.autohide === 1)) return { autohide: o.autohide };
   if (o?.lb === 0) return { leftUp: true }; // soltaron el botón izquierdo del mouse (lo avisa el programa mientras se arrastra a Nimbo)
@@ -53,12 +53,12 @@ function groupApps(windows, order) {
     const key = (w.path || w.title).toLowerCase();
     if (!groups.has(key)) groups.set(key, { key, name: appName(w.desc) || path.basename(w.path || "", ".exe") || w.title, path: w.path, aumid: "", windows: [] });
     if (w.aumid) groups.get(key).aumid = w.aumid;
-    groups.get(key).windows.push({ h: w.h, title: w.title, min: w.min, fg: w.fg });
+    groups.get(key).windows.push({ h: w.h, title: w.title, min: w.min, fg: w.fg, attn: !!w.attn });
   }
   for (const key of groups.keys()) if (!order.has(key)) order.set(key, order.size ? Math.max(...order.values()) + 1 : 0);
   for (const key of [...order.keys()]) if (!groups.has(key)) order.delete(key);
   return [...groups.values()].sort((a, b) => order.get(a.key) - order.get(b.key))
-    .map((g) => ({ ...g, fg: g.windows.some((w) => w.fg), min: g.windows.every((w) => w.min) }));
+    .map((g) => ({ ...g, fg: g.windows.some((w) => w.fg), min: g.windows.every((w) => w.min), attn: g.windows.some((w) => w.attn) })); // attn: alguna pide atención
 }
 
 /**
@@ -152,7 +152,7 @@ if (require.main === module) (async () => {
   assert.strictEqual(parseLine("basura"), null);
   assert.deepStrictEqual(parseLine('{"autohide":1}'), { autohide: 1 });
   const p = parseLine('{"windows":[{"h":"12","t":"Doc \\"uno\\"","p":"C:\\\\x\\\\code.exe","d":"Visual Studio Code","m":false,"f":true},{"h":"abc","t":"mala"}]}');
-  assert.deepStrictEqual(p.windows, [{ h: "12", title: 'Doc "uno"', path: "C:\\x\\code.exe", desc: "Visual Studio Code", min: false, fg: true, aumid: "" }]); // un id raro se descarta
+  assert.deepStrictEqual(p.windows, [{ h: "12", title: 'Doc "uno"', path: "C:\\x\\code.exe", desc: "Visual Studio Code", min: false, fg: true, aumid: "", attn: false }]); // un id raro se descarta
   assert.strictEqual(parseLine('{"windows":[{"h":"1","a":"5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"}]}').windows[0].aumid, "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App");
   assert.strictEqual(parseLine('{"windows":[{"h":"1","a":"x & calc!App"}]}').windows[0].aumid, ""); // nada raro llega a shell:AppsFolder
   // Agrupar: por programa, en orden de llegada, estable aunque cambie el orden de Windows.
@@ -164,6 +164,10 @@ if (require.main === module) (async () => {
   assert.deepStrictEqual(g.map((x) => x.name), ["code", "brave", "spotify"]); // el nuevo va al final; los demás no se mueven
   assert.deepStrictEqual(["Steam Client WebHelper", "WhatsApp.Root", "Visual Studio Code", "Brave Browser"].map(appName), ["Steam", "WhatsApp", "Visual Studio Code", "Brave Browser"]);
   assert.strictEqual(groupApps([w("5", "C:\\c\\x.exe", false, true)], new Map())[0].min, true);
+  // Pide atención (el botón naranja de la barra de Windows): llega por "x" y el programa queda marcado si alguna de sus ventanas lo pide
+  assert.strictEqual(parseLine('{"windows":[{"h":"7","x":true}]}').windows[0].attn, true);
+  const ga = groupApps([{ ...w("7", "C:\\c\\consent.exe"), attn: true }, w("8", "C:\\c\\consent.exe")], new Map())[0];
+  assert.deepStrictEqual([ga.attn, ga.windows.map((x) => x.attn)], [true, [true, false]]);
   if (process.platform !== "win32") return console.log("windows.js ok (sin Windows: solo lo básico)");
   // De verdad: compila, arranca, recibe la lista y no acepta ventanas que no estén en ella.
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), "nimbo-ventanas-"));

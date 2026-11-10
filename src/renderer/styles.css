@@ -793,6 +793,11 @@
   #tasks .tk.off img { opacity: .38; filter: grayscale(.6); } /* anclado y cerrado */
   #tasks .tk:not(.off)::before { content: ""; position: absolute; left: 11px; right: 11px; bottom: 0; height: 2px; border-radius: 2px; background: #8f959e; }
   #tasks .tk.fg::before { left: 7px; right: 7px; background: var(--accent-a); }
+  /* Pide atención: naranja como el botón de la barra de Windows. Parpadea unas veces (no para siempre: gasta GPU) y queda naranja hasta que la mires */
+  #tasks .tk.attn, #taskBox .tile.attn { background: rgba(255, 140, 26, .26); animation: attn-blink .9s ease-in-out 6; }
+  #tasks .tk.attn::before { left: 5px; right: 5px; background: #ff9a2e; }
+  #tasks .tk.attn img { opacity: 1; }
+  @keyframes attn-blink { 50% { background: rgba(255, 140, 26, .55); } }
   #tasks .tkmore { color: #8f959e; font-size: 11px; font-weight: 700; padding: 0 5px; height: 26px; border-radius: 7px; background: transparent; }
   #tasks .tkmore:hover { color: #eceef2; background: rgba(255, 255, 255, .08); transform: none; }
   #tasks .tkclock { color: #c9ced6; font-size: 11.5px; font-weight: 600; padding: 0 6px 0 5px; font-variant-numeric: tabular-nums; letter-spacing: .2px; cursor: default; }

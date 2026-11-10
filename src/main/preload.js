@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("nimbo", {
   village: () => ipcRenderer.send("village-show"),
   onTasks: (fn) => ipcRenderer.on("tasks", (_e, list) => fn(list)),
   onVitals: (fn) => ipcRenderer.on("vitals", (_e, v) => fn(v)),
+  onAttention: (fn) => ipcRenderer.on("attention", (_e, x) => fn(x)), // { key, text, security }: una ventana te pide atención
   taskDo: (action, h) => ipcRenderer.send("task-do", action, h), // focus · min · close de una ventana de la lista
   taskLaunch: (key) => ipcRenderer.send("task-launch", String(key)), // abrir un programa anclado que está cerrado
   taskMenu: (key) => ipcRenderer.send("task-menu", String(key)), // clic derecho: anclar / quitar / cerrar
