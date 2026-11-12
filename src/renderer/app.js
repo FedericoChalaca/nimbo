@@ -1968,7 +1968,9 @@ wrap.addEventListener("click", (e) => {
     }, 280);
     return;
   }
-  if (clicks === 2) { clicks = 0; return api.ghost(); } // doble clic: modo fantasma (30 s translúcido, los clics pasan a lo de abajo)
+  // Doble clic: modo fantasma (30 s translúcido, los clics pasan a lo de abajo). Espera 280 ms por si llega un tercero: triple clic = cariño.
+  if (clicks === 2) { clickTimer = setTimeout(() => { clicks = 0; api.ghost(); }, 280); return; }
+  if (clicks === 3) { emote("love", 1500); SOUNDS.love(); }
   if (clicks === 5) { emote("dizzy", 2600); SOUNDS.dizzy(); setState(state, t("Ya, ya… 😵‍💫"), { labelFor: 2200 }); }
   clickTimer = setTimeout(() => (clicks = 0), 900);
 });
