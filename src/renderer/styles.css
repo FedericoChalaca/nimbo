@@ -91,6 +91,8 @@
     background: transparent; color: #7c818a; font-size: 13px; line-height: 26px; opacity: 0; transition: opacity .2s, color .2s; }
   .hovering #menuBtn, .open #menuBtn { opacity: 1; }
   #menuBtn:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+  /* Una conexión caída (Google, tu IA de WhatsApp): el ⋮ se ve siempre, en rojo, hasta que se arregle en Opciones */
+  .health-bad #menuBtn { opacity: 1; color: #ff6b6b; }
   #pips:empty { display: none; }
   .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--c, #888);
     animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both; }

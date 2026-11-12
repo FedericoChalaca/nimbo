@@ -28,7 +28,8 @@ function readNvidia() {
 /**
  * @param onChange ({ hot, say, cpu, gpuTemp, gpuUtil }) => void — al cambiar `hot` y cada vez que toque decirlo (`say`)
  */
-function createVitals({ onChange, every = 15_000, gpu = readNvidia, cpu = cpuTimes, now = Date.now }) {
+// Cada 30 s (antes 15): `nvidia-smi` es un proceso nuevo cada vez; con dos lecturas seguidas el calor igual se avisa en ~1 min.
+function createVitals({ onChange, every = 30_000, gpu = readNvidia, cpu = cpuTimes, now = Date.now }) {
   let timer = null, prev = cpu(), strikes = 0, lastSaid = -Infinity, wasHot = false, gpuMissing = false;
   async function sample() {
     const cur = cpu();

@@ -17,6 +17,7 @@ const { createWake, createLive } = require("../integrations/wake");
 const { createWindows, AUMID } = require("../integrations/windows");
 const { createVitals } = require("./vitals");
 const { createAttention } = require("./attention");
+const { createHealth } = require("./health");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -599,8 +600,7 @@ const alerts = createAlerts({ send: (text) => telegram.notify(text), enabled: (k
 ipcMain.handle("dispatch", (_e, id, prompt) => orchestrator.dispatch(String(id), String(prompt)));
 // --- Celular (remote-api.js): Nimbo en el iPhone, por el puente del asistente. Solo 127.0.0.1 y con su token. ---
 const remote = createRemoteApi({
-  diag: () => ({ version: app.getVersion(), file: __filename, cwd: process.cwd(), userData: app.getPath("userData"), appData: process.env.APPDATA, exec: process.execPath, argv: process.argv, token: TOKEN.slice(0, 8), bootLog: BOOT_LOG, pid: process.pid, uptime: process.uptime(),
-    diskToken: (() => { try { return fs.readFileSync(tokenFile, "utf8").slice(0, 8); } catch (e) { return "ERR " + e.code; } })(),
+  diag: () => ({ version: app.getVersion(), file: __filename, cwd: process.cwd(), userData: app.getPath("userData"), appData: process.env.APPDATA, exec: process.execPath, argv: process.argv, bootLog: BOOT_LOG, pid: process.pid, uptime: process.uptime(),
     lastLog: (() => { try { return fs.readFileSync(BOOT_LOG, "utf8").trim().split(/\r?\n/).pop(); } catch (e) { return "ERR " + e.code; } })() }),
   tokenFile: path.join(app.getPath("userData"), "remote-token"),
   ask: askNimbo,
@@ -714,11 +714,22 @@ function refreshTrelloIfStale() {
 // Tu Google (google.js): el ID de tu app va en prefs; su secreto y el token de renovación, cifrados por Windows en google.bin.
 const googleFile = path.join(app.getPath("userData"), "google.bin");
 let googleCreds; // { secret, refresh }
+// Salud de las conexiones (health.js): Google, tu IA de WhatsApp. Antes un fallo aquí era invisible (Google estuvo 5 días caído, 2026-11).
+const health = createHealth({ onChange: (c) => {
+  if (win && !win.isDestroyed()) win.webContents.send("health", c);
+  if (!c.ok && Notification.isSupported()) new Notification({ title: t("Nimbo perdió una conexión"), body: c.text, silent: mini }).show();
+  bootLog(`conexión ${c.id}: ${c.ok ? "volvió" : "caída · " + c.text}`);
+} });
+const googleLost = () => health.set("google", false, t("Tu sesión de Google se cerró: vuelve a entrar en Opciones → Tu Google para que {0} y la agenda sigan funcionando.", neoName()));
+let googleUnreadable = false; // google.bin existe pero no se pudo descifrar (pasó: la llave de Local State era otra)
 const google = createGoogle({
   clientId: () => prefs.googleClientId,
   redirect: `http://127.0.0.1:${PORT}/google`,
   load() {
-    if (googleCreds === undefined) { try { googleCreds = JSON.parse(safeStorage.decryptString(fs.readFileSync(googleFile))); } catch { googleCreds = {}; } }
+    if (googleCreds === undefined) {
+      try { googleCreds = JSON.parse(safeStorage.decryptString(fs.readFileSync(googleFile))); }
+      catch (e) { googleCreds = {}; if (e.code !== "ENOENT") { googleUnreadable = true; bootLog("google.bin no se pudo leer: " + String(e.message).slice(0, 80)); } }
+    }
     return googleCreds;
   },
   save(v) {
@@ -729,11 +740,13 @@ const google = createGoogle({
     } catch {}
   },
   open: (url) => { shell.openExternal(url); clipboard.writeText(url); },
+  onLost: googleLost,
 });
 const neoName = () => String(prefs.instinctName || "").trim() || "Instinct"; // cómo le dices a tu IA de WhatsApp (ajuste)
 // Instinct (instinct.js): Drive AVISA cuando Instinct escribe en «Para Nimbo» (por un tema de ntfy.sh con nombre aleatorio); nada revisa cada tanto.
 const instinct = createInstinct({
   google, bridge: () => prefs.googleBridge, file: path.join(app.getPath("userData"), "instinct.json"),
+  onHealth: (ok, why) => health.set("neo", ok, t("No puedo leer la carpeta de {0} en Drive ({1}). Lo sigo intentando cada minuto.", neoName(), why)),
   topic: () => { if (!/^nimbo-[a-f0-9]{32}$/.test(prefs.instinctTopic ?? "")) { prefs.instinctTopic = `nimbo-${require("crypto").randomBytes(16).toString("hex")}`; savePrefs(); } return prefs.instinctTopic; },
   onNew: async (pending, fresh) => {
     // Control remoto: las órdenes y las respuestas a sus códigos las atiende remote-neo (y salen de la pastilla)
@@ -780,13 +793,19 @@ ipcMain.handle("instinct-check", async () => withQ(await instinct.check(true)));
 ipcMain.handle("instinct-do", async (_e, id, action, text) => {
   const item = instinct.pending().find((p) => p.id === String(id));
   // reply = un aviso para ti; ask = una pregunta que Instinct te hace por WhatsApp (tu respuesta vuelve a «Para Nimbo»)
-  if (action === "reply" || action === "ask") { await instinct.reply(String(text ?? ""), action === "ask").catch(() => false); return withQ(instinct.pending()); }
+  if (action === "reply" || action === "ask") {
+    try { if (!(await instinct.reply(String(text ?? ""), action === "ask"))) return { error: t("falta la carpeta con {0} (Opciones → Tu Google)", neoName()) }; }
+    catch (e) { if (!google.connected()) googleLost(); return { error: google.connected() ? String(e?.message ?? e).slice(0, 80) : t("tu sesión de Google se cerró") }; }
+    return withQ(instinct.pending());
+  }
   if (!item) return withQ(instinct.pending());
   if (action === "pending") { reminders.add({ text: item.text, due: "" }); remindersChanged(); }
   return withQ(instinct.done(item.id));
 });
 app.whenReady().then(() => {
   if (prefs.googleBridge?.para) instinct.start();
+  // Al arrancar: carpeta con Neo creada pero sin sesión de Google (o el archivo de sesión ilegible) → se dice ya, no días después
+  if (prefs.googleBridge?.para && google.configured() && !google.connected()) setTimeout(googleUnreadable ? () => health.set("google", false, t("No pude abrir tu sesión de Google guardada: vuelve a entrar en Opciones → Tu Google.")) : googleLost, 8000);
   powerMonitor.on("resume", () => { if (prefs.googleBridge?.para) setTimeout(() => instinct.restart(), 5000); }); // tras dormir el PC: conexión y aviso nuevos
 });
 app.on("before-quit", () => instinct.stop());
@@ -1438,7 +1457,7 @@ ipcMain.handle("setup-do", async (_e, action, value) => {
         break;
       }
       case "google-login": google.login(); break; // no se espera: el permiso se da en el navegador
-      case "google-logout": instinct.stop(); google.logout(); break;
+      case "google-logout": instinct.stop(); google.logout(); health.set("google", true); health.set("neo", true); break; // saliste tú: no es una caída
       case "instinct-name":
         prefs.instinctName = String(value ?? "").replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 24);
         savePrefs();
@@ -1803,6 +1822,7 @@ http
         res.writeHead(ok ? 200 : 400, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         res.end(`<!doctype html><meta charset="utf-8"><title>Nimbo</title><body style="font:16px Segoe UI,sans-serif;background:#0b0c0e;color:#eceef2;display:grid;place-items:center;height:100vh;margin:0"><p>${ok ? t("Tu Google quedó conectado con Nimbo. Ya puedes cerrar esta pestaña.") : t("No se pudo conectar tu Google. Vuelve a Nimbo e inténtalo de nuevo.")}</p>`);
         if (ok && win && !win.isDestroyed()) win.webContents.send("agenda-changed");
+        if (ok) { googleUnreadable = false; health.set("google", true); if (prefs.googleBridge?.para) instinct.restart(); }
       });
       return;
     }
@@ -1833,7 +1853,7 @@ http
         return;
       }
       seenNonces.add(nonce);
-      if (seenNonces.size > 5000) seenNonces.clear();
+      if (seenNonces.size > 5000) { let n = 1000; for (const old of seenNonces) { seenNonces.delete(old); if (--n === 0) break; } }
       let payload;
       try {
         payload = JSON.parse(body);

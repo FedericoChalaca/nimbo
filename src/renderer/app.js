@@ -618,6 +618,12 @@ function tickClock() {
 setInterval(tickClock, 10_000);
 // El PC caliente (main: vitals.js): Nimbo se sonroja mientras dure y lo dice de vez en cuando
 // Una ventana te pide atención y lleva rato esperando (main: attention.js). La isla lo dice; el ícono naranja de la barra la trae al frente.
+// Una conexión se cayó o volvió (main: health.js): la isla lo dice una vez y el botón ⋮ queda con un punto rojo mientras algo siga caído.
+api.onHealth?.((h) => {
+  root.classList.toggle("health-bad", !!h?.bad?.length);
+  if (h && !h.ok && !mini) setState(state, String(h.text).slice(0, 120), { hold: 12000 });
+  document.getElementById("menuBtn").title = h?.bad?.length ? h.bad.map((b) => b.text).join("\n") : t("Opciones de Nimbo");
+});
 api.onAttention?.((x) => { if (!mini && x?.text) setState("needs", String(x.text).slice(0, 90), { hold: 15000, back: 15000 }); });
 api.onVitals?.((v) => {
   root.classList.toggle("hot", !!v.hot);
@@ -983,13 +989,15 @@ function renderAppView() {
     const input = Object.assign(el("input"), { type: "text", maxLength: 1000, placeholder: t("Escríbele a {0} (va a «De Nimbo»)…", neo) });
     const send = el("button", "", t("Mandar"));
     send.type = "button";
-    send.onclick = async () => { if (!input.value.trim()) return; await api.instinctDo("", "reply", input.value); input.value = ""; setState(state, t("Le dejé el mensaje a {0} ✓", neo), { labelFor: 3500 }); };
+    // Si Google rechaza la escritura se dice (y el texto se queda en el cuadro): antes salía «✓» aunque no hubiera llegado nada.
+    const sent = (r, ok) => { if (r?.error) return setState(state, t("No le llegó a {0}: {1}", neo, r.error), { labelFor: 9000 }); input.value = ""; setState(state, ok, { labelFor: 4000 }); };
+    send.onclick = async () => { if (!input.value.trim()) return; sent(await api.instinctDo("", "reply", input.value), t("Le dejé el mensaje a {0} ✓", neo)); };
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") send.click(); });
     // Preguntar: Instinct te lo pregunta por WhatsApp y tu respuesta vuelve aquí como [respuesta]
     const ask = el("button", "", t("Preguntarme por WhatsApp"));
     ask.type = "button";
     ask.title = t("{0} te hace esta pregunta por WhatsApp y tu respuesta vuelve a Nimbo", neo);
-    ask.onclick = async () => { if (!input.value.trim()) return; await api.instinctDo("", "ask", input.value); input.value = ""; setState(state, t("{0} te lo va a preguntar por WhatsApp ✓", neo), { labelFor: 4000 }); };
+    ask.onclick = async () => { if (!input.value.trim()) return; sent(await api.instinctDo("", "ask", input.value), t("{0} te lo va a preguntar por WhatsApp ✓", neo)); };
     reply.append(input, send, ask);
     rows.push(reply);
   } else if (app.id === "agenda") {
