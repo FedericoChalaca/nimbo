@@ -134,6 +134,7 @@ function createWindow() {
   win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("did-finish-load", () => {
+    win.webContents.setZoomFactor(scale); // el tamaño que le dejaste (Options y la aldea van en otro host: este zoom no les llega)
     win.webContents.send("theme", prefs.theme);
     win.webContents.send("wake-on", prefs.wakeWord === true && !mini);
     win.webContents.send("dock", dockState().edge);
@@ -164,6 +165,16 @@ function createWindow() {
       savePrefs();
       win.webContents.send("drag-abort");
     }
+    if (resizing) {
+      // Agrandando desde la esquina: alejarse del borde donde vive Nimbo lo agranda (160 px ≈ el doble), acercarse lo achica.
+      if (Date.now() - resizing.since > 30_000) endResize();
+      else {
+        const e = dockState().edge;
+        const d = e === "bottom" ? resizing.y - p.y : e === "right" ? resizing.x - p.x : e === "left" ? p.x - resizing.x : p.y - resizing.y;
+        setScale(resizing.s0 * (1 + d / 160));
+      }
+      return;
+    }
     if (drag) {
       // Arrastrando, la ventana entera (la isla con sus franjas) viaja pegada al cursor, en cualquier pantalla, sin cambiar de forma;
       // cerca de un borde, la página muestra que se va a pegar ahí. Solo al soltar se decide dónde queda.
@@ -175,8 +186,9 @@ function createWindow() {
       if (snap !== drag.snap) { drag.snap = snap; win.webContents.send("drag-snap", snap); }
       return;
     }
-    const x = p.x - b.x;
-    const y = p.y - b.y;
+    // En px de la página (con Nimbo agrandado, la ventana mide `scale` veces más que lo que la página cree).
+    const x = Math.round((p.x - b.x) / scale);
+    const y = Math.round((p.y - b.y) / scale);
     const inside = !ghostTimer && hitRects.some((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
     if (inside !== over) {
       over = inside;
@@ -214,8 +226,8 @@ function finishDrag(fromHelper) {
   const a = disp.workArea;
   const edge = snapEdge(p) || "float";
   const frac = (v, from, len, size) => Math.min(1, Math.max(0, (v - from - size / 2) / Math.max(1, len - size)));
-  prefs.dock = edge === "float" ? { edge, display: disp.id, x: Math.round(p.x), y: Math.round(p.y - 34) }
-    : { edge, display: disp.id, pos: edge === "top" || edge === "bottom" ? frac(p.x, a.x, a.width, W) : frac(p.y, a.y, a.height, SIDE_H) };
+  prefs.dock = edge === "float" ? { edge, display: disp.id, x: Math.round(p.x), y: Math.round(p.y - px(34)) }
+    : { edge, display: disp.id, pos: edge === "top" || edge === "bottom" ? frac(p.x, a.x, a.width, px(W)) : frac(p.y, a.y, a.height, px(SIDE_H)) };
   savePrefs();
   placeWindow();
   win.webContents.send("dock", edge);
@@ -231,7 +243,7 @@ ipcMain.on("win-height", (_e, h) => {
   const edge = dockState().edge;
   if (edge !== "top" && edge !== "bottom") return; // a los lados y flotando la ventana tiene tamaño fijo
   const b = win.getBounds();
-  if (b.height !== winH) win.setBounds(dockBounds());
+  if (b.height !== px(winH)) win.setBounds(dockBounds());
 });
 
 // Zonas tocables (la nube y las cajas visibles), en coordenadas de la ventana.
@@ -249,6 +261,31 @@ function ghost(on) {
   if (win && !win.isDestroyed()) win.webContents.send("ghost", on);
 }
 ipcMain.on("ghost", () => ghost(true));
+
+// Agrandar o achicar a Nimbo arrastrando la esquina de la isla (el agarre #grip). El bucle del cursor calcula el tamaño mientras dura.
+let resizing = null; // { since, s0, x, y }
+function setScale(v) {
+  v = clampScale(v);
+  if (v === scale || !win || win.isDestroyed()) return;
+  scale = v;
+  win.webContents.setZoomFactor(scale);
+  placeWindow();
+}
+function endResize() {
+  if (!resizing) return;
+  resizing = null;
+  prefs.scale = scale;
+  savePrefs();
+}
+ipcMain.on("resize-start", () => {
+  if (mini || drag || !win || win.isDestroyed()) return;
+  const c = screen.getCursorScreenPoint();
+  resizing = { since: Date.now(), s0: scale, x: c.x, y: c.y };
+  windows.watchLeft(); // si la página pierde el "soltar", el botón izquierdo de verdad lo termina
+  win.setIgnoreMouseEvents(false);
+});
+ipcMain.on("resize-end", endResize);
+ipcMain.on("scale-reset", () => { resizing = null; setScale(1); prefs.scale = 1; savePrefs(); }); // doble clic en el agarre: tamaño normal
 
 // Modo mini (para jugar): Nimbo se encoge en una esquina y sigue reaccionando,
 // pero sin sonidos ni tarjetas; los permisos se preguntan en la terminal.
@@ -306,6 +343,12 @@ bootLog(`arranque v${app.getVersion()} · ajustes de ${prefsFrom} · barra ${pre
 process.on("uncaughtException", (e) => bootLog(`ERROR: ${String(e?.stack ?? e).split("\n").slice(0, 3).join(" | ")}`));
 process.on("unhandledRejection", (e) => bootLog(`PROMESA RECHAZADA: ${String(e?.stack ?? e).split("\n").slice(0, 2).join(" | ")}`));
 W = prefs.taskbarMode === true ? 640 : 440;
+// Tamaño de Nimbo (prefs.scale): se agranda o achica arrastrando la esquina de la isla. Es el zoom de la página y la ventana crece igual;
+// la página sigue midiendo todo en sus px de siempre (W, winH, hit-rects y el cursor van en esos px; aquí se multiplican por `scale`).
+const SCALE_MIN = 0.7, SCALE_MAX = 1.6;
+const clampScale = (v) => Math.round(Math.min(SCALE_MAX, Math.max(SCALE_MIN, Number(v) || 1)) * 100) / 100;
+let scale = clampScale(prefs.scale);
+const px = (v) => Math.round(v * scale);
 let corner = prefs.corner;
 // Se escribe en un archivo aparte y se cambia de nombre: si el PC se apaga a mitad, prefs.json queda entero (el viejo o el nuevo).
 const savePrefs = () => {
@@ -337,13 +380,14 @@ function dockBounds() {
   const clampIn = (v, from, len, size) => Math.round(Math.min(from + len - size, Math.max(from, v)));
   // Contra una esquina la ventana se corre 14 px hacia afuera de la pantalla (esa franja es transparente: son las "orejas" de la isla),
   // así la isla queda pegada al borde de verdad.
-  const rowX = () => Math.round(a.x + d.pos * (a.width - W) + (d.pos <= 0.03 ? -14 : d.pos >= 0.97 ? 14 : 0));
-  if (d.edge === "top") return { x: rowX(), y: a.y, width: W, height: winH };
-  if (d.edge === "bottom") return { x: rowX(), y: a.y + a.height - winH, width: W, height: winH };
-  const sideH = Math.min(SIDE_H, a.height);
-  if (d.edge === "left") return { x: a.x, y: Math.round(a.y + d.pos * (a.height - sideH)), width: SIDE_W, height: sideH };
-  if (d.edge === "right") return { x: a.x + a.width - SIDE_W, y: Math.round(a.y + d.pos * (a.height - sideH)), width: SIDE_W, height: sideH };
-  return { x: clampIn((d.x ?? a.x + a.width / 2) - FLOAT_W / 2, a.x, a.width, FLOAT_W), y: clampIn((d.y ?? a.y + 40) - 14, a.y, a.height, FLOAT_H), width: FLOAT_W, height: FLOAT_H };
+  const w = px(W), h = px(winH), sideW = px(SIDE_W), floatW = px(FLOAT_W), floatH = px(FLOAT_H);
+  const rowX = () => Math.round(a.x + d.pos * (a.width - w) + (d.pos <= 0.03 ? -px(14) : d.pos >= 0.97 ? px(14) : 0));
+  if (d.edge === "top") return { x: rowX(), y: a.y, width: w, height: h };
+  if (d.edge === "bottom") return { x: rowX(), y: a.y + a.height - h, width: w, height: h };
+  const sideH = Math.min(px(SIDE_H), a.height);
+  if (d.edge === "left") return { x: a.x, y: Math.round(a.y + d.pos * (a.height - sideH)), width: sideW, height: sideH };
+  if (d.edge === "right") return { x: a.x + a.width - sideW, y: Math.round(a.y + d.pos * (a.height - sideH)), width: sideW, height: sideH };
+  return { x: clampIn((d.x ?? a.x + a.width / 2) - floatW / 2, a.x, a.width, floatW), y: clampIn((d.y ?? a.y + 40) - px(14), a.y, a.height, floatH), width: floatW, height: floatH };
 }
 function setDock(d) {
   prefs.dock = { edge: d.edge, display: displayOf(d).id, pos: Number.isFinite(d.pos) ? d.pos : 0.5, x: d.x, y: d.y };
@@ -367,10 +411,10 @@ function placeWindow() {
   }
   const [v, h] = corner.split("-");
   win.setBounds({
-    x: h === "left" ? a.x + MARGIN : a.x + a.width - MINI_W - MARGIN,
-    y: v === "top" ? a.y + MARGIN : a.y + a.height - MINI_H - MARGIN,
-    width: MINI_W,
-    height: MINI_H,
+    x: h === "left" ? a.x + MARGIN : a.x + a.width - px(MINI_W) - MARGIN,
+    y: v === "top" ? a.y + MARGIN : a.y + a.height - px(MINI_H) - MARGIN,
+    width: px(MINI_W),
+    height: px(MINI_H),
   });
 }
 
@@ -1233,7 +1277,7 @@ const attention = createAttention({ tell: (a, w, security) => {
 const windows = createWindows({
   binDir: path.join(app.getPath("userData"), "bin"),
   log: barraLog,
-  onLeftUp: () => finishDrag(true), // soltaron el botón: si la página no se enteró, se suelta igual
+  onLeftUp: () => { finishDrag(true); endResize(); }, // soltaron el botón: si la página no se enteró, se suelta igual
   hide: true, // el auto-ocultar solo no basta: con un botón parpadeando la barra de Windows se queda a la vista
   onApps: (apps) => {
     // Un programa anclado guarda su identificador de la Tienda la primera vez que se ve abierto (para poder abrirlo cerrado).
@@ -1283,7 +1327,7 @@ app.on("before-quit", () => windows.stop());
 const village = createVillage({
   listSessions: () => listSessions(CHAT_DIR, { limit: 60, includeScratch: true }),
   configFile: path.join(app.getPath("userData"), "aldea.json"), // qué chat vive en qué casa (texto editable: lo leen el vault y el Orquestador)
-  page: () => `nimbo://app/src/renderer/village.html?lang=${lang()}`,
+  page: () => `nimbo://aldea/src/renderer/village.html?lang=${lang()}`,
   preload: path.join(__dirname, "village-preload.js"),
   name: () => String(prefs.name ?? ""),
 });
@@ -1744,7 +1788,7 @@ const buildMenu = () => Menu.buildFromTemplate(menuTemplate());
 ipcMain.on("menu", () => buildMenu().popup({ window: win }));
 // La ventana de opciones (botón ⋮ y clic en el icono junto al reloj); el clic derecho sigue siendo el menú rápido.
 const options = createOptions({
-  template: menuTemplate, page: () => `nimbo://app/src/renderer/options.html?lang=${lang()}`,
+  template: menuTemplate, page: () => `nimbo://opciones/src/renderer/options.html?lang=${lang()}`,
   preload: path.join(__dirname, "options-preload.js"), icon: path.join(ROOT, "assets", "icon.png"), skip: ["options", "quit", "setup"],
 });
 ipcMain.on("options-open", () => options.open());

@@ -628,6 +628,15 @@ api.onHealth?.((h) => {
   document.getElementById("menuBtn").title = h?.bad?.length ? h.bad.map((b) => b.text).join("\n") : t("Opciones de Nimbo");
 });
 api.onGhost?.((on) => root.classList.toggle("ghost", on));
+// Agarre en la esquina de la isla: arrastrarlo agranda o achica a Nimbo (main.js calcula el tamaño mientras dura); doble clic: tamaño normal.
+const grip = el("div", "", "");
+grip.id = "grip";
+grip.title = t("Arrástrame para agrandarme o achicarme · doble clic: tamaño normal");
+document.getElementById("island").append(grip);
+grip.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); grip.setPointerCapture(e.pointerId); api.resizeStart(); });
+for (const ev of ["pointerup", "lostpointercapture"]) grip.addEventListener(ev, () => api.resizeEnd());
+grip.addEventListener("click", (e) => e.stopPropagation()); // no abre el chat ni cuenta para el doble clic del modo fantasma
+grip.addEventListener("dblclick", (e) => { e.stopPropagation(); api.scaleReset(); });
 api.onAttention?.((x) => { if (!mini && x?.text) setState("needs", String(x.text).slice(0, 90), { hold: 15000, back: 15000 }); });
 api.onVitals?.((v) => {
   root.classList.toggle("hot", !!v.hot);

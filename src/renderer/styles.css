@@ -95,6 +95,15 @@
   .health-bad #menuBtn { opacity: 1; color: #ff6b6b; }
   /* Modo fantasma (doble clic): se ve al 30 % y los clics lo atraviesan; vuelve solo a los 30 s */
   #nimbo.ghost { opacity: .3; transition: opacity .25s; }
+  /* Agarre para agrandar o achicar (esquina de la isla que no toca el borde de la pantalla); aparece al pasar el mouse */
+  #grip { position: absolute; right: 7px; bottom: 5px; width: 12px; height: 12px; z-index: 30; cursor: nwse-resize; color: #8a8f98; opacity: 0; transition: opacity .2s;
+    background: linear-gradient(135deg, transparent 48%, currentColor 48% 58%, transparent 58% 72%, currentColor 72% 82%, transparent 82%); }
+  #wrap:hover #grip { opacity: .6; }
+  #grip:hover { opacity: 1 !important; color: #eceef2; }
+  .edge-bottom #grip { bottom: auto; top: 5px; transform: scaleY(-1); cursor: nesw-resize; }
+  :is(.edge-right, .corner-r) #grip { right: auto; left: 7px; transform: scaleX(-1); cursor: nesw-resize; }
+  .edge-bottom.corner-r #grip { transform: scale(-1); cursor: nwse-resize; }
+  #nimbo.mini #grip { display: none; }
   #pips:empty { display: none; }
   .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--c, #888);
     animation: pop-in .45s cubic-bezier(.3, 1.7, .5, 1) both; }

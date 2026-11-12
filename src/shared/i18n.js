@@ -755,6 +755,7 @@ const NIMBO_EN = {
   "Nueva conversación": "New conversation",
   "Silenciar sonidos": "Mute sounds",
   "Opciones de Nimbo": "Nimbo options",
+  "Arrástrame para agrandarme o achicarme · doble clic: tamaño normal": "Drag to make me bigger or smaller · double-click: normal size",
   "Leer las respuestas en voz alta": "Read replies aloud",
   "Voz": "Voice",
   "Lee sus respuestas en voz alta.": "Reads its replies aloud.",

@@ -116,6 +116,9 @@ contextBridge.exposeInMainWorld("nimbo", {
   hitRects: (rects) => ipcRenderer.send("hit-rects", rects),
   ghost: () => ipcRenderer.send("ghost"), // doble clic: 30 s translúcido y sin atrapar clics
   onGhost: (fn) => ipcRenderer.on("ghost", (_e, on) => fn(on === true)),
+  resizeStart: () => ipcRenderer.send("resize-start"), // agarre de la esquina: agrandar o achicar a Nimbo
+  resizeEnd: () => ipcRenderer.send("resize-end"),
+  scaleReset: () => ipcRenderer.send("scale-reset"),
   winHeight: (h) => ipcRenderer.send("win-height", h),
   onHover: (fn) => ipcRenderer.on("hover", (_e, on) => fn(on)),
   menu: () => ipcRenderer.send("menu"),
