@@ -17,7 +17,7 @@ const { createWake, createLive } = require("../integrations/wake");
 const { createWindows, AUMID } = require("../integrations/windows");
 const { createVitals } = require("./vitals");
 const { createAttention } = require("./attention");
-const { createHealth } = require("./health");
+const { createHealth, googleBootIssue } = require("./health");
 const hooks = require("./install-hooks");
 const { translator } = require("../shared/i18n");
 const { createReminders } = require("./reminders");
@@ -805,7 +805,11 @@ ipcMain.handle("instinct-do", async (_e, id, action, text) => {
 app.whenReady().then(() => {
   if (prefs.googleBridge?.para) instinct.start();
   // Al arrancar: carpeta con Neo creada pero sin sesión de Google (o el archivo de sesión ilegible) → se dice ya, no días después
-  if (prefs.googleBridge?.para && google.configured() && !google.connected()) setTimeout(googleUnreadable ? () => health.set("google", false, t("No pude abrir tu sesión de Google guardada: vuelve a entrar en Opciones → Tu Google.")) : googleLost, 8000);
+  // (configured() va primero: es lo que lee google.bin y deja googleUnreadable al día)
+  const configured = google.configured();
+  const issue = googleBootIssue({ bridge: !!prefs.googleBridge?.para, unreadable: googleUnreadable, configured, connected: google.connected() });
+  if (issue === "unreadable") setTimeout(() => health.set("google", false, t("No pude abrir tu sesión de Google guardada: vuelve a entrar en Opciones → Tu Google.")), 8000);
+  if (issue === "lost") setTimeout(googleLost, 8000);
   powerMonitor.on("resume", () => { if (prefs.googleBridge?.para) setTimeout(() => instinct.restart(), 5000); }); // tras dormir el PC: conexión y aviso nuevos
 });
 app.on("before-quit", () => instinct.stop());

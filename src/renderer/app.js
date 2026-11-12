@@ -991,13 +991,20 @@ function renderAppView() {
     send.type = "button";
     // Si Google rechaza la escritura se dice (y el texto se queda en el cuadro): antes salía «✓» aunque no hubiera llegado nada.
     const sent = (r, ok) => { if (r?.error) return setState(state, t("No le llegó a {0}: {1}", neo, r.error), { labelFor: 9000 }); input.value = ""; setState(state, ok, { labelFor: 4000 }); };
-    send.onclick = async () => { if (!input.value.trim()) return; sent(await api.instinctDo("", "reply", input.value), t("Le dejé el mensaje a {0} ✓", neo)); };
+    // Mientras espera a Google, ni «Mandar» ni «Preguntar» responden: un doble clic (o Enter dos veces) mandaba lo mismo dos veces.
+    let waiting = false;
+    const run = async (action, ok) => {
+      if (!input.value.trim() || waiting) return;
+      waiting = true; send.disabled = ask.disabled = true;
+      try { sent(await api.instinctDo("", action, input.value), ok); } finally { waiting = false; send.disabled = ask.disabled = false; }
+    };
+    send.onclick = () => run("reply", t("Le dejé el mensaje a {0} ✓", neo));
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") send.click(); });
     // Preguntar: Instinct te lo pregunta por WhatsApp y tu respuesta vuelve aquí como [respuesta]
     const ask = el("button", "", t("Preguntarme por WhatsApp"));
     ask.type = "button";
     ask.title = t("{0} te hace esta pregunta por WhatsApp y tu respuesta vuelve a Nimbo", neo);
-    ask.onclick = async () => { if (!input.value.trim()) return; sent(await api.instinctDo("", "ask", input.value), t("{0} te lo va a preguntar por WhatsApp ✓", neo)); };
+    ask.onclick = () => run("ask", t("{0} te lo va a preguntar por WhatsApp ✓", neo));
     reply.append(input, send, ask);
     rows.push(reply);
   } else if (app.id === "agenda") {

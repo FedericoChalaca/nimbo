@@ -26,11 +26,24 @@ function createHealth({ onChange = () => {}, now = Date.now } = {}) {
   };
 }
 
-module.exports = { createHealth };
+/** Al arrancar, ¿hay que avisar de Google? → "unreadable" (google.bin no se pudo descifrar), "lost" (configurado pero sin sesión) o "".
+ *  Ojo: si google.bin es ilegible, Nimbo lo ve como vacío y `configured` da falso; por eso `unreadable` se mira primero y aparte. */
+function googleBootIssue({ bridge, unreadable, configured, connected }) {
+  if (!bridge) return ""; // sin la carpeta con tu IA de WhatsApp, Google es opcional: nada que avisar
+  if (unreadable) return "unreadable";
+  return configured && !connected ? "lost" : "";
+}
+
+module.exports = { createHealth, googleBootIssue };
 
 // Autoprueba: `node src/main/health.js`
 if (require.main === module) {
   const assert = require("assert");
+  // Arranque: google.bin ilegible avisa aunque Google parezca "sin configurar" (pasó del 1 al 6-nov sin aviso)
+  assert.strictEqual(googleBootIssue({ bridge: true, unreadable: true, configured: false, connected: false }), "unreadable");
+  assert.strictEqual(googleBootIssue({ bridge: true, unreadable: false, configured: true, connected: false }), "lost");
+  assert.strictEqual(googleBootIssue({ bridge: true, unreadable: false, configured: true, connected: true }), "");
+  assert.strictEqual(googleBootIssue({ bridge: false, unreadable: true, configured: false, connected: false }), "");
   const seen = [];
   let clock = 1000;
   const h = createHealth({ onChange: (c) => seen.push([c.id, c.ok, c.text, c.bad.length]), now: () => clock });

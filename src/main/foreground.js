@@ -54,7 +54,9 @@ if (require.main === module) (async () => {
   const t = Date.now();
   const name = await foreground();
   assert.ok(name === null || (typeof name === "string" && name.length > 0), String(name));
-  assert.ok(Date.now() - t < 9000);
+  // La consulta se corta sola a los 8 s; 20 s de margen porque con el PC ocupado (un juego, otras pruebas) PowerShell tarda en arrancar y
+  // en morir. Antes eran 9 s y fallaba 2 de cada 3 veces sin que nada estuviera mal. Lo que importa: que no se cuelgue.
+  assert.ok(Date.now() - t < 20_000, `tardó ${Date.now() - t} ms`);
   assert.strictEqual(await foreground("freebsd"), null); // sin xdotool o sin escritorio: null
   console.log("foreground.js ok" + (name ? ` (ahora tiene el foco: ${name})` : " (sin saber quién tiene el foco)"));
 })();
