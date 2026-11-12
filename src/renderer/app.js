@@ -42,6 +42,11 @@ const BAR_H = 68;
 // La ventana mide 440 (640 en modo barra, donde la isla compacta puede ser más ancha) y a cada lado de la isla va una esquina invertida de 14: más ancha que
 // esto, la ventana la recorta y pierde las curvas.
 const MAX_W = 412;
+// Lo que estiraste desde la esquina (main.js: size): xw = ancho extra; ph = alto del panel abierto (0 = según su contenido). El texto de la
+// barra mide lo que mide, hasta su tope; estirada a lo ancho, el tope crece y la barra ocupa ese ancho aunque el texto sea corto (así la
+// esquina sigue al mouse).
+let xw = 0, ph = 0;
+const textSlot = (natural, cap, avail) => Math.max(0, Math.min(xw > 0 ? Math.max(natural, cap + xw) : natural, cap + xw, avail));
 let lastSize = { w: 0, h: 0 };
 let edge = "top"; // dónde vive Nimbo (lo dice main)
 let anchorF = 0.5; // dónde está a lo largo del borde (0 = pegado a la izquierda/arriba, 1 = a la derecha/abajo)
@@ -92,8 +97,9 @@ function layout() {
   root.classList.toggle("split", split);
   let infoW = 0;
   if (open) {
-    w = musicMode && isleApp === "logros" ? (isleMin ? 300 : 360) : musicMode && !lyricsOn ? 372 : MAX_W; // islas compactas: más o menos lo que ocupa Nimbo
-    h = Math.min(550, (musicMode ? 0 : BAR_H) + content.offsetHeight + 14); // 550 = 70 + 466 (#content) + 14; isla de música: sin la barra de Nimbo. Con 470 y #content de 466 la isla recortaba las pastillas de abajo (se veían cuadradas)
+    w = musicMode && isleApp === "logros" ? (isleMin ? 300 : 360) : musicMode && !lyricsOn ? 372 : MAX_W + xw; // islas compactas: más o menos lo que ocupa Nimbo
+    // Con un alto elegido (ph) el panel mide eso y lo de adentro se desplaza; si no, lo que muestre, hasta 550.
+    h = ph && !musicMode ? ph : Math.min(550, (musicMode ? 0 : BAR_H) + content.offsetHeight + 14); // 550 = 70 + 466 (#content) + 14; isla de música: sin la barra de Nimbo. Con 470 y #content de 466 la isla recortaba las pastillas de abajo (se veían cuadradas)
   } else {
     const text = label.classList.contains("show") && state !== "sleeping" ? label.textContent : "";
     measure.textContent = text;
@@ -107,7 +113,7 @@ function layout() {
       h = dockW + ih + infoW;
     } else if (corner) {
       // Programas + texto tienen que caber en la ventana (si no, la franja se salía por la derecha y su punta redonda quedaba cortada, cuadrada).
-      const textW = text ? Math.max(0, Math.min(measure.offsetWidth * 12.5 / 13.5, 230, innerWidth - 28 - 150 - dockW - 34 - pipsW)) : 0;
+      const textW = text ? textSlot(measure.offsetWidth * 12.5 / 13.5, 230, innerWidth - 28 - 150 - dockW - 34 - pipsW) : 0;
       // Dormido no hay franja de texto (split se apaga): si se contara, la isla quedaba corrida y separada de sus programas.
       infoW = state !== "sleeping" && (text || pipsW) ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
       wrap.style.setProperty("--tw", `${Math.ceil(Math.max(0, textW))}px`);
@@ -119,12 +125,12 @@ function layout() {
       w = Math.max(150, dockW + 28);
       h = BAR_H + (dockW ? 34 : 0);
     } else if (split) {
-      const textW = text ? Math.max(0, Math.min(measure.offsetWidth * 12.5 / 13.5, 260, innerWidth - 28 - 150 - dockW - pipsW - 34)) : 0;
+      const textW = text ? textSlot(measure.offsetWidth * 12.5 / 13.5, 260, innerWidth - 28 - 150 - dockW - pipsW - 34) : 0;
       infoW = text || pipsW ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
       wrap.style.setProperty("--tw", `${Math.ceil(textW)}px`);
       w = infoW + 150 + dockW;
     } else {
-      const textW = text ? Math.min(measure.offsetWidth, 270, innerWidth - 28 - 116 - 12 - pipsW - 16 - dockW) : 0;
+      const textW = text ? textSlot(measure.offsetWidth, 270, innerWidth - 28 - 116 - 12 - pipsW - 16 - dockW) : 0;
       w = (text || pipsW ? 116 + textW + (text ? 12 : 0) + pipsW + 16 : 150) + dockW;
     }
     if (!vert && e !== "float") {
@@ -144,7 +150,9 @@ function layout() {
   wrap.style.setProperty("--w", `${Math.round(w)}px`);
   wrap.style.setProperty("--h", `${Math.round(h)}px`);
   lastSize = { w, h };
-  fitWindow(open ? MAX_WIN_H : h + 62); // 62 = sombra de la isla
+  fitWindow(open ? Math.max(MAX_WIN_H, ph + 10) : h + 62); // 62 = sombra de la isla
+  // El agarre va en la esquina que más se mueve al estirar: a la izquierda si Nimbo está pegado a la derecha (o de la mitad para allá).
+  root.classList.toggle("grip-l", vert ? e === "right" : e !== "float" && anchorF > 0.5);
 }
 // La ventana mide lo que muestra la isla: crece ANTES de la animación y encoge cuando la animación de cierre ya terminó.
 const MAX_WIN_H = 560; // = H en main.js (2026-11-01: 480 cortaba la última fila de pastillas)
@@ -633,8 +641,21 @@ const grip = el("div", "", "");
 grip.id = "grip";
 grip.title = t("Arrástrame para agrandarme o achicarme · doble clic: tamaño normal");
 document.getElementById("island").append(grip);
-grip.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); grip.setPointerCapture(e.pointerId); api.resizeStart(); });
-for (const ev of ["pointerup", "lostpointercapture"]) grip.addEventListener(ev, () => api.resizeEnd());
+// Arrastrar = ancho (X) y alto (Y) por separado; con Ctrl = todo parejo. Mientras dura, sin animaciones de tamaño (con ellas iba medio segundo atrás del mouse).
+grip.addEventListener("pointerdown", (e) => {
+  e.stopPropagation(); e.preventDefault(); grip.setPointerCapture(e.pointerId);
+  root.classList.add("resizing");
+  api.resizeStart({ ctrl: e.ctrlKey, left: root.classList.contains("grip-l"), h0: root.classList.contains("open") && !musicMode ? lastSize.h : 0 });
+});
+for (const ev of ["pointerup", "lostpointercapture"]) grip.addEventListener(ev, () => { root.classList.remove("resizing"); api.resizeEnd(); });
+api.onResizeDone?.(() => root.classList.remove("resizing"));
+api.onSize?.((s) => {
+  xw = s.xw; ph = s.ph;
+  // Lo de adentro del panel cabe en su alto: #content hasta ph − barra − margen; las listas largas crecen lo que el panel pase de 550.
+  root.style.setProperty("--cmax", `${ph ? ph - 84 : 466}px`);
+  root.style.setProperty("--xh", `${Math.max(0, ph - 550)}px`);
+  layout();
+});
 grip.addEventListener("click", (e) => e.stopPropagation()); // no abre el chat ni cuenta para el doble clic del modo fantasma
 grip.addEventListener("dblclick", (e) => { e.stopPropagation(); api.scaleReset(); });
 api.onAttention?.((x) => { if (!mini && x?.text) setState("needs", String(x.text).slice(0, 90), { hold: 15000, back: 15000 }); });

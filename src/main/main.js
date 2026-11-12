@@ -135,6 +135,7 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("did-finish-load", () => {
     win.webContents.setZoomFactor(scale); // el tamaño que le dejaste (Options y la aldea van en otro host: este zoom no les llega)
+    win.webContents.send("size", size); // y el ancho/alto extra
     win.webContents.send("theme", prefs.theme);
     win.webContents.send("wake-on", prefs.wakeWord === true && !mini);
     win.webContents.send("dock", dockState().edge);
@@ -165,16 +166,7 @@ function createWindow() {
       savePrefs();
       win.webContents.send("drag-abort");
     }
-    if (resizing) {
-      // Agrandando desde la esquina: alejarse del borde donde vive Nimbo lo agranda (160 px ≈ el doble), acercarse lo achica.
-      if (Date.now() - resizing.since > 30_000) endResize();
-      else {
-        const e = dockState().edge;
-        const d = e === "bottom" ? resizing.y - p.y : e === "right" ? resizing.x - p.x : e === "left" ? p.x - resizing.x : p.y - resizing.y;
-        setScale(resizing.s0 * (1 + d / 160));
-      }
-      return;
-    }
+    if (resizing) return; // lo lleva su propio reloj (stepResize, cada 16 ms)
     if (drag) {
       // Arrastrando, la ventana entera (la isla con sus franjas) viaja pegada al cursor, en cualquier pantalla, sin cambiar de forma;
       // cerca de un borde, la página muestra que se va a pegar ahí. Solo al soltar se decide dónde queda.
@@ -227,7 +219,7 @@ function finishDrag(fromHelper) {
   const edge = snapEdge(p) || "float";
   const frac = (v, from, len, size) => Math.min(1, Math.max(0, (v - from - size / 2) / Math.max(1, len - size)));
   prefs.dock = edge === "float" ? { edge, display: disp.id, x: Math.round(p.x), y: Math.round(p.y - px(34)) }
-    : { edge, display: disp.id, pos: edge === "top" || edge === "bottom" ? frac(p.x, a.x, a.width, px(W)) : frac(p.y, a.y, a.height, px(SIDE_H)) };
+    : { edge, display: disp.id, pos: edge === "top" || edge === "bottom" ? frac(p.x, a.x, a.width, px(W + size.xw)) : frac(p.y, a.y, a.height, px(SIDE_H + extraH())) };
   savePrefs();
   placeWindow();
   win.webContents.send("dock", edge);
@@ -238,7 +230,7 @@ function finishDrag(fromHelper) {
 ipcMain.on("win-height", (_e, h) => {
   h = Math.round(Number(h));
   if (!Number.isFinite(h)) return;
-  winH = Math.min(H, Math.max(100, h));
+  winH = Math.min(H + extraH(), Math.max(100, h));
   if (mini || drag || !win || win.isDestroyed()) return;
   const edge = dockState().edge;
   if (edge !== "top" && edge !== "bottom") return; // a los lados y flotando la ventana tiene tamaño fijo
@@ -262,8 +254,10 @@ function ghost(on) {
 }
 ipcMain.on("ghost", () => ghost(true));
 
-// Agrandar o achicar a Nimbo arrastrando la esquina de la isla (el agarre #grip). El bucle del cursor calcula el tamaño mientras dura.
-let resizing = null; // { since, s0, x, y }
+// Cambiar el tamaño desde la esquina de la isla (el agarre #grip), como una ventana: a lo ancho (X) y a lo alto (Y) por separado
+// (`size`: xw = px de la página que se suman al ancho de la isla abierta y de la barra; ph = alto del panel abierto, 0 = según su contenido). Con Ctrl: todo parejo (`scale`, zoom).
+// La esquina sigue al mouse: la isla crece hacia ambos lados según dónde esté anclada, por eso X se multiplica por `kx`.
+let resizing = null; // { since, timer, zoom, kx, sx, s0, xw0, ph0, x, y }
 function setScale(v) {
   v = clampScale(v);
   if (v === scale || !win || win.isDestroyed()) return;
@@ -271,21 +265,54 @@ function setScale(v) {
   win.webContents.setZoomFactor(scale);
   placeWindow();
 }
+function setSize(xw, ph) {
+  const next = clampSize({ xw, ph });
+  if (next.xw === size.xw && next.ph === size.ph) return;
+  size = next;
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send("size", size);
+  placeWindow();
+}
+function stepResize() {
+  const r = resizing;
+  if (!r || !win || win.isDestroyed()) return;
+  if (Date.now() - r.since > 30_000) return endResize(); // ningún arrastre dura medio minuto (si se perdió el "soltar")
+  const p = screen.getCursorScreenPoint();
+  const dx = (p.x - r.x) * r.sx, dy = (p.y - r.y) * (dockState().edge === "bottom" ? -1 : 1); // + = hacia afuera de la isla
+  if (r.zoom) setScale(r.s0 * (1 + (Math.abs(dx) > Math.abs(dy) ? dx : dy) / 160));
+  else setSize(r.xw0 + (dx * r.kx) / scale, r.ph0 ? r.ph0 + dy / scale : size.ph); // con el panel cerrado, Y no cambia nada
+}
 function endResize() {
   if (!resizing) return;
+  clearInterval(resizing.timer);
   resizing = null;
   prefs.scale = scale;
+  prefs.size = size;
   savePrefs();
+  if (win && !win.isDestroyed()) win.webContents.send("resize-done");
 }
-ipcMain.on("resize-start", () => {
-  if (mini || drag || !win || win.isDestroyed()) return;
+ipcMain.on("resize-start", (_e, o) => {
+  if (mini || drag || resizing || !win || win.isDestroyed()) return;
   const c = screen.getCursorScreenPoint();
-  resizing = { since: Date.now(), s0: scale, x: c.x, y: c.y };
+  const d = dockState();
+  // Cuánto se mueve la esquina por cada px que crece la isla: arriba/abajo la isla está anclada en `pos` (al centro se reparte a los dos
+  // lados: la esquina avanza la mitad); flotando, siempre al centro; a los lados, pegada al borde.
+  const f = d.edge === "float" ? 0.5 : d.edge === "top" || d.edge === "bottom" ? d.pos : o?.left ? 1 : 0; // a los lados: k = 1
+  const kx = 1 / Math.max(0.5, o?.left ? f : 1 - f);
+  resizing = { since: Date.now(), zoom: o?.ctrl === true, kx, sx: o?.left ? -1 : 1, s0: scale, xw0: size.xw, ph0: Number(o?.h0) || 0, x: c.x, y: c.y }; // h0: alto del panel abierto al empezar (0 = cerrado)
+  resizing.timer = setInterval(stepResize, 16);
   windows.watchLeft(); // si la página pierde el "soltar", el botón izquierdo de verdad lo termina
   win.setIgnoreMouseEvents(false);
 });
 ipcMain.on("resize-end", endResize);
-ipcMain.on("scale-reset", () => { resizing = null; setScale(1); prefs.scale = 1; savePrefs(); }); // doble clic en el agarre: tamaño normal
+ipcMain.on("scale-reset", () => { // doble clic en el agarre: tamaño normal
+  endResize();
+  setScale(1);
+  setSize(0, 0);
+  prefs.scale = 1;
+  prefs.size = size;
+  savePrefs();
+});
 
 // Modo mini (para jugar): Nimbo se encoge en una esquina y sigue reaccionando,
 // pero sin sonidos ni tarjetas; los permisos se preguntan en la terminal.
@@ -349,6 +376,12 @@ const SCALE_MIN = 0.7, SCALE_MAX = 1.6;
 const clampScale = (v) => Math.round(Math.min(SCALE_MAX, Math.max(SCALE_MIN, Number(v) || 1)) * 100) / 100;
 let scale = clampScale(prefs.scale);
 const px = (v) => Math.round(v * scale);
+// Lo que estiraste desde la esquina (px de la página): xw se suma al ancho de la isla abierta y de la barra; ph es el alto del panel abierto
+// (0 = el de siempre, según lo que muestre). extraH = cuánto más alto que el máximo de siempre (550) puede quedar: la ventana crece eso.
+const lim = (v, lo, hi) => Math.round(Math.min(hi, Math.max(lo, Number(v) || 0)));
+const clampSize = (s) => ({ xw: lim(s?.xw, -60, 420), ph: Number(s?.ph) > 0 ? lim(s.ph, 160, 900) : 0 });
+const extraH = () => Math.max(0, size.ph - 550);
+let size = clampSize(prefs.size);
 let corner = prefs.corner;
 // Se escribe en un archivo aparte y se cambia de nombre: si el PC se apaga a mitad, prefs.json queda entero (el viejo o el nuevo).
 const savePrefs = () => {
@@ -380,11 +413,11 @@ function dockBounds() {
   const clampIn = (v, from, len, size) => Math.round(Math.min(from + len - size, Math.max(from, v)));
   // Contra una esquina la ventana se corre 14 px hacia afuera de la pantalla (esa franja es transparente: son las "orejas" de la isla),
   // así la isla queda pegada al borde de verdad.
-  const w = px(W), h = px(winH), sideW = px(SIDE_W), floatW = px(FLOAT_W), floatH = px(FLOAT_H);
+  const w = px(W + size.xw), h = px(winH), sideW = px(SIDE_W + size.xw), floatW = px(FLOAT_W + size.xw), floatH = px(FLOAT_H + extraH());
   const rowX = () => Math.round(a.x + d.pos * (a.width - w) + (d.pos <= 0.03 ? -px(14) : d.pos >= 0.97 ? px(14) : 0));
   if (d.edge === "top") return { x: rowX(), y: a.y, width: w, height: h };
   if (d.edge === "bottom") return { x: rowX(), y: a.y + a.height - h, width: w, height: h };
-  const sideH = Math.min(px(SIDE_H), a.height);
+  const sideH = Math.min(px(SIDE_H + extraH()), a.height);
   if (d.edge === "left") return { x: a.x, y: Math.round(a.y + d.pos * (a.height - sideH)), width: sideW, height: sideH };
   if (d.edge === "right") return { x: a.x + a.width - sideW, y: Math.round(a.y + d.pos * (a.height - sideH)), width: sideW, height: sideH };
   return { x: clampIn((d.x ?? a.x + a.width / 2) - floatW / 2, a.x, a.width, floatW), y: clampIn((d.y ?? a.y + 40) - px(14), a.y, a.height, floatH), width: floatW, height: floatH };
