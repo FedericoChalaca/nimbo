@@ -114,6 +114,8 @@ contextBridge.exposeInMainWorld("nimbo", {
   // Ruta real de un archivo soltado o elegido (las imágenes pegadas no tienen: devuelve "").
   filePath: (file) => webUtils.getPathForFile(file),
   hitRects: (rects) => ipcRenderer.send("hit-rects", rects),
+  ghost: () => ipcRenderer.send("ghost"), // doble clic: 30 s translúcido y sin atrapar clics
+  onGhost: (fn) => ipcRenderer.on("ghost", (_e, on) => fn(on === true)),
   winHeight: (h) => ipcRenderer.send("win-height", h),
   onHover: (fn) => ipcRenderer.on("hover", (_e, on) => fn(on)),
   menu: () => ipcRenderer.send("menu"),

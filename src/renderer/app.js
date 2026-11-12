@@ -108,7 +108,8 @@ function layout() {
     } else if (corner) {
       // Programas + texto tienen que caber en la ventana (si no, la franja se salía por la derecha y su punta redonda quedaba cortada, cuadrada).
       const textW = text ? Math.max(0, Math.min(measure.offsetWidth * 12.5 / 13.5, 230, innerWidth - 28 - 150 - dockW - 34 - pipsW)) : 0;
-      infoW = text || pipsW ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
+      // Dormido no hay franja de texto (split se apaga): si se contara, la isla quedaba corrida y separada de sus programas.
+      infoW = state !== "sleeping" && (text || pipsW) ? 16 + textW + (text && pipsW ? 8 : 0) + pipsW + 10 : 0;
       wrap.style.setProperty("--tw", `${Math.ceil(Math.max(0, textW))}px`);
       const blk = infoW + dockW; // una sola fila de media altura al lado de Nimbo: programas y texto, uno junto al otro
       wrap.style.setProperty("--blk", `${Math.round(blk)}px`);
@@ -128,7 +129,9 @@ function layout() {
     }
     if (!vert && e !== "float") {
       h = BAR_H;
-      if (state === "sleeping") { w = 132 + dockW; h = 60; }
+      // Dormido se encoge, salvo en una esquina: ahí la franja de programas va pegada a 150 px del borde (styles.css, .corner-l #dock)
+      // y con la isla de 132×60 quedaba un hueco entre Nimbo y su barra.
+      if (state === "sleeping" && !corner) { w = 132 + dockW; h = 60; }
     }
     root.classList.toggle("solo", e === "float" || (!text && !pipsW));
     if (split && !infoW) root.classList.remove("split"); // nada que contar: sin franja
@@ -624,6 +627,7 @@ api.onHealth?.((h) => {
   if (h && !h.ok && !mini) setState(state, String(h.text).slice(0, 120), { hold: 12000 });
   document.getElementById("menuBtn").title = h?.bad?.length ? h.bad.map((b) => b.text).join("\n") : t("Opciones de Nimbo");
 });
+api.onGhost?.((on) => root.classList.toggle("ghost", on));
 api.onAttention?.((x) => { if (!mini && x?.text) setState("needs", String(x.text).slice(0, 90), { hold: 15000, back: 15000 }); });
 api.onVitals?.((v) => {
   root.classList.toggle("hot", !!v.hot);
@@ -1964,7 +1968,7 @@ wrap.addEventListener("click", (e) => {
     }, 280);
     return;
   }
-  if (clicks === 2) { emote("love", 1500); SOUNDS.love(); }
+  if (clicks === 2) { clicks = 0; return api.ghost(); } // doble clic: modo fantasma (30 s translúcido, los clics pasan a lo de abajo)
   if (clicks === 5) { emote("dizzy", 2600); SOUNDS.dizzy(); setState(state, t("Ya, ya… 😵‍💫"), { labelFor: 2200 }); }
   clickTimer = setTimeout(() => (clicks = 0), 900);
 });

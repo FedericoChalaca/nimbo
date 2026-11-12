@@ -177,7 +177,7 @@ function createWindow() {
     }
     const x = p.x - b.x;
     const y = p.y - b.y;
-    const inside = hitRects.some((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+    const inside = !ghostTimer && hitRects.some((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
     if (inside !== over) {
       over = inside;
       win.setIgnoreMouseEvents(!inside);
@@ -239,6 +239,16 @@ let hitRects = [];
 ipcMain.on("hit-rects", (_e, rects) => {
   if (Array.isArray(rects)) hitRects = rects.filter((r) => [r?.x, r?.y, r?.w, r?.h].every(Number.isFinite));
 });
+
+// Modo fantasma: doble clic en Nimbo → queda al 30 % y los clics pasan a lo que hay debajo (la X de una pestaña que tapaba), por 30 s
+// o hasta que toques su icono junto al reloj. El bucle del cursor ve `ghostTimer` y deja la ventana transparente a los clics.
+let ghostTimer = null;
+function ghost(on) {
+  clearTimeout(ghostTimer);
+  ghostTimer = on ? setTimeout(() => ghost(false), 30_000) : null;
+  if (win && !win.isDestroyed()) win.webContents.send("ghost", on);
+}
+ipcMain.on("ghost", () => ghost(true));
 
 // Modo mini (para jugar): Nimbo se encoge en una esquina y sigue reaccionando,
 // pero sin sonidos ni tarjetas; los permisos se preguntan en la terminal.
@@ -1746,7 +1756,7 @@ function createTray() {
   tray = new Tray(icon.resize({ width: 32, height: 32 }));
   tray.setToolTip("Nimbo");
   const open = () => tray.popUpContextMenu(buildMenu()); // se arma en el momento: las marcas reflejan el estado actual
-  tray.on("click", () => options.open()); // clic: la ventana de opciones; clic derecho: el menú rápido
+  tray.on("click", () => (ghostTimer ? ghost(false) : options.open())); // clic: la ventana de opciones (o saca a Nimbo del modo fantasma); clic derecho: el menú rápido
   tray.on("right-click", open);
   if (process.env.NIMBO_DEBUG) console.error("bandeja:", JSON.stringify(tray.getBounds()));
 }
