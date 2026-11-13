@@ -45,8 +45,9 @@ const MAX_W = 412;
 // Lo que estiraste desde la esquina (main.js: size): xw = ancho extra; ph = alto del panel abierto (0 = según su contenido). El texto de la
 // barra mide lo que mide, hasta su tope; estirada a lo ancho, el tope crece y la barra ocupa ese ancho aunque el texto sea corto (así la
 // esquina sigue al mouse).
-let xw = 0, ph = 0;
-const textSlot = (natural, cap, avail) => Math.max(0, Math.min(xw > 0 ? Math.max(natural, cap + xw) : natural, cap + xw, avail));
+let xw = 0, bw = 0, ph = 0; // xw: panel abierto más ancho · bw: barra cerrada más larga · ph: alto del panel abierto
+let xwText = 0; // lo del ancho extra que no se llevaron los programas de más (cada uno 27 px): eso es para el texto
+const textSlot = (natural, cap, avail) => Math.max(0, Math.min(xwText > 0 ? Math.max(natural, cap + xwText) : natural, cap + xwText, avail));
 let lastSize = { w: 0, h: 0 };
 let edge = "top"; // dónde vive Nimbo (lo dice main)
 let anchorF = 0.5; // dónde está a lo largo del borde (0 = pegado a la izquierda/arriba, 1 = a la derecha/abajo)
@@ -87,6 +88,7 @@ function layout() {
   root.classList.toggle("flip", vert && anchorF > 0.5); // en un lateral, soltado en la mitad de abajo: Nimbo abajo y sus franjas encima
   for (const x of EDGE_CLASSES) root.classList.toggle(x, x === `edge-${e}`);
   // Tus programas van en su franja (#dock), salvo con la isla abierta (ahí salen en grande). En columna se mide su alto.
+  xwText = bw > 0 ? Math.max(0, bw - 27 * (shownTasks().length - shownTasks(0).length)) : bw;
   const dockW = !open && tasksEl.children.length ? (vert ? tasksEl.offsetHeight : tasksEl.offsetWidth) + 14 : 0;
   root.classList.toggle("docked", dockW > 0);
   wrap.style.setProperty("--dock", `${dockW}px`);
@@ -577,8 +579,10 @@ let tasksAll = false, tasksAllTimer = 0;
 const tasksFit = () => Math.max(MAX_TASKS, Math.floor(((curEdge() === "left" || curEdge() === "right" ? innerHeight : innerWidth) - 380) / 27));
 // Los que piden atención (botón naranja de Windows) van primero: nunca quedan escondidos en «+N».
 const attnFirst = (l) => [...l.filter((a) => a.attn), ...l.filter((a) => !a.attn)];
-const shownTasks = () => curEdge() === "float" ? attnFirst(tasks.filter((a) => a.windows.length).sort((a, b) => (b.used || 0) - (a.used || 0))).slice(0, 4)
-  : attnFirst([...tasks.filter((a) => a.windows.length), ...tasks.filter((a) => !a.windows.length)]).slice(0, tasksAll ? tasksFit() : MAX_TASKS);
+// Estirada a lo ancho (bw), la barra muestra un programa más por cada 27 px (flotando también).
+const moreApps = () => Math.max(0, Math.floor(bw / 27));
+const shownTasks = (extra = moreApps()) => curEdge() === "float" ? attnFirst(tasks.filter((a) => a.windows.length).sort((a, b) => (b.used || 0) - (a.used || 0))).slice(0, 4 + extra)
+  : attnFirst([...tasks.filter((a) => a.windows.length), ...tasks.filter((a) => !a.windows.length)]).slice(0, tasksAll ? Math.max(tasksFit(), MAX_TASKS + extra) : MAX_TASKS + extra);
 tasksEl.addEventListener("mouseleave", () => { if (tasksAll) tasksAllTimer = setTimeout(() => { tasksAll = false; renderTasks(); }, 2500); });
 tasksEl.addEventListener("mouseenter", () => clearTimeout(tasksAllTimer));
 function renderTasks() {
@@ -645,12 +649,13 @@ document.getElementById("island").append(grip);
 grip.addEventListener("pointerdown", (e) => {
   e.stopPropagation(); e.preventDefault(); grip.setPointerCapture(e.pointerId);
   root.classList.add("resizing");
-  api.resizeStart({ ctrl: e.ctrlKey, left: root.classList.contains("grip-l"), h0: root.classList.contains("open") && !musicMode ? lastSize.h : 0 });
+  api.resizeStart({ ctrl: e.ctrlKey, left: root.classList.contains("grip-l"), h0: root.classList.contains("open") && !musicMode ? lastSize.h : 0, hc: lastSize.h });
 });
 for (const ev of ["pointerup", "lostpointercapture"]) grip.addEventListener(ev, () => { root.classList.remove("resizing"); api.resizeEnd(); });
 api.onResizeDone?.(() => root.classList.remove("resizing"));
 api.onSize?.((s) => {
-  xw = s.xw; ph = s.ph;
+  xw = s.xw; bw = s.bw; ph = s.ph;
+  renderTasks(); // más o menos programas en la barra
   // Lo de adentro del panel cabe en su alto: #content hasta ph − barra − margen; las listas largas crecen lo que el panel pase de 550.
   root.style.setProperty("--cmax", `${ph ? ph - 84 : 466}px`);
   root.style.setProperty("--xh", `${Math.max(0, ph - 550)}px`);

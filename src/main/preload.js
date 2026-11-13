@@ -116,11 +116,11 @@ contextBridge.exposeInMainWorld("nimbo", {
   hitRects: (rects) => ipcRenderer.send("hit-rects", rects),
   ghost: () => ipcRenderer.send("ghost"), // doble clic: 30 s translúcido y sin atrapar clics
   onGhost: (fn) => ipcRenderer.on("ghost", (_e, on) => fn(on === true)),
-  // Agarre de la esquina: estirar a lo ancho y a lo alto ({ ctrl: todo parejo, left: el agarre está a la izquierda de la isla, h0: alto del panel abierto o 0 })
-  resizeStart: (o) => ipcRenderer.send("resize-start", { ctrl: o?.ctrl === true, left: o?.left === true, h0: Number(o?.h0) || 0 }),
+  // Agarre de la esquina: estirar a lo ancho y a lo alto ({ ctrl: todo parejo, left: el agarre está a la izquierda de la isla, h0: alto del panel abierto o 0, hc: alto de la isla })
+  resizeStart: (o) => ipcRenderer.send("resize-start", { ctrl: o?.ctrl === true, left: o?.left === true, h0: Number(o?.h0) || 0, hc: Number(o?.hc) || 0 }),
   resizeEnd: () => ipcRenderer.send("resize-end"),
   scaleReset: () => ipcRenderer.send("scale-reset"),
-  onSize: (fn) => ipcRenderer.on("size", (_e, s) => fn({ xw: Number(s?.xw) || 0, ph: Number(s?.ph) || 0 })),
+  onSize: (fn) => ipcRenderer.on("size", (_e, s) => fn({ xw: Number(s?.xw) || 0, bw: Number(s?.bw) || 0, ph: Number(s?.ph) || 0 })),
   onResizeDone: (fn) => ipcRenderer.on("resize-done", () => fn()),
   winHeight: (h) => ipcRenderer.send("win-height", h),
   onHover: (fn) => ipcRenderer.on("hover", (_e, on) => fn(on)),
