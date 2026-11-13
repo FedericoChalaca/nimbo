@@ -1312,6 +1312,12 @@ api.onInstinctNew?.((fresh) => {
   emote("hello", 1200);
   SOUNDS.hello();
   setState(state, t("{0} anotó: {1}", neo, fresh[0].text).slice(0, 90), { labelFor: 8000 });
+  // Y lo lee en voz alta apenas llega (main: neo-aloud, con la voz de este PC; se apaga en el menú, y en silencio o jugando no suena).
+  const said = fresh.slice(0, 3).map((f) => f.text.replace(/[.!?…\s]+$/, "")).join(". ");
+  const text = fresh.length === 1 ? t("{0} te dejó un mensaje: {1}", neo, said) : t("{0} te dejó {1} mensajes: {2}", neo, fresh.length, said);
+  stopSpeaking();
+  const turn = speakTurn;
+  api.neoAloud?.(text).then((bytes) => { if (bytes && turn === speakTurn) playSpeech(bytes); }).catch(() => {});
 });
 const isToday = (iso) => String(iso).slice(0, 10) === new Date().toLocaleDateString("sv");
 const loadAgenda = () => api.agenda?.().then((a) => { agenda = Array.isArray(a) ? a : null; renderApps(); if (openApp === "agenda") renderAppView(); }).catch(() => {});

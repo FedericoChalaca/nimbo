@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld("nimbo", {
   instinct: () => ipcRenderer.invoke("instinct"), // lo que Instinct anotó y espera que lo atiendas
   instinctCheck: () => ipcRenderer.invoke("instinct-check"),
   instinctName: () => ipcRenderer.invoke("instinct-name"),
+  neoAloud: (text) => ipcRenderer.invoke("neo-aloud", String(text ?? "")), // → audio (.wav) de lo que te dejó Neo, o null (apagado, en silencio, jugando)
   onInstinctName: (fn) => ipcRenderer.on("instinct-name", (_e, n) => fn(n)),
   instinctDo: (id, action, text) => ipcRenderer.invoke("instinct-do", String(id), String(action), text == null ? "" : String(text)),
   onInstinct: (fn) => ipcRenderer.on("instinct", (_e, p) => fn(p)),

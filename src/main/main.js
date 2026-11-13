@@ -1052,13 +1052,28 @@ async function phraseFile(text) {
   const file = path.join(VOICE_DIR, require("crypto").createHash("sha1").update(engine + "|" + lang() + "|" + text).digest("hex").slice(0, 16) + ".wav");
   if (fs.existsSync(file)) return file;
   fs.mkdirSync(VOICE_DIR, { recursive: true });
-  if (engine !== "sapi") { await renderPiper(text, file); return file; }
+  await renderLocal(text, file);
+  return file;
+}
+/** Dice `text` con la voz de este PC (Piper si la encendiste; si no, la de Windows) y lo deja en `file` (.wav). */
+async function renderLocal(text, file) {
+  if (usePiper()) return renderPiper(text, file);
   const ps = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
   await new Promise((res, rej) => execFile(ps, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(SAY_PS, "utf16le").toString("base64")],
     { windowsHide: true, timeout: 20_000, env: { ...process.env, NIMBO_TEXT: text, NIMBO_OUT: file, NIMBO_LANG: lang(), NIMBO_VOICE: lang() === "en" ? "Microsoft Zira Desktop" : "Microsoft Helena Desktop" } },
     (err) => (err ? rej(err) : res())));
-  return file;
 }
+// Lo que Neo te deja, leído en voz alta al llegar (prefs.neoAloud, prendido salvo que lo apagues), con la voz de este PC: nada sale del PC.
+// No se guarda: el audio va a un archivo temporal que se borra apenas se lee. En silencio (mute) o jugando (mini) no suena.
+ipcMain.handle("neo-aloud", async (_e, text) => {
+  if (prefs.neoAloud === false || muted || mini || process.platform !== "win32") return null;
+  text = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, 600);
+  if (!text) return null;
+  const file = path.join(app.getPath("temp"), `nimbo-neo-${process.pid}-${Date.now()}.wav`);
+  try { await renderLocal(text, file); return new Uint8Array(await fs.promises.readFile(file)); }
+  catch { return null; }
+  finally { fs.promises.unlink(file).catch(() => {}); }
+});
 ipcMain.handle("say-phrase", async (_e, kind) => {
   if (prefs.cueVoice === false || process.platform !== "win32") return null;
   let text = pickPhrase("escuchando");
@@ -1809,6 +1824,12 @@ function menuTemplate() {
       checked: prefs.speak === true,
       enabled: voiceReady(),
       click: (item) => setSpeak(item.checked),
+    },
+    {
+      id: "neoAloud", label: t("Leer en voz alta lo que te deja {0}", neoName()),
+      type: "checkbox",
+      checked: prefs.neoAloud !== false,
+      click: (item) => { prefs.neoAloud = item.checked; savePrefs(); },
     },
     {
       id: "mute", label: t("Silenciar sonidos"),
